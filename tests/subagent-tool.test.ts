@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { subagentMetadataFromTool } from "../lib/subagent-tool";
 
@@ -51,4 +52,11 @@ test("subagent_status does not become durable subagent metadata", () => {
     ),
     undefined,
   );
+});
+
+test("delegate_subagent has no per-parent child count cap", () => {
+  const source = readFileSync(new URL("../app/api/internal/mcp-subagent/route.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /MAX_CHILDREN/);
+  assert.doesNotMatch(source, /at most \$\{MAX_CHILDREN\} children/);
+  assert.match(source, /MAX_DEPTH/);
 });

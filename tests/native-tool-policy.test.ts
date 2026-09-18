@@ -32,9 +32,25 @@ test("native SDK adapters disable provider subagents", () => {
   assert.doesNotMatch(bridge, /max_subagent_depth/);
   assert.equal(blockedCodexNativeToolType({ type: "mcp_tool_call" }), null);
   assert.equal(blockedCodexNativeToolType({ type: "reasoning" }), null);
+  assert.equal(blockedCodexNativeToolType({ type: "todo_list" }), null);
   assert.equal(blockedCodexNativeToolType({ type: "command_execution" }), "command_execution");
   assert.equal(blockedCodexNativeToolType({ type: "file_change" }), "file_change");
-  assert.equal(blockedCodexNativeToolType({ type: "todo_list" }), "todo_list");
+});
+
+test("Codex keeps Metis MCP and routes file edits through it", () => {
+  const codex = source("lib/providers/adapters/codex.ts");
+  assert.match(codex, /mcp_servers: \{ metis_ai: codexMcp \}/);
+  assert.match(codex, /enabled: true/);
+  assert.match(codex, /default_tools_approval_mode: "auto"/);
+  assert.match(codex, /startup_timeout_sec: 20/);
+  assert.match(codex, /apply_patch_freeform: false/);
+  assert.match(codex, /tool_search_always_defer_mcp_tools: false/);
+  assert.match(codex, /\["mcp"\],\s*false,/);
+  assert.match(codex, /approvalPolicy: "never"/);
+  assert.match(codex, /networkAccessEnabled: true/);
+  assert.match(codex, /sandboxMode: "read-only"/);
+  assert.doesNotMatch(codex, /networkAccessEnabled: false/);
+  assert.doesNotMatch(codex, /\["metis_ai"\]/);
 });
 
 test("Antigravity CLI custom agent removes defaults but keeps Metis MCP", () => {

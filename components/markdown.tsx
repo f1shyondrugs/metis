@@ -78,8 +78,9 @@ function MarkdownLink({
       }
       className={cn(
         props.className,
-        sourceTitle && "inline-flex items-center gap-1 rounded-full border border-border/60 bg-secondary/60 px-1.5 py-0.5 text-[11px] font-medium no-underline hover:bg-secondary",
+        sourceTitle && "inline-flex max-w-full align-middle items-center gap-1 whitespace-nowrap rounded-full border border-border/60 bg-secondary/60 px-1.5 py-0 text-[11px] leading-none font-medium no-underline hover:bg-secondary",
       )}
+      {...(sourceTitle ? { "data-source-chip": "" } : {})}
       onClick={(event) => {
         if (workspaceMatch) {
           event.preventDefault();
@@ -149,7 +150,7 @@ function MarkdownLink({
           {sourceTitle}
         </>
       ) : children}
-      {isWebUrl && hovered && modifierHeld ? (
+      {!sourceTitle && isWebUrl && hovered && modifierHeld ? (
         <ExternalLink className="ml-1 inline size-3.5 animate-in fade-in text-muted-foreground" aria-label="Ctrl-click opens in a new tab" />
       ) : null}
     </a>

@@ -317,6 +317,12 @@
   @apply underline underline-offset-2;
 }
 
+.markdown-body a[data-source-chip] {
+  vertical-align: middle;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .markdown-body blockquote {
   @apply my-3 border-l-2 border-border pl-3 text-muted-foreground;
 }

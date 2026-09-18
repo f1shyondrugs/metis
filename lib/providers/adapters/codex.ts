@@ -39,6 +39,7 @@ const CODEX_NON_NATIVE_ITEM_TYPES = new Set([
   "reasoning",
   "error",
   "mcp_tool_call",
+  "todo_list",
 ]);
 
 export function blockedCodexNativeToolType(item: Record<string, unknown>) {
@@ -216,20 +217,28 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
     ...(codexHome ? { CODEX_HOME: codexHome.home } : {}),
     ...(bearerToken ? { METIS_MCP_SESSION_TOKEN: bearerToken } : {}),
   });
-  const codexMcp: Record<string, string | string[] | Record<string, string>> =
+  const mcpReady: NonNullable<CodexOptions["config"]> = {
+    enabled: true,
+    startup_timeout_sec: 20,
+    tool_timeout_sec: 180,
+    default_tools_approval_mode: "auto",
+  };
+  const codexMcp: NonNullable<CodexOptions["config"]> =
     mcp.type === "http"
       ? {
           url: mcp.url,
+          ...mcpReady,
           ...(bearerToken ? { bearer_token_env_var: "METIS_MCP_SESSION_TOKEN" } : {}),
         }
-      : { command: mcp.command, args: mcp.args, env: mcp.env };
+      : { command: mcp.command, args: mcp.args, env: mcp.env, ...mcpReady };
   const codexConfig: NonNullable<CodexOptions["config"]> = {
     ...(codexHome ? { cli_auth_credentials_store: "file" } : {}),
-    // Codex does not expose a single MCP-only switch. Disable every native
-    // feature gate that can add tools; core execution is forced read-only
-    // below so all mutations still have to pass through the Metis gateway.
+    // Codex has no MCP-only switch. Disable native mutation/search tools, wait
+    // for the Metis gateway catalog, and auto-approve those MCP tools so file
+    // edits go through edit_file/write_file instead of apply_patch.
     features: {
       apps: false,
+      apply_patch_freeform: false,
       browser_use: false,
       browser_use_external: false,
       browser_use_full_cdp_access: false,
@@ -238,6 +247,7 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
       goals: false,
       image_generation: false,
       in_app_browser: false,
+      js_repl: false,
       multi_agent: false,
       multi_agent_v2: false,
       plugins: false,
@@ -245,6 +255,8 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
       shell_tool: false,
       skill_mcp_dependency_install: false,
       skill_search: false,
+      tool_search: false,
+      tool_search_always_defer_mcp_tools: false,
       tool_suggest: false,
       unified_exec: false,
       view_image: false,
@@ -283,10 +295,12 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
     workingDirectory: agentCwd,
     skipGitRepoCheck: true,
     ...RUNTIME_MODE_TO_CODEX[runtimeModeForChat(context.chat)],
-    // Runtime-mode permissions are enforced again by the Metis MCP gateway.
-    // Keep the provider's own execution surface unable to mutate or network.
+    // Runtime-mode permissions are enforced by the Metis MCP gateway.
+    // Keep Codex itself unable to mutate files or search the web, but allow
+    // loopback HTTP so the injected Metis gateway can load and edit.
     sandboxMode: "read-only" as const,
-    networkAccessEnabled: false,
+    approvalPolicy: "never" as const,
+    networkAccessEnabled: true,
     webSearchMode: "disabled" as const,
     webSearchEnabled: false,
   };
@@ -297,9 +311,10 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
     const prompt = [
       providerPrompt(
         context.job,
-        ["metis_ai"],
-        true,
+        ["mcp"],
+        false,
         effectiveModelParams(context.chat, context.job),
+        "codex-sdk",
       ),
       previousId
         ? providerCurrentTurnPrompt(context)

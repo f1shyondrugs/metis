@@ -6,6 +6,11 @@ publish releases.
 
 ## v1.0.7 — 2026-09-18
 
+### Chat sources and Codex tools
+
+- Keep source chips on one line and portal link previews out of the text flow so hover no longer shifts the message.
+- Route Codex file edits through the Metis MCP gateway, allow Codex todo-list events, and drop the per-parent subagent child cap.
+
 ### Agent runtime and context reliability
 
 - Fix provider-measured context compaction so it always removes enough local

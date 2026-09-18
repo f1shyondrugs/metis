@@ -12,7 +12,6 @@ export const maxDuration = 1900;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const ACTIVE = new Set(["queued", "running", "switching", "waiting_input", "waiting_for_user"]);
 const MAX_DEPTH = 4;
-const MAX_CHILDREN = 8;
 const MAX_WAIT_MS = 30 * 60_000;
 
 export async function GET(req: Request) {
@@ -82,9 +81,6 @@ export async function POST(req: Request) {
       delegated: true,
       deduplicated: true,
     });
-  }
-  if (listChildJobs(parentJobId, userId).length >= MAX_CHILDREN) {
-    return Response.json({ error: `A parent agent may have at most ${MAX_CHILDREN} children.` }, { status: 409 });
   }
   const depth = Math.max(0, parentJob.subagentDepth || 0) + 1;
   if (depth > MAX_DEPTH) {
