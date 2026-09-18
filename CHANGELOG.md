@@ -4,14 +4,41 @@ All notable Metis AI releases are documented here. Release tags and GitHub
 releases are created locally with `pnpm release`; GitHub Actions does not
 publish releases.
 
-## v1.0.7 — 2026-09-17
+## v1.0.7 — 2026-09-18
 
-- Default the Linux installer to native systemd; use `--docker` for Compose.
-- Expose the sidebar browser settings (workspace, realtime, FPS, viewport) on
-  Settings → General.
-- Fix Docker so `.env` bind/host changes apply, stop the MCP restart loop, and
-  add `reload.sh` (`reload.ps1` on Windows) because `docker compose restart`
-  does not recreate published ports.
+### Agent runtime and context reliability
+
+- Fix provider-measured context compaction so it always removes enough local
+  history to produce a usable recovery context and agent output continues.
+- Preserve concurrent chat metadata changes, including project moves, while
+  assistant streaming checkpoints are written.
+- Enforce one observable Metis MCP tool surface across provider runtimes:
+  disable native subagents and built-in tools in Claude, Antigravity, Grok,
+  OpenCode, and AI SDK providers; disable Codex native feature gates, force its
+  fallback sandbox read-only/offline, and fail closed on native tool events.
+- Add provider-policy regression tests for every SDK and CLI integration.
+
+### Projects and browser settings
+
+- Add project avatars and explicit move/remove icons to chat project actions.
+- Expose embedded-browser enablement, realtime preview, FPS, and default
+  viewport controls directly under Settings → General → Browser.
+
+### Installers, Docker, and networking
+
+- Default Linux installs to native Node.js + systemd; use `--docker` for
+  Compose. Keep Docker as the automatic macOS/Windows path when available and
+  retain explicit native install flags.
+- Generate `reload.sh` on Linux/macOS and `reload.ps1` on Windows so `.env`,
+  port, and bind changes recreate containers instead of using an insufficient
+  `docker compose restart`.
+- Make published web and MCP ports consistently respect `AI_CHAT_HOST`, add
+  explicit container-internal URLs, and rewrite legacy loopback endpoints for
+  Docker networking.
+- Add an MCP gateway healthcheck and health-based Compose ordering to stop the
+  gateway restart loop and startup races.
+- Extend startup waits, installer output, release assets, documentation,
+  production-build typings, and release tests for every supported install path.
 
 ## v1.0.6 — 2026-09-17
 

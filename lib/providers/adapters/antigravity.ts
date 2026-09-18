@@ -171,7 +171,7 @@ export const antigravityAdapter: ProviderAdapterShape = {
     interruptibleTurns: true,
     interactiveRequests: false,
     sessionModelSwitch: "restart-resume",
-    nativeSubagents: true,
+    nativeSubagents: false,
     nativeContextTelemetry: true,
   },
   startSession: () => unsupported("startSession", "antigravity-cli"),

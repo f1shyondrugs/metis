@@ -80,14 +80,36 @@ export function antigravityCliSettings() {
   };
 }
 
+export function antigravityMetisAgentDefinition() {
+  return `---
+name: metis-ai
+description: Metis MCP-only runtime
+tools: []
+mainAgent: true
+subagent: false
+enable_mcp_tools: true
+excludeDefaultComponents: true
+---
+
+Use only the MCP tools configured by Metis AI. Do not invoke provider-native tools or subagents.
+`;
+}
+
 export async function writeAntigravitySessionFiles(tempHome: string, mcp?: McpServerMap) {
   const geminiConfig = path.join(tempHome, ".gemini", "config");
   const cliDir = path.join(tempHome, ".gemini", "antigravity-cli");
+  const agentDir = path.join(cliDir, "agents", "metis-ai");
   await mkdir(geminiConfig, { recursive: true, mode: 0o700 });
   await mkdir(cliDir, { recursive: true, mode: 0o700 });
+  await mkdir(agentDir, { recursive: true, mode: 0o700 });
   await writeFile(
     path.join(cliDir, "settings.json"),
     `${JSON.stringify(antigravityCliSettings(), null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  await writeFile(
+    path.join(agentDir, "agent.md"),
+    antigravityMetisAgentDefinition(),
     { encoding: "utf8", mode: 0o600 },
   );
   if (!mcp) return;
@@ -515,6 +537,8 @@ export async function runOfficialAntigravityJob(context: {
     [
       "-p",
       context.prompt,
+      "--agent",
+      path.join(sessionHome, ".gemini", "antigravity-cli", "agents", "metis-ai", "agent.md"),
       "--model",
       context.modelId,
       ...(context.effort ? ["--effort", context.effort] : []),

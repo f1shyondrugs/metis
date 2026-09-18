@@ -129,8 +129,7 @@ async def run(payload: dict[str, Any]) -> None:
     kwargs: dict[str, Any] = {
         "capabilities": CapabilitiesConfig(
             enabled_tools=[],
-            enable_subagents=True,
-            max_subagent_depth=2,
+            enable_subagents=False,
         ),
         "mcp_servers": _mcp_servers(payload.get("mcp_servers")),
     }

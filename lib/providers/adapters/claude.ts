@@ -425,7 +425,7 @@ export const claudeAdapter: ProviderAdapterShape = {
     interruptibleTurns: true,
     interactiveRequests: true,
     sessionModelSwitch: "in-session",
-    nativeSubagents: true,
+    nativeSubagents: false,
     nativeContextTelemetry: true,
   },
   startSession: () => unsupported("startSession", "claude-agent"),

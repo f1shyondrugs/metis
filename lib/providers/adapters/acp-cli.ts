@@ -3,6 +3,7 @@ import type { ProviderResult } from "./contract";
 import { unsupported, type ProviderAdapterShape } from "./contract";
 import { runAcpStdioAgent } from "@/lib/providers/acp-stdio";
 import { getUserAgentCwd, getMcpServers } from "@/lib/mcp";
+import type { McpServerMap } from "@/lib/mcp";
 import {
   effectiveModelParams,
   providerConversationPrompt,
@@ -14,7 +15,24 @@ type AcpCliAdapterConfig = {
   readonly key: "grok-cli" | "opencode-cli";
   readonly binary: string;
   readonly args: readonly string[];
+  readonly env?: (mcp: McpServerMap) => Record<string, string>;
 };
+
+export function opencodeMcpOnlyEnv(mcp: McpServerMap) {
+  const permission: Record<string, "allow" | "deny"> = { "*": "deny" };
+  for (const name of Object.keys(mcp)) {
+    permission[`${name}_*`] = "allow";
+    permission[`mcp__${name}__*`] = "allow";
+  }
+  return {
+    OPENCODE_PURE: "1",
+    OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+    OPENCODE_DISABLE_DEFAULT_PLUGINS: "1",
+    OPENCODE_DISABLE_EXTERNAL_SKILLS: "1",
+    OPENCODE_DISABLE_CLAUDE_CODE_SKILLS: "1",
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission }),
+  };
+}
 
 function acpCliAdapter(config: AcpCliAdapterConfig): ProviderAdapterShape {
   const capabilities = {
@@ -35,9 +53,11 @@ function acpCliAdapter(config: AcpCliAdapterConfig): ProviderAdapterShape {
         context.connection.config.binaryPath.trim()
           ? context.connection.config.binaryPath.trim()
           : config.binary;
+      const mcp = getMcpServers(providerMcpContext(context));
       const result = await runAcpStdioAgent({
         command: binary,
         args: [...config.args],
+        env: config.env?.(mcp),
         cwd: getUserAgentCwd(context.job.userId),
         prompt: [
           providerPrompt(
@@ -50,7 +70,7 @@ function acpCliAdapter(config: AcpCliAdapterConfig): ProviderAdapterShape {
         ]
           .filter(Boolean)
           .join("\n\nUser request:\n"),
-        mcp: getMcpServers(providerMcpContext(context)),
+        mcp,
         signal: context.signal,
         clientName: "metis-ai",
         onText: context.onText,
@@ -75,11 +95,12 @@ function acpCliAdapter(config: AcpCliAdapterConfig): ProviderAdapterShape {
 export const grokAdapter = acpCliAdapter({
   key: "grok-cli",
   binary: "grok",
-  args: ["agent", "stdio"],
+  args: ["--no-subagents", "--disable-web-search", "--tools", "", "agent", "stdio"],
 });
 
 export const opencodeAdapter = acpCliAdapter({
   key: "opencode-cli",
   binary: "opencode",
-  args: ["acp"],
+  args: ["--pure", "acp"],
+  env: opencodeMcpOnlyEnv,
 });

@@ -34,6 +34,18 @@ import {
   type ProviderResult,
 } from "./contract";
 
+const CODEX_NON_NATIVE_ITEM_TYPES = new Set([
+  "agent_message",
+  "reasoning",
+  "error",
+  "mcp_tool_call",
+]);
+
+export function blockedCodexNativeToolType(item: Record<string, unknown>) {
+  const type = asString(item.type);
+  return type && !CODEX_NON_NATIVE_ITEM_TYPES.has(type) ? type : null;
+}
+
 export function codexTool(
   item: Record<string, unknown>,
   status: ToolPart["status"] = "completed",
@@ -213,6 +225,30 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
       : { command: mcp.command, args: mcp.args, env: mcp.env };
   const codexConfig: NonNullable<CodexOptions["config"]> = {
     ...(codexHome ? { cli_auth_credentials_store: "file" } : {}),
+    // Codex does not expose a single MCP-only switch. Disable every native
+    // feature gate that can add tools; core execution is forced read-only
+    // below so all mutations still have to pass through the Metis gateway.
+    features: {
+      apps: false,
+      browser_use: false,
+      browser_use_external: false,
+      browser_use_full_cdp_access: false,
+      code_mode_host: false,
+      computer_use: false,
+      goals: false,
+      image_generation: false,
+      in_app_browser: false,
+      multi_agent: false,
+      multi_agent_v2: false,
+      plugins: false,
+      remote_plugin: false,
+      shell_tool: false,
+      skill_mcp_dependency_install: false,
+      skill_search: false,
+      tool_suggest: false,
+      unified_exec: false,
+      view_image: false,
+    },
     mcp_servers: { metis_ai: codexMcp },
   };
   const codex = new Codex({
@@ -247,6 +283,12 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
     workingDirectory: agentCwd,
     skipGitRepoCheck: true,
     ...RUNTIME_MODE_TO_CODEX[runtimeModeForChat(context.chat)],
+    // Runtime-mode permissions are enforced again by the Metis MCP gateway.
+    // Keep the provider's own execution surface unable to mutate or network.
+    sandboxMode: "read-only" as const,
+    networkAccessEnabled: false,
+    webSearchMode: "disabled" as const,
+    webSearchEnabled: false,
   };
   const thread = previousId
     ? codex.resumeThread(previousId, threadOptions)
@@ -271,6 +313,18 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
     let usage: ProviderResult["usage"] | undefined;
     let emittedAgentMessage = false;
     for await (const event of iterateUntilAborted(streamed.events, context.signal)) {
+      if (
+        event.type === "item.started" ||
+        event.type === "item.updated" ||
+        event.type === "item.completed"
+      ) {
+        const blockedType = blockedCodexNativeToolType(asRecord(event.item));
+        if (blockedType) {
+          throw new Error(
+            `Codex provider-native tool '${blockedType}' is disabled. Use the Metis MCP tools instead.`,
+          );
+        }
+      }
       context.onStream({
         type: event.type,
         ...("item" in event ? { item: event.item } : {}),
@@ -360,7 +414,7 @@ export const codexAdapter: ProviderAdapterShape = {
     interruptibleTurns: true,
     interactiveRequests: false,
     sessionModelSwitch: "restart-resume",
-    nativeSubagents: true,
+    nativeSubagents: false,
     nativeContextTelemetry: true,
   },
   startSession: () => unsupported("startSession", "codex-sdk"),

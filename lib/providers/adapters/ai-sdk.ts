@@ -17,7 +17,6 @@ import {
   consumeAiStream,
   effectiveModelParams,
   modelMessages,
-  providerNativeSearchTools,
   providerOptionsFor,
   providerPrompt,
   resolvedContextWindow,
@@ -29,10 +28,9 @@ import { unsupported, type ProviderAdapterShape, type ProviderResult } from "./c
 import { contextModeOf } from "@/lib/context-window";
 
 async function runAiSdk(context: ProviderContext): Promise<ProviderResult> {
-  const tools = {
-    ...(await agentToolsFor(context)),
-    ...providerNativeSearchTools(context),
-  };
+  // Keep one observable tool surface across every AI SDK provider. Provider-
+  // native search/tool helpers bypass Metis tool policy and event persistence.
+  const tools = await agentToolsFor(context);
   const messages = modelMessages(
     context.chat,
     context.job,
@@ -133,10 +131,7 @@ async function runOAuthAiSdk(
     }
     const provider = await createOAuthProvider(providerKey, authFile);
     const oauthModelId = context.modelId;
-    const oauthTools = {
-      ...(await agentToolsFor(context)),
-      ...providerNativeSearchTools(context),
-    };
+    const oauthTools = await agentToolsFor(context);
     const messages = modelMessages(
       context.chat,
       context.job,
