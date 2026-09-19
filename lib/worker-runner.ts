@@ -41,6 +41,7 @@ import { allModes, modeById } from "@/lib/modes";
 import { featureFlags } from "@/lib/feature-flags";
 import type { AgentMode, MessagePart } from "@/lib/store";
 import { compress, type CompressionMode } from "@/lib/compression";
+import { upsertToolMessagePart } from "@/lib/message-parts";
 import { compactMessagePartsForPersistence, persistToolsForMessage } from "@/lib/tool-persistence";
 import { subagentMetadataFromTool } from "@/lib/subagent-tool";
 import { METIS_SHARED_AGENT_CONTROL, toolContractPrompt } from "@/lib/agent-control";
@@ -1229,13 +1230,7 @@ export async function runQueuedJob(job: AgentJob) {
       } else {
         tools.push(nextTool);
       }
-      const existingPartIndex = parts.findIndex((part) => part.type === "tool" && part.id === stableId);
-      if (existingPartIndex >= 0) {
-        const previousPart = parts[existingPartIndex];
-        if (previousPart.type === "tool") parts[existingPartIndex] = { ...previousPart, ...nextTool };
-      } else {
-        parts.push({ type: "tool", ...nextTool });
-      }
+      upsertToolMessagePart(parts, nextTool);
       checkpoint(true);
       const toolResultText = typeof toolResult === "string"
         ? toolResult

@@ -530,7 +530,7 @@ export function layoutAssistantParts<TTool extends { kind?: string }>(
   });
   flushTools();
     flushThinking();
-  return coalesceActivityBlocks(blocks);
+  return coalesceActivityBlocks(hoistTrailingActivityBeforeFinalText(blocks));
 }
 
 function toolIdentity<TTool extends { kind?: string }>(tool: TTool): string {
@@ -561,6 +561,24 @@ function mergeBlockThinking(
  done: a.done !== false && b.done !== false,
  durationMs: (a.durationMs || 0) + (b.durationMs || 0) || b.durationMs || a.durationMs,
  };
+}
+
+function hoistTrailingActivityBeforeFinalText<TTool extends { kind?: string }>(
+  blocks: AssistantViewBlock<TTool>[],
+): AssistantViewBlock<TTool>[] {
+  let lastTextIndex = -1;
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    if (blocks[index].type === "text") {
+      lastTextIndex = index;
+      break;
+    }
+  }
+  if (lastTextIndex < 0 || lastTextIndex === blocks.length - 1) return blocks;
+  const trailing = blocks.slice(lastTextIndex + 1);
+  if (trailing.some((block) => block.type !== "tools" && block.type !== "thinking")) {
+    return blocks;
+  }
+  return [...blocks.slice(0, lastTextIndex), ...trailing, blocks[lastTextIndex]];
 }
 
 function coalesceActivityBlocks<TTool extends { kind?: string }>(

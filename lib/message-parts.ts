@@ -174,8 +174,16 @@ export function upsertToolMessagePart<TTool extends MessageToolLike>(
     (part) => part.type === "tool" && part.id === tool.id,
   );
   const next = { type: "tool" as const, ...tool };
-  if (index >= 0) parts[index] = { ...parts[index], ...next } as MessagePartLike<TTool>;
-  else parts.push(next);
+  if (index >= 0) {
+    parts[index] = { ...parts[index], ...next } as MessagePartLike<TTool>;
+    return;
+  }
+  // Late tool events often arrive after the model already streamed its final
+  // answer. Keep them in the activity timeline above that answer instead of
+  // opening a new chip group under "I am done".
+  let insertAt = parts.length;
+  while (insertAt > 0 && parts[insertAt - 1]?.type === "text") insertAt -= 1;
+  parts.splice(insertAt, 0, next);
 }
 
 export function updateThinkingMessagePart<TTool extends MessageToolLike>(

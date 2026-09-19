@@ -97,7 +97,7 @@ test("deduplicates tool updates by stable id and keeps the final todo state", ()
   assert.deepEqual(todos[0].todos, [{ content: "Final" }]);
 });
 
-test("preserves thinking, tool, and text event order while extending final text", () => {
+test("keeps late tools above the final answer while extending that text", () => {
   const parts: ReconcilePart[] = [];
   updateThinkingMessagePart<ReconcileTool>(parts, { text: "Reasoning", replace: true });
   appendTextMessagePart<ReconcileTool>(parts, "Answer");
@@ -110,12 +110,23 @@ test("preserves thinking, tool, and text event order while extending final text"
     content: "Answer continued",
     tools: [{ id: "read-1", name: "read_file", status: "completed", result: "ok" }],
   });
-  assert.deepEqual(reconciled.map((part) => part.type), ["thinking", "text", "tool", "text"]);
+  assert.deepEqual(reconciled.map((part) => part.type), ["thinking", "tool", "text"]);
   assert.equal(reconciled[0].type === "thinking" ? reconciled[0].done : false, true);
   assert.equal(
     reconciled.filter((part) => part.type === "text").map((part) => part.content).join(""),
     "Answer continued",
   );
+});
+
+test("upsertToolMessagePart inserts new tools before trailing final text", () => {
+  const parts: ReconcilePart[] = [
+    { type: "tool", id: "read-1", name: "read_file", status: "completed" },
+    { type: "text", content: "Done." },
+  ];
+  upsertToolMessagePart<ReconcileTool>(parts, { id: "search-1", name: "web_search", status: "completed" });
+  assert.deepEqual(parts.map((part) => part.type), ["tool", "tool", "text"]);
+  const last = parts.at(-1);
+  assert.equal(last?.type === "text" ? last.content : "", "Done.");
 });
 
 test("classifies system context compaction as a tool-like chip", () => {
@@ -210,14 +221,33 @@ test("layoutAssistantParts starts a new tool group after text, todos, and other 
   ]);
   assert.deepEqual(
     blocks.map((block) => block.type),
-    ["tools", "text", "tools", "tools", "text", "tools"],
+    ["tools", "text", "tools", "tools", "text"],
   );
   assert.deepEqual(
     blocks
       .filter((block) => block.type === "tools")
       .map((block) => block.type === "tools" ? block.tools.map((tool) => tool.id) : []),
-    [["1", "2"], ["3"], ["4", "5"], ["6"]],
+    [["1", "2"], ["3"], ["4", "5", "6"]],
   );
+});
+
+test("layoutAssistantParts hoists late tools above the final answer", () => {
+  const blocks = layoutAssistantParts<LayoutTool>([
+    { type: "tool", id: "1", name: "read_file", kind: "read", status: "completed" },
+    { type: "text", content: "Fertig." },
+    { type: "tool", id: "2", name: "execute_command", kind: "shell", status: "completed" },
+  ]);
+  assert.deepEqual(blocks.map((block) => block.type), ["tools", "text"]);
+  const tools = blocks[0];
+  const reply = blocks[1];
+  assert.equal(tools.type, "tools");
+  if (tools.type === "tools") {
+    assert.deepEqual(tools.tools.map((tool) => tool.id), ["1", "2"]);
+  }
+  assert.equal(reply.type, "text");
+  if (reply.type === "text") {
+    assert.equal(reply.content, "Fertig.");
+  }
 });
 
 test("layoutAssistantParts keeps only the latest plan and todo state", () => {

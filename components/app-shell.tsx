@@ -127,7 +127,7 @@ import {
 } from "@/lib/subagent-bar";
 import { PlanToolCallCard, ToolCallGroup, type ActivityEntry, type ToolCallData } from "@/components/tool-call-chip";
 import { canvasFromToolPayload, classifyToolKind, isToolRunning, layoutAssistantParts, mergeChatMessages, planFromToolPayload, remoteClientHostnameMap, todosFromToolPayload, workspaceIdFromLink } from "@/lib/tool-call-display";
-import { reconcileMessageParts } from "@/lib/message-parts";
+import { reconcileMessageParts, upsertToolMessagePart } from "@/lib/message-parts";
 import { stripTranscriptDump } from "@/lib/agent-transcript";
 import { planLooksParallelizable } from "@/lib/modes";
 import {
@@ -7535,7 +7535,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   idx >= 0 && parts[idx].type === "tool"
                     ? (parts[idx] as ToolMsgPart)
                     : null;
-                const next: MsgPart = {
+                const next: ToolMsgPart = {
                   type: "tool",
                   id: prevTool?.id || callId,
                   name,
@@ -7552,7 +7552,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                 if (idx >= 0) {
                   parts[idx] = prevTool ? { ...prevTool, ...next } : next;
                 } else {
-                  parts.push(next);
+                  upsertToolMessagePart(parts, next);
                 }
                 return {
                   ...x,
