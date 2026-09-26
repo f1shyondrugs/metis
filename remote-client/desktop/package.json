@@ -1,0 +1,73 @@
+{
+  "name": "metis-ai-remote-client",
+  "version": "1.2.1",
+  "private": true,
+  "description": "Metis AI Windows Remote Client Hub",
+  "main": "main.cjs",
+  "author": "f1shyondrugs",
+  "license": "MIT",
+  "scripts": {
+    "prepare:client": "node prepare-client.cjs",
+    "start": "npm run prepare:client && electron .",
+    "build:win": "npm run prepare:client && electron-builder --win nsis --x64",
+    "build:dir": "npm run prepare:client && electron-builder --dir"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2",
+    "ws": "^8.21.2"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "ai.metis.remoteclient",
+    "productName": "Metis AI Remote Client",
+    "asar": true,
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "index.html",
+      "renderer.js",
+      "styles.css",
+      "client.mjs",
+      "assets/icon.ico",
+      "assets/icon.png",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "executableName": "Metis AI Remote Client"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "include": "build/uninstall.nsh",
+      "artifactName": "Metis-AI-Remote-Client-Setup.exe"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "f1shyondrugs",
+        "repo": "metis-ai"
+      }
+    ]
+  }
+}

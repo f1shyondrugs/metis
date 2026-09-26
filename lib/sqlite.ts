@@ -488,7 +488,8 @@ export function getDatabase(): DatabaseSync {
       owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       expires_at TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      used_at TEXT
+      used_at TEXT,
+      permission_mode TEXT NOT NULL DEFAULT 'user' CHECK (permission_mode IN ('user', 'admin'))
     );
     CREATE INDEX IF NOT EXISTS remote_enrollment_tokens_owner
       ON remote_enrollment_tokens(owner_id, expires_at);
@@ -499,8 +500,10 @@ export function getDatabase(): DatabaseSync {
       source TEXT NOT NULL,
       action TEXT NOT NULL,
       request_data TEXT NOT NULL DEFAULT '{}',
+      result_data TEXT NOT NULL DEFAULT '{}',
       status TEXT NOT NULL,
       error TEXT,
+      duration_ms INTEGER,
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS remote_audit_owner
@@ -558,6 +561,9 @@ export function getDatabase(): DatabaseSync {
     "ALTER TABLE provider_models ADD COLUMN context_window INTEGER",
     "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE remote_clients ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'user'",
+    "ALTER TABLE remote_enrollment_tokens ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'user'",
+    "ALTER TABLE remote_audit ADD COLUMN result_data TEXT NOT NULL DEFAULT '{}'",
+    "ALTER TABLE remote_audit ADD COLUMN duration_ms INTEGER",
     "ALTER TABLE automation_runs ADD COLUMN manual INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE chat_list ADD COLUMN agent_title_locked INTEGER NOT NULL DEFAULT 0",
   ]) {

@@ -590,6 +590,9 @@ export function SettingsPanel({
   const [mcpBusy, setMcpBusy] = useState(false);
   const [remoteClients, setRemoteClients] = useState<RemoteClient[]>([]);
   const [remoteCommand, setRemoteCommand] = useState("");
+  const [remotePairToken, setRemotePairToken] = useState("");
+  const [remoteServerUrl, setRemoteServerUrl] = useState("");
+  const [remoteInstallerUrl, setRemoteInstallerUrl] = useState("");
   const [remoteCommands, setRemoteCommands] = useState<{ linux: string; windows: string; macos: string } | null>(null);
   const [remotePlatform, setRemotePlatform] = useState<"linux" | "windows" | "macos">("linux");
   const [remotePermissionMode, setRemotePermissionMode] = useState<"user" | "admin">("user");
@@ -717,17 +720,22 @@ export function SettingsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ os: platform, permissionMode: remotePermissionMode }),
       });
-      const data = (await response.json()) as { command?: string; commands?: { linux?: string; windows?: string; macos?: string }; error?: string };
+      const data = (await response.json()) as { command?: string; commands?: { linux?: string; windows?: string; macos?: string }; token?: string; serverUrl?: string; installerUrl?: string; error?: string };
       if (!response.ok || !data.command) throw new Error(data.error || "Failed to create enrollment command");
       setRemoteCommand(data.command);
+      setRemotePairToken(data.token || "");
+      setRemoteServerUrl(data.serverUrl || "");
+      setRemoteInstallerUrl(data.installerUrl || "");
       setRemoteCommands({
         linux: data.commands?.linux || data.command,
         windows: data.commands?.windows || "",
         macos: data.commands?.macos || "",
       });
       setRemotePairStep("install");
-      await navigator.clipboard?.writeText(data.command);
-      toast.success("Enrollment command copied");
+      if (platform !== "windows") {
+        await navigator.clipboard?.writeText(data.command);
+        toast.success("Enrollment command copied");
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create enrollment command");
     } finally {
@@ -2675,16 +2683,16 @@ export function SettingsPanel({
                           <p className="text-xs text-muted-foreground">
                             {client.hostname || "Unknown host"} · {client.os || "Unknown OS"} · {client.architecture || "unknown arch"}
                           </p>
-                          <div className="mt-1.5">
-                            <Badge
-                              variant={client.permissionMode === "admin" ? "default" : "outline"}
-                              className={client.policy.mode === "full_access"
-                                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                : ""}
-                            >
-                              {client.permissionMode === "admin"
-                                ? "Admin / system access · confirmation required"
-                                : "User access · no administrator rights"}
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            <Badge variant={client.permissionMode === "admin" ? "default" : "outline"}>
+                              {client.permissionMode === "admin" ? "Admin / system access" : "User access · no administrator rights"}
+                            </Badge>
+                            <Badge variant="outline">
+                              {client.policy.mode === "full_access"
+                                ? client.permissionMode === "admin"
+                                  ? "Full access · confirmation required"
+                                  : "Full access policy · user limits apply"
+                                : "Restricted · read and allowlisted commands"}
                             </Badge>
                           </div>
                           </div>
@@ -2696,7 +2704,7 @@ export function SettingsPanel({
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => void testRemoteConnection(client)}>Test connection</DropdownMenuItem>
                               <DropdownMenuItem onClick={() => void updateRemotePolicy(client, client.policy.mode === "approval_required" ? "full_access" : "approval_required")}>
-                                {client.policy.mode === "approval_required" ? "Disable approval policy" : "Enable approval policy"}
+                                {client.policy.mode === "approval_required" ? "Use full access policy" : "Restrict to reading and allowlisted commands"}
                               </DropdownMenuItem>
                               <DropdownMenuItem className="text-destructive" onClick={() => setRemoteClientDeleteTarget(client)}>Remove client</DropdownMenuItem>
                             </DropdownMenuContent>
@@ -2893,19 +2901,39 @@ export function SettingsPanel({
             </div>
           ) : remotePairStep === "install" ? (
             <div className="min-w-0 space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4">
-              <div>
-                <p className="flex items-center gap-2 text-sm font-medium"><Monitor className="size-4 text-primary" /> Install the client</p>
-                <p className="mt-1 text-xs text-muted-foreground">Run this command on the device you want to connect.</p>
-              </div>
-              <div className="w-full min-w-0 max-w-full overflow-hidden">
-                <Textarea readOnly value={remoteCommands?.[remotePlatform] || remoteCommand} className="block min-h-32 w-full min-w-0 max-w-full resize-y overflow-auto [field-sizing:fixed] bg-background font-mono text-xs" />
-              </div>
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => void copyRemoteCommand()}>Copy install command</Button>
-              </div>
+              {remotePlatform === "windows" ? (
+                <>
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-medium"><Monitor className="size-4 text-primary" /> Install the Windows app</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Install the app, open it, then enter this server URL and pairing code. The code expires after 15 minutes. {remotePermissionMode === "admin" ? "For admin access, start the app as administrator and confirm UAC." : "User access runs without administrator rights."}</p>
+                  </div>
+                  <a href={remoteInstallerUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">Download Windows installer</a>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium">Server URL</p>
+                    <div className="flex gap-2"><Input readOnly value={remoteServerUrl} aria-label="Server URL" /><Button type="button" variant="outline" onClick={() => void navigator.clipboard.writeText(remoteServerUrl)}>Copy</Button></div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium">Pairing code</p>
+                    <div className="flex gap-2"><Input readOnly value={remotePairToken} aria-label="Pairing code" className="font-mono" /><Button type="button" variant="outline" onClick={() => void navigator.clipboard.writeText(remotePairToken)}>Copy</Button></div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-medium"><Monitor className="size-4 text-primary" /> Install the client</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Run this command on the device you want to connect.</p>
+                  </div>
+                  <div className="w-full min-w-0 max-w-full overflow-hidden">
+                    <Textarea readOnly value={remoteCommands?.[remotePlatform] || remoteCommand} className="block min-h-32 w-full min-w-0 max-w-full resize-y overflow-auto [field-sizing:fixed] bg-background font-mono text-xs" />
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={() => void copyRemoteCommand()}>Copy install command</Button>
+                  </div>
+                </>
+              )}
               <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status" aria-live="polite">
                 <RefreshCw className="size-3.5 animate-spin" />
-                Waiting for installation…
+                Waiting for the device to connect…
               </div>
             </div>
           ) : (

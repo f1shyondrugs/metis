@@ -59,7 +59,9 @@ export type RemoteAuditEntry = {
   source: "user" | "agent" | "client";
   action: string;
   requestData: Record<string, unknown>;
-  status: "requested" | "approved" | "completed" | "denied" | "error";
+  status: "requested" | "running" | "approved" | "completed" | "denied" | "error" | "unknown";
+  resultData?: Record<string, unknown>;
+  durationMs?: number;
   error?: string;
   createdAt: string;
 };
@@ -128,7 +130,7 @@ function mapClient(row: Record<string, unknown>): RemoteClient {
     id: String(row.id),
     ownerId: String(row.ownerId),
     name: String(row.name),
-    status: row.revokedAt ? "revoked" : (String(row.status) as RemoteClientStatus),
+    status: row.revokedAt ? "revoked" : (String(row.status) === "online" && (!row.lastSeenAt || Date.now() - Date.parse(String(row.lastSeenAt)) > 90_000) ? "offline" : String(row.status) as RemoteClientStatus),
     ...(row.os ? { os: String(row.os) } : {}),
     ...(row.architecture ? { architecture: String(row.architecture) } : {}),
     ...(row.version ? { version: String(row.version) } : {}),
@@ -144,21 +146,21 @@ function mapClient(row: Record<string, unknown>): RemoteClient {
   };
 }
 
-export function createEnrollmentToken(ownerId: string, ttlMs = 15 * 60 * 1000) {
-  const token = randomBytes(32).toString("base64url");
+export function createEnrollmentToken(ownerId: string, ttlMs = 15 * 60 * 1000, permissionMode: RemotePermissionMode = "user") {
+  const token = `${permissionMode === "admin" ? "a" : "u"}_${randomBytes(32).toString("base64url")}`;
   const createdAt = iso();
   getDatabase().prepare(
-    "INSERT INTO remote_enrollment_tokens (token_hash, owner_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
-  ).run(hash(token), ownerId, new Date(Date.now() + ttlMs).toISOString(), createdAt);
+    "INSERT INTO remote_enrollment_tokens (token_hash, owner_id, expires_at, created_at, permission_mode) VALUES (?, ?, ?, ?, ?)",
+  ).run(hash(token), ownerId, new Date(Date.now() + ttlMs).toISOString(), createdAt, permissionMode);
   return { token, expiresAt: new Date(Date.now() + ttlMs).toISOString() };
 }
 
-export function consumeEnrollmentToken(token: string) {
+export function consumeEnrollmentToken(token: string, permissionMode: RemotePermissionMode = "user") {
   return transaction(() => {
     const row = getDatabase().prepare(
-      "SELECT token_hash as tokenHash, owner_id as ownerId, expires_at as expiresAt, used_at as usedAt FROM remote_enrollment_tokens WHERE token_hash = ?",
-    ).get(hash(token)) as { tokenHash?: string; ownerId?: string; expiresAt?: string; usedAt?: string } | undefined;
-    if (!row?.ownerId || row.usedAt || !row.expiresAt || new Date(row.expiresAt).getTime() <= Date.now()) return null;
+      "SELECT token_hash as tokenHash, owner_id as ownerId, expires_at as expiresAt, used_at as usedAt, permission_mode as permissionMode FROM remote_enrollment_tokens WHERE token_hash = ?",
+    ).get(hash(token)) as { tokenHash?: string; ownerId?: string; expiresAt?: string; usedAt?: string; permissionMode?: string } | undefined;
+    if (!row?.ownerId || row.usedAt || !row.expiresAt || new Date(row.expiresAt).getTime() <= Date.now() || row.permissionMode !== permissionMode) return null;
     getDatabase().prepare("UPDATE remote_enrollment_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL")
       .run(iso(), row.tokenHash!);
     return { ownerId: row.ownerId };
@@ -174,7 +176,7 @@ export function registerRemoteClient(token: string, input: {
   capabilities?: string[];
   permissionMode?: RemotePermissionMode;
 }) {
-  const enrollment = consumeEnrollmentToken(token);
+  const enrollment = consumeEnrollmentToken(token, normalizePermissionMode(input.permissionMode));
   if (!enrollment) return null;
   const id = randomUUID();
   const credential = randomBytes(32).toString("base64url");
@@ -222,7 +224,7 @@ export function getRemoteClient(id: string, ownerId?: string) {
   return row ? mapClient(row) : null;
 }
 
-export function authenticateRemoteClient(id: string, credential: string) {
+export function authenticateRemoteClient(id: string, credential: string, markSeen = true) {
   const row = getDatabase().prepare(
     `SELECT c.id, c.owner_id as ownerId, c.status, c.revoked_at as revokedAt,
             r.secret_hash as secretHash
@@ -234,16 +236,17 @@ export function authenticateRemoteClient(id: string, credential: string) {
   const actual = Buffer.from(hash(credential));
   const expected = Buffer.from(row.secretHash);
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
-  const now = iso();
-  try {
-    getDatabase().prepare("UPDATE remote_client_credentials SET last_used_at = ? WHERE client_id = ? AND secret_hash = ?")
-      .run(now, id, row.secretHash);
-  } catch (error) {
-    // Credential usage timestamps are telemetry. A busy database must not
-    // reject an otherwise valid remote-client authentication.
-    ignoreBusyTelemetry(error, "credential last-used update");
+  if (markSeen) {
+    try {
+      getDatabase().prepare("UPDATE remote_client_credentials SET last_used_at = ? WHERE client_id = ? AND secret_hash = ?")
+        .run(iso(), id, row.secretHash);
+    } catch (error) {
+      // Credential usage timestamps are telemetry. A busy database must not
+      // reject an otherwise valid remote-client authentication.
+      ignoreBusyTelemetry(error, "credential last-used update");
+    }
+    markRemoteClientSeen(id, undefined, true);
   }
-  markRemoteClientSeen(id, undefined, true);
   return { clientId: id, ownerId: row.ownerId };
 }
 
@@ -419,7 +422,19 @@ export function consumeRemoteApproval(input: {
   return result.changes > 0;
 }
 
+let lastAuditCleanupAt = 0;
 export function appendRemoteAudit(input: Omit<RemoteAuditEntry, "id" | "createdAt">) {
+  const now = Date.now();
+  if (now - lastAuditCleanupAt > 60 * 60_000) {
+    lastAuditCleanupAt = now;
+    const days = Math.max(1, Math.min(Number(process.env.REMOTE_AUDIT_RETENTION_DAYS) || 30, 365));
+    try {
+      getDatabase().prepare("DELETE FROM remote_audit WHERE created_at < ?")
+        .run(new Date(now - days * 86_400_000).toISOString());
+    } catch (error) {
+      ignoreBusyTelemetry(error, "audit retention cleanup");
+    }
+  }
   const entry = { ...input, id: randomUUID(), createdAt: iso() };
   getDatabase().prepare(
     "INSERT INTO remote_audit (id, owner_id, client_id, source, action, request_data, status, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -437,6 +452,12 @@ export function appendRemoteAudit(input: Omit<RemoteAuditEntry, "id" | "createdA
   return entry;
 }
 
+export function updateRemoteAudit(id: string, input: { status: RemoteAuditEntry["status"]; resultData?: Record<string, unknown>; error?: string; durationMs?: number }) {
+  getDatabase().prepare(
+    "UPDATE remote_audit SET status = ?, result_data = ?, error = ?, duration_ms = ? WHERE id = ?",
+  ).run(input.status, JSON.stringify(redactRemoteData(input.resultData)), input.error ?? null, input.durationMs ?? null, id);
+}
+
 function redactRemoteData(params?: Record<string, unknown>) {
   return redactSensitiveData(params || {}, 2_000) as Record<string, unknown>;
 }
@@ -444,7 +465,7 @@ function redactRemoteData(params?: Record<string, unknown>) {
 export function listRemoteAudit(ownerId: string, clientId?: string) {
   return (getDatabase().prepare(
     `SELECT id, owner_id as ownerId, client_id as clientId, source, action, request_data as requestData,
-            status, error, created_at as createdAt FROM remote_audit
+            result_data as resultData, status, error, duration_ms as durationMs, created_at as createdAt FROM remote_audit
      WHERE owner_id = ? AND (? IS NULL OR client_id = ?) ORDER BY created_at DESC LIMIT 200`,
   ).all(ownerId, clientId ?? null, clientId ?? null) as Array<Record<string, unknown>>).map((row) => ({
     id: String(row.id),
@@ -453,7 +474,9 @@ export function listRemoteAudit(ownerId: string, clientId?: string) {
     source: String(row.source) as RemoteAuditEntry["source"],
     action: String(row.action),
     requestData: safeJson<Record<string, unknown>>(row.requestData, {}),
+    resultData: safeJson<Record<string, unknown>>(row.resultData, {}),
     status: String(row.status) as RemoteAuditEntry["status"],
+    ...(row.durationMs != null ? { durationMs: Number(row.durationMs) } : {}),
     ...(row.error ? { error: String(row.error) } : {}),
     createdAt: String(row.createdAt),
   }));
