@@ -8,7 +8,7 @@ The Windows Remote Client is an Electron app packaged as a per-machine NSIS inst
 2. Download and install the Windows app.
 3. Open the app and enter the server URL and pairing code shown in Metis AI.
 
-The code expires after 15 minutes. The app stores its credential with Windows credential encryption under `%APPDATA%\\MetisAI\\RemoteClient`. Uninstalling the app removes that local data. The remote connection runs inside the app and reconnects automatically. **Start at Windows login** is controlled in the app or tray menu and uses an elevated Windows scheduled task for the installing administrator account. On a standard Windows account, Windows may require the administrator to sign in before the interactive app can start.
+The code expires after 15 minutes. Devices paired by an older user-access client must be disconnected and paired again to register administrator access. The app stores its credential with Windows credential encryption under `%APPDATA%\\MetisAI\\RemoteClient`. Uninstalling the app removes that local data. The remote connection runs inside the app and reconnects automatically. **Start at Windows login** is controlled in the app or tray menu and uses an elevated Windows scheduled task for the installing administrator account. On a standard Windows account, Windows may require the administrator to sign in before the interactive app can start.
 
 ## Build
 
