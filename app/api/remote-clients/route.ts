@@ -66,6 +66,8 @@ export async function POST(req: Request) {
     command: selectedCommand,
     commands: { linux: command, windows: windowsCommand, macos: macosCommand },
     permissionMode,
+    serverUrl: publicUrl,
+    installerUrl: "/api/remote-clients/windows-installer",
   }, { status: 201 });
 }
 

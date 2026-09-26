@@ -25,7 +25,8 @@ function redactString(value: string, maxString: number) {
   const bounded = value.length <= maxString
     ? value
     : `${value.slice(0, maxString)}…[truncated ${value.length - maxString} chars]`;
-  return bounded.replace(SECRET_VALUE, "[redacted]");
+  return bounded.replace(SECRET_VALUE, "[redacted]")
+    .replace(/\b((?:api[_-]?key|password|secret|token|credential)\s*[:=]\s*)[^\s,;"']+/gi, "$1[redacted]");
 }
 
 export function redactSensitiveData(value: unknown, maxString = MAX_STRING, depth = 0): unknown {

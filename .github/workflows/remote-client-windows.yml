@@ -1,0 +1,48 @@
+name: Windows Remote Client
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - "remote-client/**"
+      - ".github/workflows/remote-client-windows.yml"
+  pull_request:
+    paths:
+      - "remote-client/**"
+      - ".github/workflows/remote-client-windows.yml"
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: remote-client/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: remote-client/desktop/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build Windows installer
+        run: npm run build:win -- --publish never
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: metis-ai-remote-client-windows
+          path: remote-client/desktop/dist/Metis-AI-Remote-Client-Setup.exe
+          if-no-files-found: error
+      - name: Publish installer to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:win -- --publish always

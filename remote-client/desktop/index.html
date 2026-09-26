@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+  <title>Metis AI Remote Client</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="./assets/icon.png" alt="" width="40" height="40"><div><strong>Metis AI</strong><span>Remote Client</span></div></div>
+    <div class="topbar-right"><span id="connection-dot" class="status-dot"></span><span id="connection-label">Offline</span><button id="open-server" class="text-button" type="button" hidden>Open Metis AI ↗</button></div>
+  </header>
+  <main>
+    <section id="pair-view" class="pair-view">
+      <div class="pair-panel">
+        <p class="eyebrow">THIS DEVICE</p>
+        <h1>Connect this Windows device</h1>
+        <p class="subtle">Open Settings → Devices → Add client in Metis AI and enter the pairing code here.</p>
+        <form id="pair-form">
+          <label for="server">Metis AI server URL</label>
+          <input id="server" type="url" placeholder="https://your-metis-server.example" required autocomplete="url">
+          <label for="token">Pairing code</label>
+          <input id="token" type="text" placeholder="Paste the code from Metis AI" required autocomplete="off" spellcheck="false">
+          <p class="field-note">The code expires after 15 minutes. This app runs with administrator access.</p>
+          <button id="pair-button" class="primary-button" type="submit">Connect device</button>
+        </form>
+        <p id="pair-error" class="error-text" role="alert" hidden></p>
+      </div>
+    </section>
+    <section id="hub-view" class="hub-view" hidden>
+      <div class="page-heading">
+        <div><p class="eyebrow">THIS DEVICE</p><h1 id="device-name">Your Windows PC</h1><p id="sync-label" class="subtle">Loading activity…</p></div>
+        <div class="heading-actions">
+          <button id="refresh" class="text-button" type="button">Refresh</button>
+          <details id="more-menu" class="more-menu">
+            <summary aria-label="More device options" title="More device options">⋯</summary>
+            <div class="menu-panel">
+              <label class="menu-item check"><input id="autostart" type="checkbox"> Start at Windows login</label>
+              <button id="check-updates" class="menu-item" type="button">Check for updates</button>
+              <button id="unpair" class="menu-item destructive" type="button">Disconnect this device</button>
+            </div>
+          </details>
+        </div>
+      </div>
+      <div id="hub-error" class="error-banner" role="alert" hidden></div>
+      <div class="device-summary"><span id="device-status" class="device-state">Offline</span><span id="device-meta">Windows device</span><span id="device-seen"></span></div>
+      <section class="activity-pane" aria-label="This device's activity">
+        <div class="section-heading"><div><h2>Command history</h2><p class="subtle">Activity on this PC only</p></div><button id="export" class="text-button" type="button">Export logs</button></div>
+        <div class="filters"><input id="search" type="search" placeholder="Search commands" aria-label="Search commands"><select id="status-filter" aria-label="Filter by status"><option value="all">All statuses</option><option value="running">Running</option><option value="completed">Completed</option><option value="error">Failed</option><option value="unknown">Unclear outcome</option><option value="denied">Denied</option></select></div>
+        <div id="commands-loading" class="empty">Loading command history…</div>
+        <div id="commands-list" class="commands-list"></div>
+        <div id="command-detail" class="command-detail" hidden></div>
+      </section>
+      <p id="update-label" class="update-label" role="status"></p>
+    </section>
+  </main>
+  <script src="./renderer.js"></script>
+</body>
+</html>

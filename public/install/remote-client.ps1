@@ -34,7 +34,7 @@ if ($PermissionMode -eq 'admin' -and (-not ([Security.Principal.WindowsPrincipal
 }
 if ($PermissionMode -eq 'admin') { $InstallDir = "$env:ProgramFiles\MetisAI\RemoteClient" }
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-$payload = @{ token=$EnrollmentToken; name=$env:COMPUTERNAME; os='windows'; architecture=$env:PROCESSOR_ARCHITECTURE; version='1.0.0'; hostname=$env:COMPUTERNAME; permissionMode=$PermissionMode; capabilities=if ($PermissionMode -eq 'admin') { @('user_files','user_processes','user_directories','system_files','services','disks','admin_processes') } else { @('user_files','user_processes','user_directories') } } | ConvertTo-Json -Compress
+$payload = @{ token=$EnrollmentToken; name=$env:COMPUTERNAME; os='windows'; architecture=$env:PROCESSOR_ARCHITECTURE; version='1.1.0'; hostname=$env:COMPUTERNAME; permissionMode=$PermissionMode; capabilities=if ($PermissionMode -eq 'admin') { @('user_files','user_processes','user_directories','system_files','services','disks','admin_processes') } else { @('user_files','user_processes','user_directories') } } | ConvertTo-Json -Compress
 $result = Invoke-RestMethod -Uri "$($Server.TrimEnd('/'))/api/remote-clients/enroll" -Method Post -ContentType 'application/json' -Body $payload
 $config = @{ server=$Server.TrimEnd('/'); permissionMode=$PermissionMode; clientId=$result.client.id; credential=$result.credential } | ConvertTo-Json
 $configPath = Join-Path $InstallDir 'config.json'; Set-Content $configPath $config -Encoding utf8

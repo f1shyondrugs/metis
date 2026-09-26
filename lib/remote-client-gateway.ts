@@ -8,8 +8,10 @@ import {
   consumeRemoteApproval,
   createRemoteApproval,
   RemoteApprovalRequiredError,
+  updateRemoteAudit,
   type RemoteAction,
 } from "@/lib/remote-clients";
+import { redactSensitiveData } from "@/lib/agent-trace";
 
 type SocketLike = {
   readyState: number;
@@ -56,6 +58,11 @@ export function attachRemoteClient(socket: SocketLike, clientId: string, ownerId
   const pending = new Map<string, Pending>();
   connections.set(clientId, { socket, ownerId, pending });
   markRemoteClientSeen(clientId, address);
+  let lastHeartbeatAt = Date.now();
+  const heartbeatCheck = setInterval(() => {
+    if (Date.now() - lastHeartbeatAt > 90_000) socket.close();
+  }, 30_000);
+  heartbeatCheck.unref?.();
   socket.on("message", (raw: unknown) => {
     let message: Record<string, unknown>;
     try {
@@ -64,6 +71,7 @@ export function attachRemoteClient(socket: SocketLike, clientId: string, ownerId
       return;
     }
     if (message.type === "heartbeat") {
+      lastHeartbeatAt = Date.now();
       markRemoteClientSeen(clientId, address);
       socket.send(JSON.stringify({ type: "heartbeat_ack", timestamp: Date.now() }));
       return;
@@ -79,10 +87,14 @@ export function attachRemoteClient(socket: SocketLike, clientId: string, ownerId
     if (!item) return;
     clearTimeout(item.timer);
     pending.delete(message.requestId);
-    if (message.ok === false) item.reject(new Error(typeof message.error === "string" ? message.error : "Remote client request failed"));
-    else item.resolve(message.result);
+    if (message.ok === false) {
+      const error = new Error(typeof message.error === "string" ? message.error : "Remote client request failed") as Error & { resultData?: Record<string, unknown> };
+      if (message.result && typeof message.result === "object") error.resultData = message.result as Record<string, unknown>;
+      item.reject(error);
+    } else item.resolve(message.result);
   });
   socket.on("close", () => {
+    clearInterval(heartbeatCheck);
     if (connections.get(clientId)?.socket !== socket) return;
     connections.delete(clientId);
     for (const item of pending.values()) {
@@ -141,6 +153,15 @@ export function requestRemoteClient(input: {
   }
   const connection = connections.get(input.clientId);
   if (!connection || connection.socket.readyState !== OPEN) throw new Error("Remote client is offline");
+  const audit = appendRemoteAudit({
+    ownerId: input.ownerId,
+    clientId: input.clientId,
+    source: input.source || "user",
+    action: input.action,
+    requestData: redact(input.params),
+    status: "running",
+  });
+  const startedAt = Date.now();
   const requestId = crypto.randomUUID();
   const timeoutMs = Math.max(1_000, Math.min(input.timeoutMs || 60_000, 300_000));
   const promise = new Promise<unknown>((resolve, reject) => {
@@ -184,24 +205,19 @@ export function requestRemoteClient(input: {
     });
   });
   return resultPromise.then((result) => {
-    appendRemoteAudit({
-      ownerId: input.ownerId,
-      clientId: input.clientId,
-      source: input.source || "user",
-      action: input.action,
-      requestData: redact(input.params),
+    updateRemoteAudit(audit.id, {
       status: "completed",
+      resultData: result && typeof result === "object" ? result as Record<string, unknown> : { value: result },
+      durationMs: Date.now() - startedAt,
     });
     return result;
   }).catch((error) => {
-    appendRemoteAudit({
-      ownerId: input.ownerId,
-      clientId: input.clientId,
-      source: input.source || "user",
-      action: input.action,
-      requestData: redact(input.params),
-      status: "error",
-      error: error instanceof Error ? error.message : "Remote request failed",
+    const message = error instanceof Error ? error.message : "Remote request failed";
+    updateRemoteAudit(audit.id, {
+      status: /disconnected|timed out/i.test(message) ? "unknown" : "error",
+      error: message,
+      resultData: error instanceof Error ? (error as Error & { resultData?: Record<string, unknown> }).resultData : undefined,
+      durationMs: Date.now() - startedAt,
     });
     throw error;
   });
@@ -214,12 +230,8 @@ export async function collectRemoteClientEvents(sessionId: string, waitMs = 150)
   return events;
 }
 
-function redact(params?: Record<string, unknown>) {
-  if (!params) return {};
-  return Object.fromEntries(Object.entries(params).map(([key, value]) => [
-    key.toLowerCase().includes("secret") || key.toLowerCase().includes("token") ? key : key,
-    key.toLowerCase().includes("secret") || key.toLowerCase().includes("token") ? "[redacted]" : typeof value === "string" ? value.slice(0, 2_000) : value,
-  ]));
+function redact(params?: Record<string, unknown>): Record<string, unknown> {
+  return redactSensitiveData(params || {}, 2_000) as Record<string, unknown>;
 }
 
 function base64(value: unknown) {
