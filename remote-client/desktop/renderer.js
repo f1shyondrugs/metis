@@ -123,7 +123,7 @@ async function refresh() {
     state.loaded = true;
     showHubError("");
     byId("device-name").textContent = state.client?.name || state.client?.hostname || "This Windows PC";
-    const access = state.client?.permissionMode === "admin" ? "Administrator access" : "User access — reconnect to enable administrator access";
+    const access = state.client?.permissionMode === "admin" ? "Administrator access" : state.client?.permissionMode === "user" ? "User access" : "Access mode unavailable";
     byId("device-meta").textContent = [state.client?.os || "Windows", state.client?.version ? `v${state.client.version}` : null, access].filter(Boolean).join(" · ");
     byId("device-seen").textContent = state.client?.lastSeenAt ? `Last seen ${formatDate(state.client.lastSeenAt)}` : "";
     byId("sync-label").textContent = `Updated ${new Date().toLocaleTimeString()}`;

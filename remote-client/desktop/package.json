@@ -1,6 +1,6 @@
 {
   "name": "metis-ai-remote-client",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Metis AI Windows Remote Client Hub",
   "main": "main.cjs",
@@ -49,12 +49,13 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "requestedExecutionLevel": "requireAdministrator",
+      "requestedExecutionLevel": "asInvoker",
       "executableName": "Metis AI Remote Client"
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
+      "perMachine": false,
+      "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

@@ -24,12 +24,24 @@ test("new remote clients default to user access and deny escalation", async () =
   assert.equal(authorizeRemoteAction(registered.client, "write_file").allowed, false);
 });
 
+test("enrollment keeps the selected permission mode and rejects a mismatched client", async () => {
+  const { createUser } = await import("../lib/auth");
+  const { createEnrollmentToken, registerRemoteClient } = await import("../lib/remote-clients");
+  const owner = createUser("remote-mode-owner", "password");
+  const adminToken = createEnrollmentToken(owner.id, undefined, "admin").token;
+  assert.equal(registerRemoteClient(adminToken, { permissionMode: "user" }), null);
+  assert.equal(registerRemoteClient(adminToken, { permissionMode: "admin" })?.client?.permissionMode, "admin");
+  const userToken = createEnrollmentToken(owner.id).token;
+  assert.equal(registerRemoteClient(userToken, { permissionMode: "admin" }), null);
+  assert.equal(registerRemoteClient(userToken, { permissionMode: "user" })?.client?.permissionMode, "user");
+});
+
 test("admin clients require approval for risky actions", async () => {
   const { createUser } = await import("../lib/auth");
   const { authorizeRemoteAction, createEnrollmentToken, getRemoteClient, registerRemoteClient } = await import("../lib/remote-clients");
   const { getDatabase } = await import("../lib/sqlite");
   const owner = createUser("remote-admin", "password");
-  const registered = registerRemoteClient(createEnrollmentToken(owner.id).token, { name: "admin-client", permissionMode: "admin" });
+  const registered = registerRemoteClient(createEnrollmentToken(owner.id, undefined, "admin").token, { name: "admin-client", permissionMode: "admin" });
   assert.ok(registered?.client);
   getDatabase().prepare("UPDATE remote_clients SET policy = ? WHERE id = ?").run(JSON.stringify({ mode: "full_access", allowlist: [] }), registered.client.id);
   const client = getRemoteClient(registered.client.id, owner.id);
@@ -100,8 +112,8 @@ test("device hub returns only the authenticated PC and its logs", async () => {
   const { getDatabase } = await import("../lib/sqlite");
   const { GET } = await import("../app/api/remote-clients/hub/route");
   const owner = createUser("remote-local-hub", "password");
-  const first = registerRemoteClient(createEnrollmentToken(owner.id).token, { name: "this-pc", permissionMode: "admin" });
-  const second = registerRemoteClient(createEnrollmentToken(owner.id).token, { name: "other-pc", permissionMode: "admin" });
+  const first = registerRemoteClient(createEnrollmentToken(owner.id, undefined, "admin").token, { name: "this-pc", permissionMode: "admin" });
+  const second = registerRemoteClient(createEnrollmentToken(owner.id, undefined, "admin").token, { name: "other-pc", permissionMode: "admin" });
   assert.ok(first?.client && second?.client);
   for (const client of [first.client, second.client]) {
     getDatabase().prepare("INSERT INTO remote_audit (id, owner_id, client_id, source, action, request_data, status, created_at) VALUES (?, ?, ?, 'user', 'get_info', '{}', 'completed', ?)")

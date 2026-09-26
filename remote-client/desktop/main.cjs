@@ -35,7 +35,8 @@ function setAutostart(enabled) {
   if (process.platform !== "win32") return false;
   const taskName = psQuote(AUTOSTART_TASK);
   if (enabled) {
-    runPowerShell(`$user = [Security.Principal.WindowsIdentity]::GetCurrent().Name; $action = New-ScheduledTaskAction -Execute ${psQuote(process.execPath)}; $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user; $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest; Register-ScheduledTask -TaskName ${taskName} -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null`);
+    const runLevel = config?.permissionMode === "admin" ? "Highest" : "Limited";
+    runPowerShell(`$user = [Security.Principal.WindowsIdentity]::GetCurrent().Name; $action = New-ScheduledTaskAction -Execute ${psQuote(process.execPath)}; $trigger = New-ScheduledTaskTrigger -AtLogon -User $user; $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel ${runLevel}; Register-ScheduledTask -TaskName ${taskName} -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null`);
   } else {
     runPowerShell(`Unregister-ScheduledTask -TaskName ${taskName} -Confirm:$false -ErrorAction SilentlyContinue`);
   }
@@ -66,6 +67,7 @@ function loadConfig() {
     server: saved.server,
     clientId: saved.clientId,
     credential: safeStorage.decryptString(Buffer.from(saved.encryptedCredential, "base64")),
+    permissionMode: saved.permissionMode === "user" ? "user" : "admin",
   };
 }
 
@@ -76,6 +78,7 @@ function saveConfig(next) {
   const saved = {
     server: next.server,
     clientId: next.clientId,
+    permissionMode: next.permissionMode,
     encryptedCredential: safeStorage.encryptString(next.credential).toString("base64"),
   };
   fs.mkdirSync(path.dirname(configPath()), { recursive: true });
@@ -87,6 +90,7 @@ function publicState() {
     paired: Boolean(config),
     server: config?.server || "",
     clientId: config?.clientId || "",
+    permissionMode: config?.permissionMode || null,
     ...status,
   };
 }
@@ -192,7 +196,12 @@ function registerIpc() {
       throw new Error("Enter a valid HTTP or HTTPS server URL");
     }
     if (!token) throw new Error("Enter the pairing code from Metis AI");
-    if (process.platform === "win32" && !isElevated()) throw new Error("Run Metis AI Remote Client as administrator to connect this device");
+    const permissionMode = token.startsWith("a_") ? "admin" : "user";
+    if (process.platform === "win32") {
+      const elevated = isElevated();
+      if (permissionMode === "admin" && !elevated) throw new Error("Admin access was selected in Metis AI. Start this app as administrator and confirm UAC, then enter the same code.");
+      if (permissionMode === "user" && elevated) throw new Error("User access was selected in Metis AI. Start this app normally, without administrator rights, then enter the same code.");
+    }
     const response = await fetch(`${parsed.origin}/api/remote-clients/enroll`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -203,8 +212,10 @@ function registerIpc() {
         os: `windows ${os.release()}`,
         architecture: os.arch(),
         version: app.getVersion(),
-        permissionMode: "admin",
-        capabilities: ["user_files", "user_processes", "user_directories", "admin_files", "admin_processes"],
+        permissionMode,
+        capabilities: permissionMode === "admin"
+          ? ["user_files", "user_processes", "user_directories", "system_files", "services", "disks", "admin_processes"]
+          : ["user_files", "user_processes", "user_directories"],
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -212,7 +223,8 @@ function registerIpc() {
     if (!response.ok || !data.client?.id || !data.credential) {
       throw new Error(data.error || "Pairing failed");
     }
-    const next = { server: parsed.origin, clientId: data.client.id, credential: data.credential };
+    if (data.client.permissionMode !== permissionMode) throw new Error("The server returned a different access mode. Pairing was stopped.");
+    const next = { server: parsed.origin, clientId: data.client.id, credential: data.credential, permissionMode: data.client.permissionMode };
     saveConfig(next);
     config = next;
     status.connection = "connecting";
@@ -294,8 +306,18 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     app.setAppUserModelId("ai.metis.remoteclient");
     try { config = loadConfig(); } catch (error) { status.error = error.message; }
-    if (process.platform === "win32" && app.isPackaged && !isElevated()) {
-      dialog.showErrorBox(APP_NAME, "Administrator access is required. Start the app as administrator.");
+    if (process.platform === "win32" && config?.permissionMode === "admin" && !isElevated()) {
+      try {
+        app.releaseSingleInstanceLock();
+        runPowerShell(`Start-Process -FilePath ${psQuote(process.execPath)} -Verb RunAs`);
+      } catch (error) {
+        dialog.showErrorBox(APP_NAME, error.message || "Administrator access was not confirmed.");
+      }
+      app.quit();
+      return;
+    }
+    if (process.platform === "win32" && config?.permissionMode === "user" && isElevated()) {
+      dialog.showErrorBox(APP_NAME, "This device was paired with user access. Start the app normally, without administrator rights.");
       app.quit();
       return;
     }

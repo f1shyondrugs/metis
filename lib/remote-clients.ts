@@ -146,21 +146,21 @@ function mapClient(row: Record<string, unknown>): RemoteClient {
   };
 }
 
-export function createEnrollmentToken(ownerId: string, ttlMs = 15 * 60 * 1000) {
-  const token = randomBytes(32).toString("base64url");
+export function createEnrollmentToken(ownerId: string, ttlMs = 15 * 60 * 1000, permissionMode: RemotePermissionMode = "user") {
+  const token = `${permissionMode === "admin" ? "a" : "u"}_${randomBytes(32).toString("base64url")}`;
   const createdAt = iso();
   getDatabase().prepare(
-    "INSERT INTO remote_enrollment_tokens (token_hash, owner_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
-  ).run(hash(token), ownerId, new Date(Date.now() + ttlMs).toISOString(), createdAt);
+    "INSERT INTO remote_enrollment_tokens (token_hash, owner_id, expires_at, created_at, permission_mode) VALUES (?, ?, ?, ?, ?)",
+  ).run(hash(token), ownerId, new Date(Date.now() + ttlMs).toISOString(), createdAt, permissionMode);
   return { token, expiresAt: new Date(Date.now() + ttlMs).toISOString() };
 }
 
-export function consumeEnrollmentToken(token: string) {
+export function consumeEnrollmentToken(token: string, permissionMode: RemotePermissionMode = "user") {
   return transaction(() => {
     const row = getDatabase().prepare(
-      "SELECT token_hash as tokenHash, owner_id as ownerId, expires_at as expiresAt, used_at as usedAt FROM remote_enrollment_tokens WHERE token_hash = ?",
-    ).get(hash(token)) as { tokenHash?: string; ownerId?: string; expiresAt?: string; usedAt?: string } | undefined;
-    if (!row?.ownerId || row.usedAt || !row.expiresAt || new Date(row.expiresAt).getTime() <= Date.now()) return null;
+      "SELECT token_hash as tokenHash, owner_id as ownerId, expires_at as expiresAt, used_at as usedAt, permission_mode as permissionMode FROM remote_enrollment_tokens WHERE token_hash = ?",
+    ).get(hash(token)) as { tokenHash?: string; ownerId?: string; expiresAt?: string; usedAt?: string; permissionMode?: string } | undefined;
+    if (!row?.ownerId || row.usedAt || !row.expiresAt || new Date(row.expiresAt).getTime() <= Date.now() || row.permissionMode !== permissionMode) return null;
     getDatabase().prepare("UPDATE remote_enrollment_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL")
       .run(iso(), row.tokenHash!);
     return { ownerId: row.ownerId };
@@ -176,7 +176,7 @@ export function registerRemoteClient(token: string, input: {
   capabilities?: string[];
   permissionMode?: RemotePermissionMode;
 }) {
-  const enrollment = consumeEnrollmentToken(token);
+  const enrollment = consumeEnrollmentToken(token, normalizePermissionMode(input.permissionMode));
   if (!enrollment) return null;
   const id = randomUUID();
   const credential = randomBytes(32).toString("base64url");

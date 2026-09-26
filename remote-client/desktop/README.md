@@ -1,14 +1,14 @@
 # Metis AI Remote Client for Windows
 
-The Windows Remote Client is an Electron app packaged as a per-machine NSIS installer that requests administrator rights. Windows lists it under **Installed apps** and provides an uninstaller. The app shows only this PC's command history and stays available from the system tray when its window is closed. The app itself requests administrator rights on every launch.
+The Windows Remote Client is an Electron app packaged as an NSIS installer. Windows lists it under **Installed apps** and provides an uninstaller. The app shows only this PC's command history and stays available from the system tray when its window is closed. User access runs normally; admin access requires launching the app as administrator and confirming UAC.
 
 ## Pair a device
 
-1. In Metis AI, open **Settings → Devices → Add client → Windows**.
+1. In Metis AI, open **Settings → Devices → Add client**, choose **User access** or **Admin / system access**, then choose **Windows**.
 2. Download and install the Windows app.
-3. Open the app and enter the server URL and pairing code shown in Metis AI.
+3. For user access, open the app normally. For admin access, start it as administrator and confirm UAC. Enter the server URL and pairing code shown in Metis AI.
 
-The code expires after 15 minutes. Devices paired by an older user-access client must be disconnected and paired again to register administrator access. The app stores its credential with Windows credential encryption under `%APPDATA%\\MetisAI\\RemoteClient`. Uninstalling the app removes that local data. The remote connection runs inside the app and reconnects automatically. **Start at Windows login** is controlled in the app or tray menu and uses an elevated Windows scheduled task for the installing administrator account. On a standard Windows account, Windows may require the administrator to sign in before the interactive app can start.
+The code expires after 15 minutes and binds the selected access mode to the device registration. An existing pairing keeps its original mode; disconnect and pair again to change it. The app stores its credential with Windows credential encryption under `%APPDATA%\\MetisAI\\RemoteClient`. Uninstalling the app removes that local data. The remote connection runs inside the app and reconnects automatically. **Start at Windows login** uses a scheduled task with the paired access level. Admin mode may require the administrator account to sign in before the interactive app can start.
 
 ## Build
 

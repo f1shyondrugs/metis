@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   const requestBody = (await req.json().catch(() => ({}))) as { os?: unknown; permissionMode?: unknown };
   const selectedOs = requestBody.os === "windows" || requestBody.os === "macos" ? requestBody.os : "linux";
   const permissionMode = requestBody.permissionMode === "admin" ? "admin" : "user";
-  const token = createEnrollmentToken(ownerId);
+  const token = createEnrollmentToken(ownerId, undefined, permissionMode);
   let publicUrl: string;
   try {
     publicUrl = publicOrigin(req);

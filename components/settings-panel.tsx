@@ -718,7 +718,7 @@ export function SettingsPanel({
       const response = await fetch("/api/remote-clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ os: platform, permissionMode: platform === "windows" ? "user" : remotePermissionMode }),
+        body: JSON.stringify({ os: platform, permissionMode: remotePermissionMode }),
       });
       const data = (await response.json()) as { command?: string; commands?: { linux?: string; windows?: string; macos?: string }; token?: string; serverUrl?: string; installerUrl?: string; error?: string };
       if (!response.ok || !data.command) throw new Error(data.error || "Failed to create enrollment command");
@@ -735,8 +735,6 @@ export function SettingsPanel({
       if (platform !== "windows") {
         await navigator.clipboard?.writeText(data.command);
         toast.success("Enrollment command copied");
-      } else if (remotePermissionMode === "admin") {
-        toast.info("The Windows desktop app connects with user access.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create enrollment command");
@@ -2685,16 +2683,16 @@ export function SettingsPanel({
                           <p className="text-xs text-muted-foreground">
                             {client.hostname || "Unknown host"} · {client.os || "Unknown OS"} · {client.architecture || "unknown arch"}
                           </p>
-                          <div className="mt-1.5">
-                            <Badge
-                              variant={client.permissionMode === "admin" ? "default" : "outline"}
-                              className={client.policy.mode === "full_access"
-                                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                : ""}
-                            >
-                              {client.permissionMode === "admin"
-                                ? "Admin / system access · confirmation required"
-                                : "User access · no administrator rights"}
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            <Badge variant={client.permissionMode === "admin" ? "default" : "outline"}>
+                              {client.permissionMode === "admin" ? "Admin / system access" : "User access · no administrator rights"}
+                            </Badge>
+                            <Badge variant="outline">
+                              {client.policy.mode === "full_access"
+                                ? client.permissionMode === "admin"
+                                  ? "Full access · confirmation required"
+                                  : "Full access policy · user limits apply"
+                                : "Restricted · read and allowlisted commands"}
                             </Badge>
                           </div>
                           </div>
@@ -2706,7 +2704,7 @@ export function SettingsPanel({
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => void testRemoteConnection(client)}>Test connection</DropdownMenuItem>
                               <DropdownMenuItem onClick={() => void updateRemotePolicy(client, client.policy.mode === "approval_required" ? "full_access" : "approval_required")}>
-                                {client.policy.mode === "approval_required" ? "Disable approval policy" : "Enable approval policy"}
+                                {client.policy.mode === "approval_required" ? "Use full access policy" : "Restrict to reading and allowlisted commands"}
                               </DropdownMenuItem>
                               <DropdownMenuItem className="text-destructive" onClick={() => setRemoteClientDeleteTarget(client)}>Remove client</DropdownMenuItem>
                             </DropdownMenuContent>
@@ -2907,7 +2905,7 @@ export function SettingsPanel({
                 <>
                   <div>
                     <p className="flex items-center gap-2 text-sm font-medium"><Monitor className="size-4 text-primary" /> Install the Windows app</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Install the app, open it, then enter this server URL and pairing code. The code expires after 15 minutes.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Install the app, open it, then enter this server URL and pairing code. The code expires after 15 minutes. {remotePermissionMode === "admin" ? "For admin access, start the app as administrator and confirm UAC." : "User access runs without administrator rights."}</p>
                   </div>
                   <a href={remoteInstallerUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">Download Windows installer</a>
                   <div className="space-y-2">
