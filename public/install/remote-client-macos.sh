@@ -63,8 +63,19 @@ cat > "$plist" <<EOF
   <key>StandardErrorPath</key><string>$install_dir/client-error.log</string>
 </dict></plist>
 EOF
+: >"$install_dir/client.log"
 launchctl bootout "gui/$(id -u)" "$plist" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/$(id -u)" "$plist"
+connected=false
+for attempt in {1..15}; do
+  if grep -q 'authenticated' "$install_dir/client.log" 2>/dev/null; then connected=true; break; fi
+  sleep 1
+done
+if [[ "$connected" != true ]]; then
+  printf 'Remote client service started but did not authenticate with %s within 15 seconds.\n' "$base_url" >&2
+  tail -n 40 "$install_dir/client.log" >&2 || true
+  exit 1
+fi
 printf 'Remote client enrolled successfully: %s\n' "$install_dir"
 printf 'Remove with: %s/uninstall.sh\n' "$install_dir"
 

@@ -229,7 +229,7 @@ export function providerRemoteTools(context: ProviderContext): ToolSet {
     } as never) as ToolSet[string];
   const tools: ToolSet = {
     list_remote_clients: remoteTool(
-      "List all connected remote clients and their status.",
+      "List this account's remote devices, including stable IDs, OS, hostname, capabilities, and live status. Before acting on a device, call this tool, match the user's description to the returned hostname/OS, and use that exact client ID as target=client:<id>. If the match is ambiguous or offline, ask the user or report that it is unavailable; never guess a device.",
       () => call("list_remote_clients"),
     ),
     read_file: remoteTool("Read a UTF-8 file from a remote client.", (args) =>

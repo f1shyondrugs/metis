@@ -239,6 +239,7 @@ export function startRemoteClient({ config: suppliedConfig, configPath, onEvent 
       send({ type: "auth", clientId: config.clientId, credential: config.credential });
     });
     current.on("message", async (raw) => {
+      if (socket !== current) return;
       let message;
       try { message = JSON.parse(raw.toString()); } catch { return; }
       if (message.type === "authenticated") {
@@ -262,18 +263,19 @@ export function startRemoteClient({ config: suppliedConfig, configPath, onEvent 
       emit({ type: "command", status: "running", action: message.action, at: new Date().toISOString() });
       try {
         const result = await execute(message.action, message.params);
-        send({ type: "response", requestId: message.requestId, ok: true, result });
+        if (socket === current) send({ type: "response", requestId: message.requestId, ok: true, result });
         emit({ type: "command", status: "completed", action: message.action, at: new Date().toISOString() });
       } catch (error) {
         const result = error && typeof error === "object" && ("stdout" in error || "stderr" in error)
           ? { stdout: String(error.stdout || ""), stderr: String(error.stderr || ""), exitCode: typeof error.code === "number" ? error.code : null }
           : undefined;
-        send({ type: "response", requestId: message.requestId, ok: false, error: error instanceof Error ? error.message : "Action failed", result });
+        if (socket === current) send({ type: "response", requestId: message.requestId, ok: false, error: error instanceof Error ? error.message : "Action failed", result });
         emit({ type: "command", status: "error", action: message.action, at: new Date().toISOString() });
       }
     });
     current.on("close", (code, reason) => {
       log("closed", code, reason?.toString?.() || "");
+      if (socket !== current) return;
       clearInterval(heartbeatTimer);
       clearTimeout(heartbeatTimeout);
       if (socket === current) socket = undefined;
@@ -284,6 +286,7 @@ export function startRemoteClient({ config: suppliedConfig, configPath, onEvent 
       }
     });
     current.on("error", (error) => {
+      if (socket !== current) return;
       socketError = error?.message || "Connection error";
       log("socket error", socketError);
       emit({ type: "connection", status: "error", error: socketError });

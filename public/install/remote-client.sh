@@ -61,6 +61,7 @@ chmod 700 "$install_dir/uninstall.sh"
 
 if command -v systemctl >/dev/null 2>&1; then
   service_name="metis-ai-remote-client"
+  service_user="$(id -un)"
   sudo tee "/etc/systemd/system/$service_name.service" >/dev/null <<EOF
 [Unit]
 Description=Metis AI remote client
@@ -68,9 +69,9 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-User=$USER
-WorkingDirectory=$install_dir
-ExecStart=$(command -v node) $install_dir/client.mjs --config $install_dir/config.json
+User=$service_user
+WorkingDirectory="$install_dir"
+ExecStart="$(command -v node)" "$install_dir/client.mjs" --config "$install_dir/config.json"
 Restart=always
 RestartSec=5
 [Install]
@@ -78,8 +79,25 @@ WantedBy=default.target
 EOF
   sudo systemctl daemon-reload
   sudo systemctl enable --now "$service_name.service"
+  : >"$install_dir/client.log"
+  sudo systemctl restart "$service_name.service"
 else
-  nohup node "$install_dir/client.mjs" --config "$install_dir/config.json" >/dev/null 2>&1 &
+  nohup node "$install_dir/client.mjs" --config "$install_dir/config.json" >>"$install_dir/client.log" 2>&1 &
+fi
+
+connected=false
+for attempt in {1..15}; do
+  if grep -q 'authenticated' "$install_dir/client.log" 2>/dev/null; then connected=true; break; fi
+  if command -v systemctl >/dev/null 2>&1 && ! sudo systemctl is-active --quiet "$service_name.service"; then
+    sudo journalctl -u "$service_name.service" -n 30 --no-pager >&2 || true
+    break
+  fi
+  sleep 1
+done
+if [[ "$connected" != true ]]; then
+  printf 'Remote client service started but did not authenticate with %s within 15 seconds.\n' "$base_url" >&2
+  tail -n 40 "$install_dir/client.log" >&2 || true
+  exit 1
 fi
 printf 'Remote client enrolled successfully (%s mode): %s\n' "$permission_mode" "$install_dir"
 printf 'Remove with: %s/uninstall.sh\n' "$install_dir"
