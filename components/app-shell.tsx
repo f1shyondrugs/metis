@@ -4276,6 +4276,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   const loadChat = useCallback(
     async (id: string, opts?: { skipNav?: boolean; forceReload?: boolean }) => {
+      setActiveSubagent(null);
       if (!opts?.skipNav) setAccountView(null);
       if (window.matchMedia("(max-width: 767px), (pointer: coarse)").matches) {
         textareaRef.current?.blur();
