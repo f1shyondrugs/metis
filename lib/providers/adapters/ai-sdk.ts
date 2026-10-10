@@ -1,3 +1,4 @@
+import { waitForJobUserInput } from "@/lib/user-question-wait";
 import {
   mkdtemp,
   readFile,
@@ -65,9 +66,10 @@ async function runAiSdk(context: ProviderContext): Promise<ProviderResult> {
         effectiveModelParams(context.chat, context.job),
       ),
       providerOptions: providerOptionsFor(context),
-      prepareStep: ({ messages }) => ({
-        messages: stripProviderReasoning(messages),
-      }),
+      prepareStep: async ({ messages }) => {
+        await waitForJobUserInput(context.job.id, context.job.userId, context.signal);
+        return { messages: stripProviderReasoning(messages) };
+      },
       abortSignal: context.signal,
       stopWhen: stepCountIs(remainingSteps),
     });
@@ -172,9 +174,10 @@ async function runOAuthAiSdk(
         ),
         providerOptions: providerOptionsFor(context),
         stopWhen: stepCountIs(remainingSteps),
-        prepareStep: ({ messages }) => ({
-          messages: stripProviderReasoning(messages),
-        }),
+        prepareStep: async ({ messages }) => {
+          await waitForJobUserInput(context.job.id, context.job.userId, context.signal);
+          return { messages: stripProviderReasoning(messages) };
+        },
         abortSignal: context.signal,
       });
     const usage = await consumeAiStream(

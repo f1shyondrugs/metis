@@ -1,3 +1,4 @@
+import { waitForJobUserInput } from "@/lib/user-question-wait";
 import { appendRunEvent, getJob, updateJob } from "@/lib/db-jobs";
 import { internalRunLeaseAuthorized } from "@/lib/internal-run-lease";
 import {
@@ -101,4 +102,22 @@ export async function POST(req: Request) {
   updateJob(jobId, { status: "running" });
   updateChat(chatId, { runStatus: "running", pendingQuestion: null }, userId);
   return Response.json({ questionId: pending.questionId, answers, values: resolved.values, summary: resolved.summary });
+}
+
+// Other MCP calls use this gate before executing, including after a disconnect.
+export async function GET(req: Request) {
+  if (!authorized(req)) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const jobId = req.headers.get("x-ai-chat-job-id")?.trim() || "";
+  const userId = req.headers.get("x-ai-chat-user-id")?.trim() || undefined;
+  const chatId = req.headers.get("x-ai-chat-id")?.trim() || "";
+  const job = getJob(jobId);
+  if (!job || job.userId !== userId || job.chatId !== chatId || !internalRunLeaseAuthorized(req, jobId)) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await waitForJobUserInput(jobId, userId, req.signal);
+    return Response.json({ waitingForUser: false });
+  } catch {
+    return Response.json({ error: "The run is waiting for an answer or has been stopped." }, { status: req.signal.aborted ? 499 : 409 });
+  }
 }

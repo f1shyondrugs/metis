@@ -1,3 +1,4 @@
+import { USER_INPUT_TRANSPORT_TIMEOUT_MS } from "./mcp-core/user-question-gate.mjs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { tool, jsonSchema, type ToolSet } from "ai";
@@ -68,6 +69,7 @@ export function assertBridgeToolInput(
 // Honor the advertised tool deadline so the transport cannot interrupt a long
 // delegation before the server's timeout. Ordinary calls keep their usual bound.
 export function bridgeToolTimeoutMs(args: Record<string, unknown>, schema: Record<string, unknown>) {
+  if (schema["x-metis-waits-for-user"] === true) return USER_INPUT_TRANSPORT_TIMEOUT_MS;
   const baseMs = 300_000;
   if (args.wait === false) return baseMs;
   const properties = schema.properties as Record<string, Record<string, unknown>> | undefined;
@@ -351,7 +353,7 @@ export async function mcpBridgeTools(
     const bridgedExecute = async (args: Record<string, unknown>) => {
       const validatedArgs = assertBridgeToolInput(definition.name, args, schema);
       const result = await withFreshGateway(env, async (gateway) => {
-        return callGateway(gateway, "tools/call", { name: definition.name, arguments: validatedArgs }, bridgeToolTimeoutMs(validatedArgs, schema));
+        return callGateway(gateway, "tools/call", { name: definition.name, arguments: validatedArgs }, bridgeToolTimeoutMs(validatedArgs, definition.inputSchema || schema));
       });
       const record = result as { content?: Array<{ type?: string; text?: string }> };
       const text = (record?.content || [])
@@ -388,7 +390,7 @@ export async function mcpBridgeHttpTools(
     const bridgedExecute = async (args: Record<string, unknown>) => {
       const validatedArgs = assertBridgeToolInput(definition.name, args, schema);
       const result = await withHttpSession(target, async (session) => {
-        const timeout = bridgeToolTimeoutMs(validatedArgs, schema);
+        const timeout = bridgeToolTimeoutMs(validatedArgs, definition.inputSchema || schema);
         return session.client.callTool({ name: definition.name, arguments: validatedArgs }, undefined, { timeout, maxTotalTimeout: timeout });
       });
       const record = result as { content?: Array<{ type?: string; text?: string }>; isError?: boolean };

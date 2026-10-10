@@ -1,3 +1,4 @@
+import { USER_INPUT_TRANSPORT_TIMEOUT_MS } from "@/lib/mcp-core/user-question-gate.mjs";
 import { providerRateLimit, providerErrorWithCause } from "@/lib/provider-rate-limit";
 import {
   createApproval,
@@ -98,7 +99,7 @@ function claudeMcpServers(servers: ReturnType<typeof getMcpServers>) {
       if (server.type === "http") {
         return [
           name,
-          { type: "http" as const, url: server.url, headers: server.headers },
+          { type: "http" as const, url: server.url, headers: server.headers, timeout: USER_INPUT_TRANSPORT_TIMEOUT_MS },
         ];
       }
       return [
@@ -108,6 +109,7 @@ function claudeMcpServers(servers: ReturnType<typeof getMcpServers>) {
           args: server.args,
           env: server.env,
           alwaysLoad: true,
+          timeout: USER_INPUT_TRANSPORT_TIMEOUT_MS,
         },
       ];
     }),

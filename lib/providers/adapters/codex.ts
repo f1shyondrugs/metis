@@ -1,3 +1,4 @@
+import { USER_INPUT_TRANSPORT_TIMEOUT_MS } from "@/lib/mcp-core/user-question-gate.mjs";
 import { codexLimitErrorFromRollout } from "@/lib/providers/codex-rate-limit";
 import { providerErrorWithCause } from "@/lib/provider-rate-limit";
 import { readFile, rm } from "node:fs/promises";
@@ -235,13 +236,14 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
     ...(codexHome ? { CODEX_HOME: codexHome.home } : {}),
     ...(bearerToken ? { METIS_MCP_SESSION_TOKEN: bearerToken } : {}),
   });
-  const codexMcp: Record<string, string | string[] | Record<string, string>> =
+  const codexMcp: Record<string, number | string | string[] | Record<string, string>> =
     mcp.type === "http"
       ? {
           url: mcp.url,
           ...(bearerToken ? { bearer_token_env_var: "METIS_MCP_SESSION_TOKEN" } : {}),
         }
       : { command: mcp.command, args: mcp.args, env: mcp.env };
+  codexMcp.tool_timeout_sec = Math.floor(USER_INPUT_TRANSPORT_TIMEOUT_MS / 1000);
   const modelParams = effectiveModelParams(context.chat, context.job);
   const serviceTier = codexServiceTierForSelection(modelParams);
   const codexConfig: NonNullable<CodexOptions["config"]> = {
