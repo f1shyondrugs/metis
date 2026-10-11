@@ -452,7 +452,8 @@ export function projectAgentsFilePath(project: Project, ownerId?: string) {
 
 export function projectContextBlock(project: Project, ownerId?: string, chats?: ChatIndexEntry[]) {
  const files = listProjectFiles(project.id, ownerId);
- const notes = listProjectNotes(project.id, ownerId);
+ // Chat/agent working facts must not become shared project-note context.
+ const notes = listProjectNotes(project.id, ownerId).filter(note => note.kind !== "learned_fact");
  const projectChats = (chats || listChatsForUser(ownerId)).filter((chat) => chat.projectId === project.id);
  const agentsFile = projectAgentsFilePath(project, ownerId);
  let projectPreviewBytes = 0;

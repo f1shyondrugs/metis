@@ -141,6 +141,7 @@ import {
   type InstallerMaintenanceDetail,
 } from "@/lib/update-job-client";
 import type { MemoryItem } from "@/components/memories-panel";
+import { WorkspaceMemoryPanel } from "@/components/workspace-memory-panel";
 import type { ChatLogEntry, ChatLogCategory } from "@/lib/chat-logs";
 import { ApprovalPanel, type ApprovalDecisionValue, type PendingApprovalView } from "@/components/approval-panel";
 import { ProviderLogo } from "@/components/provider-logo";
@@ -691,7 +692,7 @@ type ChatSessionState = {
   terminalSessionId?: string;
   terminalTabs?: TerminalTab[];
   activeTerminalTabId?: string;
-  workspaceTab?: "canvas" | "plan" | "terminal" | "files" | "browser" | "monitor" | "team";
+  workspaceTab?: "canvas" | "plan" | "terminal" | "files" | "browser" | "monitor" | "team" | "memory";
   activeWorkspaceId?: string | null;
   workspaceOpen?: boolean;
   workspaceWidth?: number;
@@ -730,7 +731,8 @@ function normalizeWorkspaceTab(value: unknown): NonNullable<ChatSessionState["wo
     value === "files" ||
     value === "browser" ||
     value === "monitor" ||
-    value === "team"
+    value === "team" ||
+    value === "memory"
     ? value
     : value === "canvas"
       ? "canvas"
@@ -1784,7 +1786,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [workspaceMounted, setWorkspaceMounted] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<"canvas" | "plan" | "terminal" | "files" | "browser" | "monitor" | "team">("canvas");
+  const [workspaceTab, setWorkspaceTab] = useState<NonNullable<ChatSessionState["workspaceTab"]>>("canvas");
   const [notesOpen, setNotesOpen] = useState(false);
   const suppressNotesRouteRef = useRef(false);
   const [automationsOpen, setAutomationsOpen] = useState(false);
@@ -5189,7 +5191,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         }
         return;
       }
-      if (reference.kind === "memory") setSettingsOpen(true);
+      if (reference.kind === "memory") {
+        setWorkspaceTab("memory");
+        setWorkspaceOpen(true);
+      }
     };
     const openLinkedWorkspace = async (event: Event) => {
       const detail = (event as CustomEvent<{ type?: string; id?: string }>).detail;
@@ -10979,7 +10984,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           )}
           <div className="flex shrink-0 items-center gap-1 border-b border-border/30 px-2 py-1.5">
             <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-              {(["team", "canvas", "plan", "files", "terminal", "browser", "monitor"] as const)
+              {(["team", "canvas", "plan", "memory", "files", "terminal", "browser", "monitor"] as const)
                 .filter((tab) => (tab !== "browser" || browserEnabled) && (tab !== "team" || isAgentChat))
                 .map((tab) => (
                 <Button
@@ -11003,9 +11008,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                     "h-8 min-w-8 shrink-0 rounded-md transition-[max-width,background-color,padding] duration-200 ease-out",
                     workspaceTab === tab ? "max-w-40 gap-1.5 px-2" : "w-8 max-w-8 gap-0 overflow-visible px-0",
                   )}
-                  aria-label={tab === "team" ? "Agent overview" : tab === "plan" ? "Plans" : tab === "canvas" ? "Canvas" : tab[0].toUpperCase() + tab.slice(1)}
+                  aria-label={tab === "team" ? "Agent overview" : tab === "plan" ? "Plans" : tab === "canvas" ? "Canvas" : tab === "memory" ? "Memory" : tab[0].toUpperCase() + tab.slice(1)}
                 >
-                  {tab === "team" ? <Users className="size-4 shrink-0" /> : tab === "canvas" ? <Palette className="size-4 shrink-0" /> : tab === "plan" ? <ClipboardList className="size-4 shrink-0" /> : tab === "files" ? <FileCode2 className="size-4 shrink-0" /> : tab === "terminal" ? <Terminal className="size-4 shrink-0" /> : tab === "browser" ? <Globe2 className="size-4 shrink-0" /> : tab === "monitor" ? <Activity className="size-4 shrink-0" /> : <CalendarClock className="size-4 shrink-0" />}
+                  {tab === "team" ? <Users className="size-4 shrink-0" /> : tab === "memory" ? <Brain className="size-4 shrink-0" /> : tab === "canvas" ? <Palette className="size-4 shrink-0" /> : tab === "plan" ? <ClipboardList className="size-4 shrink-0" /> : tab === "files" ? <FileCode2 className="size-4 shrink-0" /> : tab === "terminal" ? <Terminal className="size-4 shrink-0" /> : tab === "browser" ? <Globe2 className="size-4 shrink-0" /> : tab === "monitor" ? <Activity className="size-4 shrink-0" /> : <CalendarClock className="size-4 shrink-0" />}
                   <span className={cn(
                     "overflow-hidden whitespace-nowrap text-xs transition-[max-width,opacity,transform] duration-300",
                     workspaceTab === tab
@@ -11046,6 +11051,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           <div className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-hidden", workspaceTab === "team" ? "p-0" : "p-2.5", workspaceTab === "browser" && "max-sm:p-1.5")}>
             {loadingChatId !== null && loadingChatId === activeChatId ? (
               <WorkspaceLoadingSkeleton />
+            ) : workspaceTab === "memory" ? (
+              activeChatId ? <WorkspaceMemoryPanel key={activeChatId} chatId={activeChatId} label={isAgentChat ? "Agent Memory" : "Chat Memory"}/> : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Open a chat to view its memories.</div>
             ) : workspaceTab === "team" ? (
               isAgentChat && activeProjectId && activeChatId ? <ProjectTeamWorkspace key={activeProjectId} projectId={activeProjectId} chatId={activeChatId} onOpenChat={(chatId) => { void loadChat(chatId).then(() => { if (activeChatIdRef.current === chatId) { setWorkspaceTab("team"); setWorkspaceMounted(true); setWorkspaceOpen(true); } }); }} /> : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Open an agent chat to view its team.</div>
             ) : workspaceTab === "browser" ? (

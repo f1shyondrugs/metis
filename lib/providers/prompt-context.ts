@@ -137,7 +137,8 @@ export function buildProviderPrompt(input: ProviderPromptContext): string {
     fallback: 0,
   });
 
-  const workingBlock = factBlock("Chat working memory", workingFacts, CHAT_FACT_CHARS);
+  const agentMemory = project?.mode === "agents";
+  const workingBlock = factBlock(agentMemory ? "Agent working memory" : "Chat working memory", workingFacts, CHAT_FACT_CHARS);
   const projectBlock = project ? projectContextBlock(project, ownerId) : "";
   const globalBlock = factBlock("Retrieved global durable memory", retrievedGlobalFacts, GLOBAL_CONTEXT_CHARS);
 
@@ -169,10 +170,10 @@ export function buildProviderPrompt(input: ProviderPromptContext): string {
     // Layer 3 — Repo Map is metadata/tool-driven, never a repository dump.
     "Repository map: the filesystem/repository is durable external memory. Search/index first, then read only relevant files and symbols; never replay a whole repository into model context.",
     // Layers 4/5 — Retrieved Context + Working Memory.
-    job.incognito || chat?.incognito ? "" : "Keep a small chat working memory for decisions, constraints and corrections needed to continue this task. Use add_memory/edit_memory with scope chat at milestones; replace obsolete facts instead of accumulating transcripts. These facts belong only to this chat. Use global memories only when explicitly requested by the user.",
+    job.incognito || chat?.incognito ? "" : `Keep a small ${agentMemory ? "agent" : "chat"} working memory for decisions, constraints and corrections needed to continue this task. Use add_memory/edit_memory with scope chat at milestones; replace obsolete facts instead of accumulating transcripts. These facts belong only to this ${agentMemory ? "agent’s own chat" : "chat"}. Use global memories only when explicitly requested by the user.`,
     pinned ? `Pinned chat context:\n${pinned}` : "",
     projectBlock ? `Project context:\n${projectBlock}` : "",
-    workingBlock ? `${workingBlock}\nThis bounded context belongs only to the current chat and is reloaded from durable storage. Preserve it across compaction/resume; newer user corrections take precedence. Do not automatically create global memories from normal chat prompts.` : "",
+    workingBlock ? `${workingBlock}\nThis bounded context belongs only to the current ${agentMemory ? "agent’s own chat" : "chat"} and is reloaded from durable storage. Preserve it across compaction/resume; newer user corrections take precedence. Do not automatically create global memories from normal chat prompts.` : "",
     globalBlock,
     // Layer 6 — Checkpoints are injected only by recovery/compaction code.
     // Layer 7 — Raw History stays provider-owned for native sessions; custom
