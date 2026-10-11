@@ -82,6 +82,8 @@ import { UpdateSettingsPanel, UpdateStatusProbe } from "@/components/update-chan
 import { CliVersionsPanel } from "@/components/cli-versions-panel";
 import { BrowserSettingsControls } from "@/components/browser-settings-controls";
 import type { UsageSnapshot } from "@/lib/usage-display";
+import {SettingsSearch} from "@/components/settings-search";
+import {SETTINGS_TABS, visibleSettingsSections, type SettingsSearchEntry} from "@/lib/settings-navigation";
 
 type ProviderDefinition = {
   key: string;
@@ -374,60 +376,12 @@ type Props = {
   isHostAdmin?: boolean;
 };
 
-const SETTINGS_SECTIONS: Record<string, Array<{ id: string; label: string }>> = {
-  general: [
-    { id: "settings-subagent-model", label: "Subagent model" },
-    { id: "settings-token-compression", label: "Token compression" },
-    { id: "settings-notifications", label: "Notifications" },
-    { id: "settings-voice-input", label: "Voice input" },
-    { id: "settings-dictionary", label: "Dictionary" },
-    { id: "settings-browser", label: "Browser" },
-    { id: "settings-browser-storage", label: "Browser storage" },
-    { id: "settings-session", label: "Session" },
-    { id: "settings-links", label: "Links" },
-  ],
-  models: [
-    { id: "settings-usage", label: "Usage" },
-    { id: "settings-providers", label: "Providers" },
-    { id: "settings-versions", label: "Versions" },
-  ],
-  agent: [
-    { id: "settings-agent-runtime", label: "Settings" },
-    { id: "settings-skills", label: "Skills" },
-    { id: "settings-modes", label: "Agent modes" },
-    { id: "settings-mcp", label: "MCP servers" },
-    { id: "settings-memories", label: "Memories" },
-    { id: "settings-agent-rules", label: "Agent Rules" },
-  ],
-  devices: [
-    { id: "settings-remote-clients", label: "Remote clients" },
-  ],
-  admin: [
-    { id: "settings-users", label: "Users" },
-    { id: "settings-archived", label: "Archived chats" },
-    { id: "settings-shared", label: "Shared chats" },
-    { id: "settings-maintenance", label: "Maintenance" },
-  ],
-};
-
-const SETTINGS_TABS = [
- { value: "general", label: "General" },
- { value: "models", label: "Models" },
- { value: "agent", label: "Agent" },
- { value: "devices", label: "Devices" },
- { value: "admin", label: "Admin" },
- { value: "updates", label: "Updates" },
-] as const;
-
-function visibleSettingsSections(tab: string, isHostAdmin: boolean) {
- return (SETTINGS_SECTIONS[tab] || []).filter((item) => {
- if (!isHostAdmin && (item.id === "settings-users" || item.id === "settings-maintenance")) return false;
- return true;
- });
-}
-
 function scrollSettingsSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const target = document.getElementById(id);
+  if (!target) return;
+  target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+  target.tabIndex = -1;
+  target.focus({preventScroll: true});
 }
 
 type SettingsPaneId =
@@ -757,6 +711,27 @@ export function SettingsPanel({
   const [browserStorageDeleteTarget, setBrowserStorageDeleteTarget] = useState<string | null>(null);
   const [browserStorageClearAll, setBrowserStorageClearAll] = useState(false);
   const [settingsPane, setSettingsPane] = useState<SettingsPaneId>("tab");
+  const [settingsSearchTarget, setSettingsSearchTarget] = useState<string | null>(null);
+  const settingsContentRef = useRef<HTMLDivElement>(null);
+
+  function openSettingsSearchResult(entry: SettingsSearchEntry) {
+    const pane = entry.sectionId ? SETTINGS_SECTION_TO_PANE[entry.sectionId] : undefined;
+    onSettingsTabChange(entry.tab);
+    setSettingsPane(pane ?? "tab");
+    setBrowserStorageQuery("");
+    setSettingsSearchTarget(pane ? "top" : entry.sectionId ?? "top");
+  }
+
+  useEffect(() => {
+    if (!open || !settingsSearchTarget) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (settingsSearchTarget === "top") settingsContentRef.current?.scrollTo({top: 0, behavior: "instant"});
+      else scrollSettingsSection(settingsSearchTarget);
+      setSettingsSearchTarget(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, settingsTab, settingsPane, settingsSearchTarget]);
+
   const [agentRuleCount, setAgentRuleCount] = useState<number | null>(null);
   const [agentRuleCountError, setAgentRuleCountError] = useState(false);
 
@@ -1706,6 +1681,7 @@ export function SettingsPanel({
           <DialogDescription className="text-xs sm:text-sm">
             Manage your workspace in one place.
           </DialogDescription>
+          <SettingsSearch key={String(open)} isHostAdmin={isHostAdmin} onSelect={openSettingsSearchResult} />
         </DialogHeader>
 
         <Tabs value={settingsTab} onValueChange={(tab) => { setSettingsPane("tab"); setBrowserStorageQuery(""); onSettingsTabChange(tab); }} className="min-h-0 flex-1 gap-0 md:grid md:items-stretch md:grid-cols-[13rem_minmax(0,1fr)]">
@@ -1779,7 +1755,7 @@ export function SettingsPanel({
            })}
           </TabsList>
 
-          <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
+          <div ref={settingsContentRef} className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
  {settingsPane === "browser-storage" ? (
  <div
  className="flex h-full min-h-0 flex-col gap-5 px-6 py-6 sm:px-8 sm:py-8"

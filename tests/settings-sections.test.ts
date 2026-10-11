@@ -1,18 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import {SETTINGS_SECTIONS} from "../lib/settings-navigation";
 
 const settingsSource = readFileSync(new URL("../components/settings-panel.tsx", import.meta.url), "utf8");
-
-function parseSettingsSections(source: string) {
-  const block = source.match(/const SETTINGS_SECTIONS[^=]*= \{([\s\S]*?)\n\};/);
-  assert.ok(block, "SETTINGS_SECTIONS is defined");
-  const sections: Record<string, string[]> = {};
-  for (const match of block[1].matchAll(/(\w+): \[([\s\S]*?)\],/g)) {
-    sections[match[1]] = [...match[2].matchAll(/id: "(settings-[^"]+)"/g)].map((item) => item[1]);
-  }
-  return sections;
-}
 
 function headingIdsInTab(source: string, tab: string) {
   const tabStart = source.indexOf(`<TabsContent value="${tab}"`);
@@ -22,7 +13,7 @@ function headingIdsInTab(source: string, tab: string) {
 }
 
 test("settings subsection links match the heading order in each tab", () => {
-  const sections = parseSettingsSections(settingsSource);
+  const sections = Object.fromEntries(Object.entries(SETTINGS_SECTIONS).map(([tab, items]) => [tab, items.map(item => item.id)]));
   assert.deepEqual(sections.general, [
     "settings-subagent-model",
     "settings-token-compression",
