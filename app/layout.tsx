@@ -44,7 +44,7 @@ export default function RootLayout({
       <body className="min-h-dvh bg-background text-foreground">
         <TooltipProvider delayDuration={200}>
           {children}
-          <Toaster theme="dark" position="top-center" richColors />
+          <Toaster theme="dark" richColors />
         </TooltipProvider>
       </body>
     </html>

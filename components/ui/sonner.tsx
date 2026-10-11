@@ -9,7 +9,7 @@ import {
   Loader2Icon,
 } from "lucide-react"
 
-const Toaster = ({ theme = "dark", ...props }: ToasterProps) => {
+const Toaster = ({ theme = "dark", ...props }: Omit<ToasterProps, "position">) => {
   return (
     <Sonner
       theme={theme}
@@ -35,6 +35,7 @@ const Toaster = ({ theme = "dark", ...props }: ToasterProps) => {
         },
       }}
       {...props}
+      position="top-center"
     />
   )
 }

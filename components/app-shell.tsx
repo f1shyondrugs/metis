@@ -3483,7 +3483,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       if (record.chatId) void loadChat(record.chatId);
     };
     if (prefs.toastEnabled) {
-      toast.info(record.title, { id: record.id, description: record.body, position: "top-right", action: record.chatId ? { label: "Open chat", onClick: open } : undefined });
+      toast.info(record.title, { id: record.id, description: record.body, action: record.chatId ? { label: "Open chat", onClick: open } : undefined });
     }
     if (prefs.browserEnabled && "Notification" in window && Notification.permission === "granted") {
       try {
