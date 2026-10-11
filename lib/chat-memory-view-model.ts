@@ -1,3 +1,5 @@
+import type { MemoryScope } from "@/lib/memory-scopes.mjs";
+
 export type WorkspaceMemory = {
  id: string;
  content: string;
@@ -10,7 +12,7 @@ export type ChatMemoryView = {
  label: "Chat Memory" | "Agent Memory";
  incognito: boolean;
  groups: {
-  scope: "chat" | "project" | "global";
+  scope: MemoryScope;
   label: string;
   description: string;
   enabled: boolean;

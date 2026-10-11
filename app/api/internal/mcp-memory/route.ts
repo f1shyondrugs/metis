@@ -1,3 +1,4 @@
+import { availableMemoryScopes, isMemoryScope } from "@/lib/memory-scopes.mjs";
 import { chatMemoryAction } from "@/lib/chat-memory-actions";
 import { createMemory, deleteMemory, getChat, listMemories, updateMemory } from "@/lib/db-store";
 import {
@@ -45,19 +46,17 @@ export async function POST(req: Request) {
   if (chat.incognito) return Response.json({ error: "Memory tools are unavailable in Incognito." }, { status: 403 });
   const project = chat.projectId ? getProject(chat.projectId, userId) : null;
   if (chat.projectId && !project) return Response.json({ error: "Project not found" }, { status: 404 });
-  if (body.scope !== undefined && body.scope !== "project" && body.scope !== "global" && body.scope !== "chat") {
+  if (body.scope !== undefined && !isMemoryScope(body.scope)) {
     return Response.json({ error: "scope must be chat, project or global" }, { status: 400 });
   }
   const scope = body.scope ?? (project ? "project" : "global");
-  if (scope === "chat") return chatMemoryAction(userId, chat.id, action, body);
+  const availableScopes = availableMemoryScopes({hasProject: Boolean(project), includeGlobal: project?.memoryMode !== "project_only"});
+  if (scope === "chat") return chatMemoryAction(userId, chat.id, action, body, availableScopes);
   if (scope === "project" && !project) return Response.json({ error: "No project is active" }, { status: 400 });
   if (scope === "global" && project?.memoryMode === "project_only") {
     return Response.json({ error: "Global memory access is disabled for this project. Use scope project." }, { status: 403 });
   }
   const projectId = scope === "project" ? project?.id : undefined;
-  const availableScopes = project
-    ? project.memoryMode === "project_only" ? ["chat", "project"] : ["chat", "project", "global"]
-    : ["chat", "global"];
   if (action === "access") return Response.json({ scope, availableScopes });
 
   if (action === "list") {
@@ -86,13 +85,13 @@ export async function POST(req: Request) {
       ? updateProjectMemory(projectId, id, patch, userId)
       : updateMemory(id, patch, userId);
     if (!memory) return Response.json({ error: "Memory not found" }, { status: 404 });
-    return Response.json({ scope, memory });
+    return Response.json({ scope, availableScopes, memory });
   }
   if (action === "delete") {
     const id = typeof body.id === "string" ? body.id : "";
     const deleted = projectId ? deleteProjectMemory(projectId, id, userId) : deleteMemory(id, userId);
     if (!deleted) return Response.json({ error: "Memory not found" }, { status: 404 });
-    return Response.json({ ok: true, scope, id });
+    return Response.json({ ok: true, scope, availableScopes, id });
   }
   return Response.json({ error: "Unknown memory action" }, { status: 400 });
 }

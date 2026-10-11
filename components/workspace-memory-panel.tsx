@@ -5,10 +5,11 @@ import {Brain, LoaderCircle, RefreshCw, Search} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
+import {MEMORY_SCOPES} from "@/lib/memory-scopes.mjs";
 import type {ChatMemoryView} from "@/lib/chat-memory-view-model";
 
 type MemoryScope = ChatMemoryView["groups"][number]["scope"];
-const scopes: MemoryScope[] = ["chat", "project", "global"];
+const scopes: readonly MemoryScope[] = MEMORY_SCOPES;
 
 export function WorkspaceMemoryPanel({chatId, label}: {chatId: string; label: ChatMemoryView["label"]}) {
  const [view, setView] = useState<ChatMemoryView | null>(null);

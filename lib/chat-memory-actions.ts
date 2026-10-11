@@ -1,9 +1,10 @@
+import type { MemoryScope } from "@/lib/memory-scopes.mjs";
 import { addLearnedFact } from "@/lib/context-scope";
 import { deleteNote, getNote, listNotes, updateNote } from "@/lib/shared-context";
 
 /** Memory operations for one owned chat; facts never enter the global store. */
-export function chatMemoryAction(ownerId: string | undefined, chatId: string, action: string, body: Record<string, unknown>) {
-  const scopes = { scope: "chat", availableScopes: ["chat"] };
+export function chatMemoryAction(ownerId: string | undefined, chatId: string, action: string, body: Record<string, unknown>, availableScopes: readonly MemoryScope[] = ["chat"]) {
+  const scopes = { scope: "chat", availableScopes };
   if (action === "access") return Response.json(scopes);
   if (action === "list") return Response.json({ ...scopes, memories: listNotes({ ownerId, chatId, scope: "chat" }).filter(note => note.kind === "learned_fact" && note.chatId === chatId) });
   if (action === "add") {
