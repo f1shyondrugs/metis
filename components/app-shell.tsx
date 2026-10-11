@@ -10961,7 +10961,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         <aside
           className={cn(
             "workspace-surface relative flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-l border-border/55 bg-background max-md:absolute max-md:inset-0 max-md:z-30 max-md:!w-full",
-            (workspaceTab === "browser" || workspaceTab === "team") && "max-xl:absolute max-xl:inset-0 max-xl:z-40 max-xl:!w-full max-xl:border-l-0",
+            (workspaceTab === "browser" || workspaceTab === "team" || workspaceTab === "memory") && "max-xl:absolute max-xl:inset-0 max-xl:z-40 max-xl:!w-full max-xl:border-l-0",
             workspaceFullscreen && "fixed inset-[1%] z-50 !w-auto rounded-lg border border-border/70 shadow-xl",
             workspaceOpen ? "workspace-panel-enter" : "workspace-panel-exit",
           )}
