@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { voiceDictionaryPrompt } from "@/lib/voice-dictionary";
+import { completedUploadPath, getCompletedUpload } from "@/lib/file-upload-store";
 import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
@@ -144,7 +145,18 @@ export async function POST(req: Request) {
   }
   const maxDuration = Math.min(MAX_VOICE_DURATION_SECONDS, settings.voiceInput?.maxDurationSeconds || 300);
   const form = await req.formData().catch(() => null);
-  const file = form?.get("file");
+  let file = form?.get("file");
+  const uploadId = form?.get("uploadId");
+  if (!(file instanceof File) && typeof uploadId === "string" && ownerId) {
+    try {
+      const upload = getCompletedUpload(ownerId, uploadId);
+      if (upload.size > MAX_VOICE_BYTES) return Response.json({ error: "Audio file is too large" }, { status: 413 });
+      if (!ALLOWED_AUDIO_MIME_TYPES.has(upload.mimeType)) return Response.json({ error: "Unsupported audio MIME type" }, { status: 415 });
+      file = new File([await readFile(completedUploadPath(ownerId, uploadId))], upload.name, { type: upload.mimeType });
+    } catch {
+      return Response.json({ error: "Recording upload not found or incomplete" }, { status: 400 });
+    }
+  }
   if (!(file instanceof File)) return Response.json({ error: "Audio file is required" }, { status: 400 });
   const chatId = typeof form?.get("chatId") === "string" ? String(form?.get("chatId")).trim() : "";
   if (chatId && !getChat(chatId, ownerId)) return Response.json({ error: "Chat not found" }, { status: 404 });

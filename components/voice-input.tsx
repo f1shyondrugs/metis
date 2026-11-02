@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Mic, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { openSelectedMicrophone } from "@/lib/local-microphone";
+import { transcribeRecording } from "@/lib/voice-upload";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type VoiceInputProps = {
@@ -197,7 +198,6 @@ export function VoiceInput({
     setState("uploading");
     setError("");
     const form = new FormData();
-    form.append("file", blob, `recording-${Date.now()}.webm`);
     form.append("durationSeconds", String(duration));
     if (chatId) form.append("chatId", chatId);
     form.append("provider", provider);
@@ -205,16 +205,9 @@ export function VoiceInput({
     form.append("realtime", String(realtime));
     if (endpoint) form.append("endpoint", endpoint);
     if (connectionId) form.append("connectionId", connectionId);
-    setState("transcribing");
     try {
-      const response = await fetch("/api/voice/transcribe", {
-        method: "POST",
-        headers: { "Idempotency-Key": `${Date.now()}-${Math.random()}` },
-        body: form,
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || typeof body.transcript !== "string") throw new Error(body.error || "Transcription failed.");
-      commitTranscript(body.transcript);
+      const transcript = await transcribeRecording(blob, form, () => setState("transcribing"));
+      commitTranscript(transcript);
     } catch (cause) {
       setState("error");
       setError(cause instanceof Error ? cause.message : "Transcription failed.");

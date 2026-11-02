@@ -4,6 +4,12 @@ All notable Metis AI releases are documented here. Release tags and GitHub
 releases are created locally with `pnpm release`; GitHub Actions does not
 publish releases.
 
+## v1.0.22 — 2026-11-02
+
+- Transfer voice recordings in 512 KiB chunks through the existing authenticated upload API, avoiding HTTP 413 responses from reverse proxies for large recordings.
+- Transcribe the complete reassembled recording while preserving the existing 250 MiB limit, audio validation, account isolation and provider segmentation.
+- Remove temporary uploads after transcription or upload failures and retain the recording for retry.
+
 ## v1.0.21 — 2026-10-28
 
 - Distribute native installers only for Linux, macOS and Windows. Remove the container installer, image build/publishing pipeline and installation instructions.
