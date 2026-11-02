@@ -4,6 +4,12 @@ All notable Metis AI releases are documented here. Release tags and GitHub
 releases are created locally with `pnpm release`; GitHub Actions does not
 publish releases.
 
+## v1.0.23 — 2026-11-02
+
+- Transfer background file uploads in 512 KiB requests so large files pass reverse proxies with a 1 MiB request limit.
+- Share the request-size budget between file and voice uploads. Keep the server's existing chunk acceptance limit for older clients.
+- Preserve progress, retries and resuming from the server-confirmed offset; verify the complete file remains byte-for-byte identical after an interrupted upload.
+
 ## v1.0.22 — 2026-11-02
 
 - Transfer voice recordings in 512 KiB chunks through the existing authenticated upload API, avoiding HTTP 413 responses from reverse proxies for large recordings.

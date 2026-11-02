@@ -1,6 +1,6 @@
 "use client";
 import { createClientId } from "@/lib/client-id";
-import { UPLOAD_CHUNK_BYTES, type UploadedFile } from "@/lib/upload-limits";
+import { UPLOAD_REQUEST_BYTES, type UploadedFile } from "@/lib/upload-limits";
 export type UploadTask = {
   id: string; name: string; size: number; loaded: number; label: string;
   status: "queued" | "uploading" | "finishing" | "completed" | "error" | "cancelled";
@@ -54,7 +54,7 @@ function chunk(task: InternalTask, offset: number) {
     xhr.onerror = () => reject(new Error("Connection interrupted. Retry to continue uploading."));
     xhr.ontimeout = () => reject(new Error("Upload timed out. Retry to continue uploading."));
     xhr.onabort = () => reject(new Error("Upload cancelled"));
-    xhr.send(task.file.slice(offset, offset + UPLOAD_CHUNK_BYTES));
+    xhr.send(task.file.slice(offset, offset + UPLOAD_REQUEST_BYTES));
   });
 }
 async function run(task: InternalTask) {
@@ -72,7 +72,7 @@ async function run(task: InternalTask) {
     while (offset < task.file.size) {
       if ((task.state.status as string) === "cancelled") throw new Error("Upload cancelled");
       await chunk(task, offset);
-      offset = Math.min(task.file.size, offset + UPLOAD_CHUNK_BYTES);
+      offset = Math.min(task.file.size, offset + UPLOAD_REQUEST_BYTES);
       task.state.loaded = offset; publish();
     }
     task.state.status = "finishing"; publish();

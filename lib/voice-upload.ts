@@ -1,5 +1,7 @@
-/** Keep voice requests below common proxy body limits, including multipart overhead. */
-export const VOICE_UPLOAD_CHUNK_BYTES = 512 * 1024;
+import { UPLOAD_REQUEST_BYTES } from "@/lib/upload-limits";
+
+/** Shared request budget for files and recordings. */
+export const VOICE_UPLOAD_CHUNK_BYTES = UPLOAD_REQUEST_BYTES;
 
 async function request(url: string, init: RequestInit) {
   const response = await fetch(url, init);

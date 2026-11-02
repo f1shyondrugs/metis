@@ -14,7 +14,10 @@ export function validateAttachmentSize(size: number, maxBytes: number, name: str
     throw new Error(`File exceeds your ${formatFileBytes(maxBytes)} attachment limit: ${name}. Change it in Settings → General → Attachments.`);
   }
 }
+/** Server acceptance limit; keep existing clients compatible. */
 export const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
+/** Client request size stays below common 1 MiB reverse-proxy limits. */
+export const UPLOAD_REQUEST_BYTES = 512 * 1024;
 export const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
 export type UploadedFile = {
   id: string; name: string; mimeType: string; size: number; kind: "image" | "file";
