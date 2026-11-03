@@ -1,10 +1,10 @@
-import { readFileSync, statSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { internalRunLeaseAuthorized } from "@/lib/internal-run-lease";
 import path from "node:path";
 import { getChat } from "@/lib/db-store";
 import { getUserAgentCwd } from "@/lib/mcp";
 import { resolveAgentPath } from "@/lib/revert";
-import { saveAttachments } from "@/lib/uploads";
+import { chatUploadDir, saveAttachments, saveFileAttachment } from "@/lib/uploads";
 import { registerProvidedFile } from "@/lib/provided-files";
 import { researchReportAttachment } from "@/lib/research-report";
 import type { StoredAttachment } from "@/lib/uploads";
@@ -81,7 +81,9 @@ export async function POST(req: Request) {
   }
   const requestedPath = typeof body.path === "string" ? body.path.trim() : "";
   if (!requestedPath) return Response.json({ error: "path is required" }, { status: 400 });
+  if (req.signal.aborted) return Response.json({ error: "File delivery was cancelled." }, { status: 499 });
 
+  let attachment: StoredAttachment | undefined;
   try {
     const agentCwd = getUserAgentCwd(userId);
     const filePath = resolveAgentPath(requestedPath, agentCwd);
@@ -92,24 +94,24 @@ export async function POST(req: Request) {
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
       return Response.json({ error: "File must be inside the agent workspace." }, { status: 400 });
     }
-    const stat = statSync(resolved);
-    if (!stat.isFile()) return Response.json({ error: "The selected path is not a file." }, { status: 400 });
-
     const name = typeof body.name === "string" && body.name.trim()
       ? body.name.trim()
       : path.basename(resolved);
-    const saved = saveAttachments(chatId, [{
+    attachment = await saveFileAttachment(chatId, resolved, {
       name,
       mimeType: typeof body.mimeType === "string" && body.mimeType.trim()
         ? body.mimeType
         : mimeFromName(name),
-      data: readFileSync(resolved).toString("base64"),
-    }], userId);
-    const attachment = saved.stored[0];
-    if (!attachment) throw new Error("Could not store the file.");
+    }, userId);
+    // Copying is asynchronous: cancellation or a lost run lease must not publish a file.
+    if (req.signal.aborted || !internalRunLeaseAuthorized(req, jobId)) {
+      await unlink(path.join(chatUploadDir(chatId, userId), attachment.storedName));
+      return Response.json({ error: "File delivery was cancelled or the run is no longer active." }, { status: req.signal.aborted ? 499 : 401 });
+    }
     registerProvidedFile(chatId, jobId, userId, attachment);
     return providedFileResponse(chatId, attachment);
   } catch (error) {
+    if (attachment) await unlink(path.join(chatUploadDir(chatId, userId), attachment.storedName)).catch(() => undefined);
     return Response.json(
       { error: error instanceof Error ? error.message : "Could not provide file." },
       { status: 400 },

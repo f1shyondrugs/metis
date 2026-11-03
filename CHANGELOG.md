@@ -4,6 +4,13 @@ All notable Metis AI releases are documented here. Release tags and GitHub
 releases are created locally with `pnpm release`; GitHub Actions does not
 publish releases.
 
+## v1.0.24 — 2026-11-03
+
+- Deliver files created by the agent without converting the complete file to Base64, removing the JavaScript string-size barrier even when Attachments is set to Unlimited.
+- Copy files asynchronously, enforce the account's saved file-size limit before and after storage, and preserve download streaming and range requests.
+- Recheck cancellation and the active run before registering a copied file; remove copies that could not be delivered.
+- Verify 630 MiB and files larger than 1 GiB with a bounded JavaScript heap, protected downloads, independent stored copies and finite account limits.
+
 ## v1.0.23 — 2026-11-02
 
 - Transfer background file uploads in 512 KiB requests so large files pass reverse proxies with a 1 MiB request limit.
