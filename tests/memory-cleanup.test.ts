@@ -199,9 +199,12 @@ test("an IndexedDB connection arriving after a blocked open is closed", async ()
 
 test("50 concurrent session reads create one page and the owner tab cap rejects excess pages", async () => {
   const source = readFileSync(path.join(root, "lib/server-browser.ts"), "utf8");
-  const start = source.indexOf("async function createSession(");
-  const end = source.indexOf("function tabIdFor(", start);
-  const compiled = ts.transpileModule(source.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  // Extract the tested declarations, independent of neighboring exported helpers.
+  const parsed = ts.createSourceFile("server-browser.ts", source, ts.ScriptTarget.ES2022, true);
+  const sessionFunctions = parsed.statements.filter((statement): statement is ts.FunctionDeclaration =>
+    ts.isFunctionDeclaration(statement) && ["createSession", "getSession"].includes(statement.name?.text || ""));
+  assert.equal(sessionFunctions.length, 2, "Session fixture must include both session functions");
+  const compiled = ts.transpileModule(sessionFunctions.map(declaration => declaration.getText(parsed)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
   let created = 0;
   let pageCount = 0;
   const page = {};

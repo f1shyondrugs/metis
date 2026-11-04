@@ -1,10 +1,14 @@
-import { createReadStream, statSync } from "node:fs";
+import { closeSync, createReadStream, fstatSync, type ReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { effectiveFileMime, fileViewKind } from "@/lib/file-types";
+import { openSafeRead } from "@/lib/safe-file-read";
 
 /** One bounded streaming response for every attachment surface, including seeking in media. */
 export function fileResponse(file: string, asset: {name:string;mimeType:string}, req?: Request) {
-  const size = statSync(file).size;
+  let fd:number;try{fd=openSafeRead(file);}catch{return Response.json({error:"File not found"},{status:404});}
+  let stream:ReadStream|undefined,transferred=false;
+  try {
+  const size = fstatSync(fd).size;
   const mime = effectiveFileMime(asset.mimeType,asset.name);
   const kind = fileViewKind(mime,asset.name);
   const inline = ["image","video","audio","pdf"].includes(kind) && mime !== "image/svg+xml";
@@ -32,5 +36,11 @@ export function fileResponse(file: string, asset: {name:string;mimeType:string},
     headers.set("Content-Length",String(end-start+1));
   }
   if (size === 0 || req?.method === "HEAD") return new Response(null,{status,headers});
-  return new Response(Readable.toWeb(createReadStream(file,{start,end})) as ReadableStream,{status,headers});
+  // Supplying fd prevents createReadStream from reopening a mutable pathname.
+  stream=createReadStream(file,{fd,autoClose:true,start,end});
+  const response=new Response(Readable.toWeb(stream) as ReadableStream,{status,headers});
+  transferred=true;return response;
+  }finally{
+    if(!transferred){if(stream)stream.destroy();else closeSync(fd);}
+  }
 }

@@ -14,11 +14,20 @@ Object.assign(process.env, {
 for (const name of ["AI_CHAT_JOB_ID", "AI_CHAT_WORKER_ID", "AI_CHAT_JOB_LEASE_TOKEN"]) delete process.env[name];
 after(() => rmSync(dir, { recursive: true, force: true }));
 
+const require = createRequire(import.meta.url);
+const cursorRuntimePath = require.resolve("../lib/providers/cursor-runtime");
+const cursorRuntime = require(cursorRuntimePath) as typeof import("../lib/providers/cursor-runtime");
+const cursorRuntimeModule = require.cache[cursorRuntimePath]!;
+const originalCursorRuntime = cursorRuntimeModule.exports;
+// Keep one transport boundary object for the cached runner across all cases.
+// Product code still uses the isolated adapter; no SDK process or account is used.
+const cursorBoundary = { ...cursorRuntime };
+cursorRuntimeModule.exports = cursorBoundary;
+after(() => { cursorRuntimeModule.exports = originalCursorRuntime; });
+
 for (const incognito of [false, true]) for (const phase of ["create", "send", "send-with-tool", "result", "usage-reset"] as const) {
   test(`real Cursor runner preserves the task through ${phase} failure (incognito ${incognito})`, async t => {
-    const require = createRequire(import.meta.url);
-    const sdk = require("@cursor/sdk") as typeof import("@cursor/sdk");
-    // Stub only transport configuration and SDK calls; keep the real runner/store.
+    // Stub only transport configuration and the isolated Cursor adapter; keep the real runner/store.
     const mcpPath = require.resolve("../lib/mcp");
     const mcp = require(mcpPath);
     const cached = require.cache[mcpPath]!;
@@ -81,16 +90,22 @@ for (const incognito of [false, true]) for (const phase of ["create", "send", "s
       },
       async [Symbol.asyncDispose]() { disposals++; },
     });
-    t.mock.method(sdk.Agent, "create", async () => {
-      creates++;
-      if (creates === 1 && phase === "create") throw new Error("Model is under capacity");
-      return makeAgent() as unknown as Awaited<ReturnType<typeof sdk.Agent.create>>;
-    });
-    t.mock.method(sdk.Agent, "resume", async (agentId: string) => {
-      assert.equal(agentId, "fixture-session");
-      assert.equal(disposals, 1, "the failed attempt must finish disposal before retry");
-      resumes++;
-      return makeAgent() as unknown as Awaited<ReturnType<typeof sdk.Agent.resume>>;
+    t.mock.method(cursorBoundary, "isolatedCursor", (owner: string, workspace: string) => {
+      assert.equal(owner, userId, "every retry keeps the same owner isolation boundary");
+      assert.ok(workspace.startsWith(dir), "the isolated adapter uses only the test workspace");
+      return {
+        async create() {
+          creates++;
+          if (creates === 1 && phase === "create") throw new Error("Model is under capacity");
+          return makeAgent();
+        },
+        async resume(agentId: string) {
+          assert.equal(agentId, "fixture-session");
+          assert.equal(disposals, 1, "the failed attempt must finish disposal before retry");
+          resumes++;
+          return makeAgent();
+        },
+      } as unknown as ReturnType<typeof cursorRuntime.isolatedCursor>;
     });
     await runner.runQueuedJob(job);
     if (phase === "usage-reset") {

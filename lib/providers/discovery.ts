@@ -9,6 +9,7 @@ import { createCodexHome } from "@/lib/providers/codex-home";
 import { codexCachedContextWindow } from "@/lib/providers/codex-context";
 import { codexCliExecutable, codexCliVersion } from "@/lib/providers/codex-cli";
 import { providerProcessEnv } from "@/lib/providers/process-env";
+import {spawnNative,withNativeRuntime} from "./native-sandbox";
 import { ollamaBaseUrls, ollamaModelDetails } from "@/lib/providers/ollama";
 import {
   listProviderModels,
@@ -342,13 +343,16 @@ export function codexModelDiscoveryUrl(clientVersion = codexClientVersion()) {
 }
 
 async function discoverCodexModelsViaAppServer(connection: ProviderConnectionWithSecret): Promise<DiscoveredModel[]> {
+  return withNativeRuntime(connection.ownerId,undefined,()=>discoverIsolatedCodexModels(connection));
+}
+async function discoverIsolatedCodexModels(connection: ProviderConnectionWithSecret): Promise<DiscoveredModel[]> {
   if (connection.authType !== "oauth" && connection.authType !== "account") {
     throw new Error("Codex app-server discovery requires account or OAuth authentication.");
   }
   const codexHome = await createCodexHome(connection.secret, connection.authType);
   if (!codexHome) throw new Error("Codex credentials are unavailable.");
   const executable = codexCliExecutable();
-  const child = spawn(executable, ["app-server", "--stdio"], {
+  const child = spawnNative(executable, ["app-server", "--stdio"], {
     cwd: config.root,
     env: providerProcessEnv({ CODEX_HOME: codexHome.home }),
     stdio: ["pipe", "pipe", "pipe"],

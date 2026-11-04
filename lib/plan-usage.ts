@@ -16,6 +16,8 @@ import { readCodexOAuthCredentials } from "@/lib/providers/discovery";
 import type { UsageProvider, UsageSnapshot, UsageWindow } from "@/lib/usage-display";
 import { parseCursorUsageBody } from "@/lib/usage-display";
 import { isHostAdmin } from "@/lib/user-access";
+import {nativeTemporaryHome,spawnNative,withNativeRuntime} from "@/lib/providers/native-sandbox";
+import {providerProcessEnv} from "@/lib/providers/process-env";
 
 export type { UsageProvider, UsageSnapshot, UsageWindow };
 
@@ -198,7 +200,7 @@ function createCodexUsageHome(ownerId?: string): CodexUsageHome | null {
       return null;
     }
 
-    const home = mkdtempSync(path.join(tmpdir(), "metis-codex-usage-"));
+    const home = nativeTemporaryHome("codex-usage-");
     writeFileSync(path.join(home, "auth.json"), `${JSON.stringify(auth)}\n`, { mode: 0o600 });
     return {
       home,
@@ -214,6 +216,10 @@ function createCodexUsageHome(ownerId?: string): CodexUsageHome | null {
 }
 
 async function fetchCodexUsage(ownerId?: string): Promise<UsageProvider> {
+  if(!ownerId)return fetchIsolatedCodexUsage(ownerId);
+  return withNativeRuntime(ownerId,undefined,()=>fetchIsolatedCodexUsage(ownerId));
+}
+async function fetchIsolatedCodexUsage(ownerId?: string): Promise<UsageProvider> {
   const connection = ownerId ? findActiveConnection(ownerId, "codex") : null;
   const base: UsageProvider = {
     key: "codex",
@@ -228,7 +234,7 @@ async function fetchCodexUsage(ownerId?: string): Promise<UsageProvider> {
 
   return new Promise<UsageProvider>((resolve) => {
     let settled = false;
-    let child: ReturnType<typeof execFile> | null = null;
+    let child: ReturnType<typeof spawnNative> | null = null;
     const done = (provider: UsageProvider) => {
       if (settled) return;
       settled = true;
@@ -238,19 +244,14 @@ async function fetchCodexUsage(ownerId?: string): Promise<UsageProvider> {
     };
     const timer = setTimeout(() => done({ ...base, status: "error", error: "timeout" }), 8_000);
     try {
-      child = execFile(
+      child = spawnNative(
         CODEX_BIN,
         ["app-server", "--stdio"],
         {
-          env: {
-            ...process.env,
+          env: providerProcessEnv({
             ...(usageHome.apiKey ? { CODEX_API_KEY: usageHome.apiKey } : {}),
             CODEX_HOME: usageHome.home,
-          },
-          timeout: 7_500,
-        },
-        () => {
-          /* handled via stdout below */
+          }),
         },
       );
       if (!child.stdout || !child.stdin) {

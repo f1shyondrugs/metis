@@ -1,5 +1,4 @@
-import { closeSync, openSync, readSync, readdirSync, statSync } from "node:fs";
-import path from "node:path";
+import {readCodexThreadRolloutTail} from "./codex-context";
 import { isProviderUsageLimit, providerErrorWithCause, providerRateLimit } from "@/lib/provider-rate-limit";
 
 /** Native telemetry only: no assumed window size, plan, model family or timezone. */
@@ -31,22 +30,12 @@ export function codexLimitErrorFromRollout(error: unknown, home: string, threadI
   if (!isProviderUsageLimit(error) || providerRateLimit(error) || !/^[a-f0-9-]{36}$/i.test(threadId)) {
     return providerErrorWithCause(message, error);
   }
-  let fd: number | undefined;
   try {
-    const root = path.join(home, "sessions");
-    const file = readdirSync(root, { recursive: true, encoding: "utf8" })
-      .find(entry => path.basename(entry).endsWith(`-${threadId}.jsonl`));
-    if (file) {
-      const filename = path.join(root, file);
-      const size = statSync(filename).size;
-      const length = Math.min(size, 1024 * 1024);
-      const buffer = Buffer.alloc(length);
-      fd = openSync(filename, "r");
-      const bytes = readSync(fd, buffer, 0, length, size - length);
-      const resetAt = codexResetFromRollout(buffer.subarray(0, bytes).toString("utf8"), turnStartedAt);
+    const tail=readCodexThreadRolloutTail(home,threadId);
+    if (tail!==undefined) {
+      const resetAt = codexResetFromRollout(tail, turnStartedAt);
       if (resetAt) return providerErrorWithCause(message, { code: "rate_limit_exceeded", resetAt, cause: error });
     }
   } catch { /* Missing telemetry leaves the reset unknown. */ }
-  finally { if (fd !== undefined) closeSync(fd); }
   return providerErrorWithCause(message, error);
 }

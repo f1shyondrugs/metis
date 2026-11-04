@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, existsSync, ftruncateSync, mkdtempSync, openSync, readdirSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -153,6 +153,34 @@ test("Unlimited provides 630 MiB and files above 1 GiB without file-sized memory
     assert.equal(ranged.headers.get("content-range"), "bytes " + (size - tail.length) + "-" + (size - 1) + "/" + size);
     assert.deepEqual(Buffer.from(await ranged.arrayBuffer()), tail);
   }
+});
+
+test("file delivery rejects workspace and upload-directory links to private files", { skip: process.platform !== "linux" }, async () => {
+  const f = await fixture();
+  const { getUserAgentCwd } = await import("../lib/mcp");
+  const { chatUploadDir } = await import("../lib/uploads");
+  const { getChat } = await import("../lib/db-store");
+  const { POST } = await import("../app/api/internal/mcp-file/route");
+  const workspace = getUserAgentCwd(f.owner);
+  const foreign = path.join(root, "private-" + randomUUID());
+  mkdirSync(foreign);
+  const secret = path.join(foreign, "private.txt");
+  writeFileSync(secret, "PRIVATE-FILE");
+  const linkedFile = path.join(workspace, "linked.txt");
+  symlinkSync(secret, linkedFile);
+  assert.equal((await POST(provideRequest(f, linkedFile))).status, 400);
+  const linkedDirectory = path.join(workspace, "linked-directory");
+  symlinkSync(foreign, linkedDirectory);
+  assert.equal((await POST(provideRequest(f, path.join(linkedDirectory, "private.txt")))).status, 400);
+  const source = path.join(workspace, "own.txt");
+  writeFileSync(source, "OWN-FILE");
+  const uploads = chatUploadDir(f.chat.id, f.owner);
+  mkdirSync(path.dirname(uploads), { recursive: true });
+  symlinkSync(foreign, uploads);
+  assert.equal((await POST(provideRequest(f, source))).status, 400);
+  assert.equal(getChat(f.chat.id, f.owner)!.messages[0].attachments, undefined);
+  assert.deepEqual(readdirSync(foreign), ["private.txt"]);
+  assert.equal(readFileSync(secret, "utf8"), "PRIVATE-FILE");
 });
 
 test("provided files respect saved finite limits and remove files after failed registration or cancellation", async () => {

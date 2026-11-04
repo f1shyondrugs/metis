@@ -1,6 +1,8 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {nativeRuntimeScope,nativeTemporaryHome} from "./native-sandbox";
+import {ensureSafeDirectory,writeSafeFile} from "@/lib/safe-file-read";
 
 export async function createCodexHome(
   secret: string | undefined,
@@ -17,8 +19,8 @@ export async function createCodexHome(
   if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
     throw new Error("Codex credentials are not a valid JSON object.");
   }
-  const home = persistentHome || (await mkdtemp(path.join(os.tmpdir(), "ai-chat-codex-")));
-  await mkdir(home, { recursive: true, mode: 0o700 });
+  const home = persistentHome || (nativeRuntimeScope()?nativeTemporaryHome("codex-"):(await mkdtemp(path.join(os.tmpdir(), "ai-chat-codex-"))));
+  ensureSafeDirectory(home);
   const authFile = path.join(home, "auth.json");
   const authObject = authType === "oauth"
     ? (() => {
@@ -45,6 +47,6 @@ export async function createCodexHome(
         };
       })()
     : auth;
-  await writeFile(authFile, `${JSON.stringify(authObject)}\n`, { encoding: "utf8", mode: 0o600 });
+  writeSafeFile(authFile, `${JSON.stringify(authObject)}\n`);
   return { home, authFile, temporary: !persistentHome };
 }

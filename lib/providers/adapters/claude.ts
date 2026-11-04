@@ -8,6 +8,7 @@ import {
 } from "@/lib/db-approvals";
 import { getChat, updateChat } from "@/lib/db-store";
 import { getMcpServers, getUserAgentCwd } from "@/lib/mcp";
+import {assertNativeMcpServers,nativeSdkEnvironment,spawnNative} from "../native-sandbox";
 import { getProviderSessionBinding, updateProviderSessionBinding } from "@/lib/providers/session-bindings";
 import { resolveClaudeAgentModelId } from "@/lib/providers/claude-context";
 import {
@@ -201,9 +202,6 @@ function claudeOAuthEnv(secret?: string): Record<string, string> {
 async function runClaude(context: ProviderContext): Promise<ProviderResult> {
   const { query } = await import("@anthropic-ai/claude-agent-sdk");
   const abortController = new AbortController();
-  const cancellationWatcher = setInterval(() => {
-    if (context.signal.aborted) abortController.abort();
-  }, 100);
   const sessionBinding = getProviderSessionBinding(
     context.chat,
     "claude-agent",
@@ -220,8 +218,11 @@ async function runClaude(context: ProviderContext): Promise<ProviderResult> {
     process.geteuid?.() ?? process.getuid?.(),
   );
   const modelParams = effectiveModelParams(context.chat, context.job);
-  const mcpServers = claudeMcpServers(getMcpServers(providerMcpContext(context)));
+  const nativeMcp=getMcpServers(providerMcpContext(context));assertNativeMcpServers(nativeMcp);
+  const mcpServers = claudeMcpServers(nativeMcp);
+  const nativeEnv=inheritedEnv({...claudeOAuthEnv(context.connection.secret),CLAUDE_AGENT_SDK_CLIENT_APP:"metis-ai"});
   const options = {
+    spawnClaudeCodeProcess:(options:import("@anthropic-ai/claude-agent-sdk").SpawnOptions)=>spawnNative(options.command,options.args,{cwd:options.cwd,env:nativeSdkEnvironment(options.env,nativeEnv),signal:options.signal,stdio:["pipe","pipe","pipe"]}),
     cwd: agentCwd,
     model: resolveClaudeAgentModelId(context.modelId, modelParams),
     // Disable Claude Code builtins so Metis MCP is the sole tool surface.
@@ -296,10 +297,7 @@ async function runClaude(context: ProviderContext): Promise<ProviderResult> {
         }
       : {}),
     ...(previousId ? { resume: previousId } : {}),
-    env: inheritedEnv({
-      ...claudeOAuthEnv(context.connection.secret),
-      CLAUDE_AGENT_SDK_CLIENT_APP: "metis-ai",
-    }),
+    env: nativeEnv,
     abortController,
     mcpServers,
     systemPrompt: providerPrompt(
@@ -319,6 +317,9 @@ async function runClaude(context: ProviderContext): Promise<ProviderResult> {
       : nativeRecoveryPrompt(context),
     options,
   });
+  const cancellationWatcher = setInterval(() => {
+    if (context.signal.aborted) abortController.abort();
+  }, 100);
   try {
     for await (const message of conversation) {
       const record = asRecord(message);

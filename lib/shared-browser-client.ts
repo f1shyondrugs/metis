@@ -1,12 +1,20 @@
 import { config } from "@/lib/config";
 import { getGlobalModelSettings } from "@/lib/db-store";
 import { featureFlags } from "@/lib/feature-flags";
+import { signBrowserUserAction } from "@/lib/browser-user-capability";
+import { ProtectedLoginError } from "@/lib/protected-login-errors";
 
 export type SharedBrowserAction = {
   action: string;
+  requestId?: string;
+  password?: string;
+  replace?: boolean;
   tabId?: string;
   url?: string;
   selector?: string;
+  usernameSelector?: string;
+  emailSelector?: string;
+  fields?:Array<"password"|"username"|"email">;
   text?: string;
   key?: string;
   value?: string;
@@ -28,6 +36,8 @@ export type SharedBrowserAction = {
 
 export type SharedBrowserResult = {
   sessionId: string;
+  secureInput?: { requestId: string; origin: string; expiresAt: string };
+  secureInputFilled?: boolean;
   tabId: string;
   activeTabId: string;
   url: string;
@@ -61,6 +71,8 @@ export async function performSharedBrowserAction(
     "X-AI-Chat-User-Id": userId,
   };
   headers.Authorization = `Bearer ${configuredToken}`;
+  headers["X-Metis-Browser-App-Capability"] = signBrowserUserAction(userId, chatId, action);
+  if (action.source === "user") headers["X-Metis-Browser-User-Capability"] = signBrowserUserAction(userId, chatId, action);
 
   let response: Response;
   try {
@@ -75,16 +87,21 @@ export async function performSharedBrowserAction(
       },
     );
   } catch (error) {
+    if (action.action === "secure_input_prepare") throw new ProtectedLoginError();
     throw new Error(
       error instanceof Error && error.name === "TimeoutError"
         ? "Browser action timed out"
         : "Browser engine is unreachable",
     );
   }
-  const data = (await response.json().catch(() => ({}))) as
+  const rawData: unknown = await response.json().catch(() => ({}));
+  const data = (rawData && typeof rawData === "object" ? rawData : {}) as
     | SharedBrowserResult
-    | { error?: string };
+    | { error?: string; code?: unknown };
   if (!response.ok) {
+    if (action.action === "secure_input_prepare" || "code" in data) {
+      throw new ProtectedLoginError("code" in data ? data.code : undefined);
+    }
     throw new Error(
       "error" in data && data.error
         ? data.error

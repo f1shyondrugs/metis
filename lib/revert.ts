@@ -12,6 +12,7 @@ import {
 import path from "node:path";
 import type { ChatMessage, ToolPart } from "@/lib/store";
 import { editedFileFromTool } from "@/lib/edited-files";
+import {readSafeFile,ensureSafeDirectory,writeSafeFile,unlinkSafeFile} from "@/lib/safe-file-read";
 
 const MAX_ROLLBACK_BYTES = 10 * 1024 * 1024;
 
@@ -49,7 +50,7 @@ function readCurrent(filePath: string): string | undefined {
   try {
     const stat = statSync(filePath);
     if (!stat.isFile() || stat.size > MAX_ROLLBACK_BYTES) return undefined;
-    return readFileSync(filePath, "utf8");
+    return readSafeFile(filePath,MAX_ROLLBACK_BYTES).toString("utf8");
   } catch {
     return undefined;
   }
@@ -59,11 +60,8 @@ function writeRollback(filePath: string, content: string, mode?: number) {
   if (Buffer.byteLength(content, "utf8") > MAX_ROLLBACK_BYTES) {
     throw new Error("rollback content exceeds size limit");
   }
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  const temp = `${filePath}.${process.pid}.${Date.now()}.revert`;
-  writeFileSync(temp, content, { encoding: "utf8", mode: mode ?? 0o644 });
-  if (mode !== undefined) chmodSync(temp, mode);
-  renameSync(temp, filePath);
+  ensureSafeDirectory(path.dirname(filePath),{mode:0o755});
+  writeSafeFile(filePath,content,{mode:(mode??0o644)&0o777});
 }
 
 function recoverBeforeFromEditInput(tool: ToolPart, current: string | undefined, after: string | undefined) {
@@ -118,7 +116,7 @@ export function revertEditTool(tool: ToolPart, agentCwd: string): RevertFileResu
       writeRollback(filePath, before, mode);
       return { status: "reverted", path: displayPath, action: "write" };
     }
-    if (existsSync(filePath)) unlinkSync(filePath);
+    if (existsSync(filePath)) unlinkSafeFile(filePath);
     return { status: "reverted", path: displayPath, action: "delete" };
   } catch (error) {
     return {
