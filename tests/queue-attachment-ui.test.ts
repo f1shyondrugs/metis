@@ -4,7 +4,7 @@ import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import { mergeQueuedFollowUps } from "../lib/composer-send";
-import { updateChatQueue } from "../lib/queue-client";
+import { saveQueuedFollowUps, updateChatQueue } from "../lib/queue-client";
 
 const file = ts.createSourceFile("app-shell.tsx", readFileSync("components/app-shell.tsx", "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const names = ["queueCurrentMessage", "persistQueuedFollowUps", "applyServerQueuedMessages"];
@@ -22,17 +22,17 @@ function fixture() {
   const context: any = {
     activeChatId: "chat", activeChatIdRef: { current: "chat" }, loadingChatId: null,
     queuedState: { chatId: "chat", messages: queue }, queuedMessages: queue,
-    stateRef: { current: { chatId: "chat", queueChatId: "chat", messages: [] } },
+    stateRef: { current: { chatId: "chat", queueChatId: "chat", messages: [], queuedMessages: queue } },
     queuedSendRef: { current: new Set() }, removedIdsFor: () => new Set(),
     referenceText: "", references: [], restoredAttachments: [],
     getCompletedUploadResult: (id: string) => id === "task" ? { id: "server-upload" } : undefined,
     fetch: async (_url: string, request: RequestInit) => { saved.push(JSON.parse(String(request.body))); return Response.json({}); },
-    setQueuedMessages: (updater: (current: Item[]) => Item[]) => { queue = updater(queue); context.queuedMessages = queue; context.queuedState.messages = queue; },
-    setQueuedState: (updater: any) => { context.queuedState = updater(context.queuedState); queue = context.queuedState.messages; context.queuedMessages = queue; },
+    setQueuedMessages: (update: Item[] | ((current: Item[]) => Item[])) => { queue = typeof update === "function" ? update(queue) : update; context.queuedMessages = queue; context.queuedState.messages = queue; },
+    setQueuedState: (updater: any) => { context.queuedState = updater(context.queuedState); queue = context.queuedState.messages; context.queuedMessages = queue; context.stateRef.current.queuedMessages = queue; },
     setInputGuarded: () => { cleared++; }, setComposerSyncNonce: () => {}, setReferenceText: () => {},
     setReferences: () => {}, clearPendingFiles: () => {}, setRestoredAttachments: () => {},
     fileInputRef: { current: null }, toast: { error: (s: string) => errors.push(s) },
-    mergeQueuedFollowUps, updateChatQueue,
+    mergeQueuedFollowUps, saveQueuedFollowUps, updateChatQueue,
   };
   const methods = vm.runInNewContext(js + "; ({queueCurrentMessage, persistQueuedFollowUps, applyServerQueuedMessages})", context);
   return { context, saved, errors, queue: () => queue, cleared: () => cleared, ...methods };

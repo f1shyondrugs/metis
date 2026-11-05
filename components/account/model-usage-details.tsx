@@ -33,12 +33,12 @@ function Distribution({dimension,buckets,requests}: {dimension:keyof UsageConfig
       {known.map(bucket=><li key={bucket.value} className="text-xs">
         <div className="flex items-center justify-between gap-3">
           <span className="min-w-0 truncate" title={bucketLabel(dimension,bucket.value)}>{bucketLabel(dimension,bucket.value)}</span>
-          <span className="shrink-0 tabular-nums text-muted-foreground">{bucket.requests.toLocaleString()} · {Math.round(bucket.requests/requests*100)}%</span>
+          <span className="shrink-0 tabular-nums text-muted-foreground">{bucket.requests.toLocaleString("en")} · {Math.round(bucket.requests/requests*100)}%</span>
         </div>
         <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted"><div className="usage-distribution-fill h-full bg-foreground/60" style={{width:bucket.requests/requests*100+"%"}} /></div>
       </li>)}
     </ul>:<p className="mt-3 text-xs text-muted-foreground">No recorded settings.</p>}
-    {unknown ? <p className="mt-2 text-[11px] text-muted-foreground">{unknown.toLocaleString()} not recorded</p>:null}
+    {unknown ? <p className="mt-2 text-[11px] text-muted-foreground">{unknown.toLocaleString("en")} not recorded</p>:null}
   </div>;
 }
 
@@ -88,7 +88,7 @@ export function ModelUsageDetails({model,from,to,costMode="reported",tokenMetric
   if(!details)return <p role="status" className="py-8 text-sm text-muted-foreground">Loading model details…</p>;
   return <section aria-label={model.modelId+" usage details"} className="min-w-0 space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h3 className="text-sm font-medium">Model activity</h3><p className="mt-1 text-[11px] text-muted-foreground">{from} — {to} · UTC · {details.requests.toLocaleString()} runs</p></div>
+      <div><h3 className="text-sm font-medium">Model activity</h3><p className="mt-1 text-[11px] text-muted-foreground">{from} — {to} · UTC · {details.requests.toLocaleString("en")} runs</p></div>
       <select aria-label={"Chart metric for "+model.modelId} value={activeMetric} onChange={event=>setMetric(event.target.value as Metric)} className="h-10 max-w-full rounded-lg border border-border bg-background px-3 text-xs">
         {(Object.keys(labels) as Metric[]).filter(key=>costMode!=="hidden" || key!=="cost").map(key=><option key={key} value={key}>{key==="cost"?usageCostLabel(costMode):labels[key]}</option>)}
       </select>
@@ -99,7 +99,7 @@ export function ModelUsageDetails({model,from,to,costMode="reported",tokenMetric
           <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="3 5" opacity={0.5}/>
           <XAxis dataKey="date" tickFormatter={date=>new Date(date).toLocaleDateString("en",{month:"short",day:"numeric",timeZone:"UTC"})} minTickGap={32} tick={{fill:"var(--muted-foreground)",fontSize:10}} tickLine={false} axisLine={false}/>
           <YAxis width={40} allowDecimals={activeMetric==="tokens" || activeMetric==="cost"} tickFormatter={value=>activeMetric==="cost"?"$"+compact.format(value):compact.format(value)} tick={{fill:"var(--muted-foreground)",fontSize:10}} tickLine={false} axisLine={false}/>
-          <Tooltip contentStyle={{background:"var(--popover)",border:"1px solid var(--border)",borderRadius:8,fontSize:12,color:"var(--foreground)"}} formatter={value=>activeMetric==="cost"?money.format(Number(value)):Number(value).toLocaleString()} />
+          <Tooltip contentStyle={{background:"var(--popover)",border:"1px solid var(--border)",borderRadius:8,fontSize:12,color:"var(--foreground)"}} formatter={value=>activeMetric==="cost"?money.format(Number(value)):Number(value).toLocaleString("en")} />
           {chart.series.length>1 ? <Legend wrapperStyle={{fontSize:10}} formatter={value=><span className="text-muted-foreground">{value}</span>} iconType="circle" iconSize={6}/>:null}
           {chart.series.map((series,index)=><Bar key={series.key} dataKey={series.key} name={series.label} stackId="usage" fill={colors[index]} maxBarSize={18} {...motion}/>)}
         </BarChart>

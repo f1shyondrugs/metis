@@ -81,7 +81,7 @@ export async function POST(req: Request) {
   }
   const answers = outcome.answers;
   const resolved = getPendingQuestion(pending.questionId, userId);
-  if (!resolved || resolved.status !== "answered") {
+  if (!resolved || resolved.status !== "answered" && !resolved.cancelled) {
     const nextJobStatus = resolved?.status === "cancelled" ? "cancelled" : "interrupted";
     const currentJob = getJob(jobId);
     if (currentJob && ["queued", "running", "switching", "waiting_input", "waiting_for_user"].includes(currentJob.status)) {
@@ -100,9 +100,11 @@ export async function POST(req: Request) {
     appendRunEvent(jobId, chatId, userId, "status", { status: resolved?.status || "interrupted", questionId: pending.questionId });
     throw new Error(resolved?.status === "expired" ? "The user question expired." : "The user question was cancelled.");
   }
+  // A concurrent Stop or expired lease always wins over a late form response.
+  if (!internalRunLeaseAuthorized(req, jobId)) return new Response(null, { status: 499 });
   updateJob(jobId, { status: "running" });
   updateChat(chatId, { runStatus: "running", pendingQuestion: null }, userId);
-  return Response.json({ questionId: pending.questionId, answers, values: resolved.values, summary: resolved.summary });
+  return Response.json({ questionId: pending.questionId, answers, values: resolved.values, summary: resolved.summary, ...(resolved.cancelled ? { status: "cancelled", cancelled: true } : {}) });
 }
 
 // Other MCP calls use this gate before executing, including after a disconnect.

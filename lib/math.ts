@@ -8,6 +8,23 @@ function looksLikeLatex(inner: string): boolean {
   return LATEX_HINT.test(trimmed);
 }
 
+/** Continuation prefix for a formula inside a Markdown list or blockquote. */
+function mathContinuationPrefix(content: string, offset: number): string {
+  const lineStart = content.lastIndexOf("\n", offset - 1) + 1;
+  const before = content.slice(lineStart, offset);
+  const match = before.match(/^([ \t]*(?:>[ \t]*)*)(?:([-+*]|\d+[.)])([ \t]+))?$/);
+  if (!match) return "";
+  return match[1] + (match[2] ? " ".repeat(match[2].length + match[3].length) : "");
+}
+
+/** The opener's prefix already precedes the replacement; repeat it on later lines. */
+function displayMath(body: string, prefix: string): string {
+  const inner = body.split("\n")
+    .map(line => prefix && line.startsWith(prefix) ? line.slice(prefix.length) : line)
+    .join("\n").trim();
+  return "$$\n" + inner.split("\n").map(line => prefix + line).join("\n") + "\n" + prefix + "$$";
+}
+
 /**
  * Bracket display-math `[ ... ]` with LaTeX hints.
  * Multiline; opener at line start; closing `]` may be on its own line.
@@ -77,7 +94,7 @@ function convertBracketMath(content: string): string {
       continue;
     }
 
-    out.push(`${lead}$$\n${inner.trim()}\n$$`);
+    out.push(lead + displayMath(inner, lead));
     i = closeIdx + 1;
   }
 
@@ -94,11 +111,25 @@ function convertBeginEndBlocks(content: string): string {
         /(^|\n)([ \t]*)\\begin\{([a-zA-Z*]+)\}([\s\S]*?)\\end\{\3\}(?=[ \t]*(?:\n|$))/g,
         (_full, lead: string, indent: string, env: string, body: string) => {
           const block = `\\begin{${env}}${body}\\end{${env}}`;
-          return `${lead}${indent}$$\n${block.trim()}\n$$`;
+          return lead + indent + displayMath(block, indent);
         },
       );
     })
     .join("$$");
+}
+
+/** Whole-line $$...$$ is display math, including inside lists and quotes. */
+function convertSingleLineDisplay(content:string):string{
+  let fence="",size=0;
+  return content.split("\n").map(line=>{
+    const marker=/^[ \t]*(?:>[ \t]*)*(\x60{3,}|~{3,})/.exec(line);
+    if(marker){if(!fence){fence=marker[1][0];size=marker[1].length;}else if(marker[1][0]===fence&&marker[1].length>=size)fence="";return line;}
+    if(fence)return line;
+    const match=/^([ \t]*(?:>[ \t]*)*(?:(?:[-+*]|\d+[.)])[ \t]+)?)\$\$(.+?)\$\$[ \t]*\r?$/.exec(line);
+    if(!match)return line;
+    const prefix=match[1].replace(/([-+*]|\d+[.)])[ \t]+$/,value=>" ".repeat(value.length));
+    return match[1]+displayMath(match[2],prefix)+(line.endsWith("\r")?"\r":"");
+  }).join("\n");
 }
 
 /** Normalize common LaTeX delimiters to remark-math / KaTeX form. */
@@ -106,12 +137,12 @@ export function normalizeMath(content: string): string {
   if (!content) return content;
   let out = content;
 
-  out = out.replace(/```math\s*\n([\s\S]*?)```/gi, (_m, body: string) => {
-    return `$$\n${String(body).trim()}\n$$`;
+  out = out.replace(/```math\s*\n([\s\S]*?)```/gi, (_m, body: string, offset: number, source: string) => {
+    return displayMath(body, mathContinuationPrefix(source, offset));
   });
 
-  out = out.replace(/\\\[([\s\S]*?)\\\]/g, (_m, body: string) => {
-    return `$$\n${String(body).trim()}\n$$`;
+  out = out.replace(/\\\[([\s\S]*?)\\\]/g, (_m, body: string, offset: number, source: string) => {
+    return displayMath(body, mathContinuationPrefix(source, offset));
   });
 
   out = out.replace(/\\\(([\s\S]*?)\\\)/g, (_m, body: string) => {
@@ -120,6 +151,7 @@ export function normalizeMath(content: string): string {
 
   out = convertBracketMath(out);
   out = convertBeginEndBlocks(out);
+  out = convertSingleLineDisplay(out);
 
   return out;
 }

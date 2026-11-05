@@ -28,17 +28,20 @@ before(async () => {
     {id:"edited",name:"edit_file",status:"completed",editedFile:{path:"/fixture/report.md",target:"server",additions:1,deletions:0}},
     {id:"duplicate",name:"edit_file",status:"completed",path:"/fixture/report.md",result:"Updated"},
     {id:"read",name:"read_file",status:"completed",input:JSON.stringify({path:"/fixture/instructions.txt"}),result:"Read"},
+    ...Array.from({length:100},(_,n)=>({id:"saturated-"+n,name:"read_file",status:"completed" as const,input:JSON.stringify({path:"/fixture/overload-"+n+".md"})})),
   ]}];
   db.saveChat(chat);
   notes.createNote({ownerId:owner,chatId:chat.id,scope:"chat",title:"Straße März",content:"Launch checklist"});
-  notes.createNote({ownerId:owner,title:"Standalone note",content:"No chat required"});
+  const parent=notes.createNote({ownerId:owner,title:"Standalone note",content:"No chat required"});
+  const child=notes.createNote({ownerId:owner,parentId:parent.id,title:"Release folder",content:"Child note"});
+  notes.createNote({ownerId:owner,parentId:child.id,title:"Nested checklist",content:"Deeply nested note"});
   notes.createNote({ownerId:owner,chatId:chat.id,scope:"chat",kind:"learned_fact",title:"Remembered context",content:"A scoped remembered fact"});
   const privateChat=db.createChat("Private foreign",undefined,foreign);
   notes.createNote({ownerId:foreign,chatId:privateChat.id,scope:"chat",title:"FOREIGN_SECRET",content:"FOREIGN_SECRET"});
 });
 after(()=>{modules[3].getDatabase().close();rmSync(root,{recursive:true,force:true});});
-async function get(kind?:string,q="",session=token,current=chatId) {
-  const query=new URLSearchParams({q,chatId:current}); if(kind)query.set("kind",kind);
+async function get(kind?:string,q="",session=token,current=chatId,kinds?:string) {
+  const query=new URLSearchParams({q,chatId:current}); if(kind)query.set("kind",kind); if(kinds)query.set("kinds",kinds);
   for(let attempt=0;attempt<100;attempt++){
     const response=await modules[4].GET(new Request("http://localhost/api/references?"+query,{headers:session?{cookie:"ai_chat_auth="+session}:{}}));
     if(!response.ok || !(await response.clone().json()).indexing)return response;
@@ -46,6 +49,35 @@ async function get(kind?:string,q="",session=token,current=chatId) {
   }
   throw new Error("Reference indexing did not finish");
 }
+test("document-only search skips file indexing and finds deep subfiles by their ancestors",async()=>{
+ const response=await get(undefined,"",token,chatId,"note,canvas,plan");
+ assert.equal(response.status,200);
+ const data=await response.json();
+ assert.ok(data.results.every((r:{kind:string})=>["note","canvas","plan"].includes(r.kind)));
+ assert.equal((modules[3].getDatabase().prepare("SELECT count(*) AS n FROM chat_reference_files").get() as {n:number}).n,0);
+ const nested=await(await get("note","Standalone Release Nested")).json();
+ assert.ok(nested.results.some((r:{label:string;detail:string;parentId:string})=>r.label==="Nested checklist"&&r.detail.includes("Standalone note / Release folder / Subfile")&&r.parentId));
+ assert.equal((await get(undefined,"",token,chatId,"note,unknown")).status,400);
+ assert.equal((await get("file","",token,chatId,"note,canvas,plan")).status,400);
+});
+
+test("unfiltered search balances categories even when the current chat contains hundreds of files",async()=>{
+ const response=await get(undefined);
+ const data=await response.json();
+ const kinds=new Set(data.results.map((r:{kind:string})=>r.kind));
+ for(const kind of ["file","note","canvas","plan","chat","terminal","browser"])assert.ok(kinds.has(kind),kind);
+ assert.ok(data.results.length<=80);
+ assert.ok(data.results.filter((r:{kind:string})=>r.kind==="file").length<=8);
+});
+
+test("a matching note title is not hidden by earlier body-only matches",async()=>{
+ for(let n=0;n<10;n++)modules[2].createNote({ownerId:owner,title:"Earlier document "+n,content:"rankneedle in the body"});
+ const exact=modules[2].createNote({ownerId:owner,title:"rankneedle",content:"Exact title match"});
+ const results=(await(await get(undefined,"rankneedle",token,chatId,"note,canvas,plan")).json()).results;
+ assert.ok(results.some((item:{id:string})=>item.id===exact.id));
+ assert.equal(results[0].id,exact.id);
+});
+
 test("all reference categories return their own accessible data",async()=>{
  for(const [kind,label] of [["chat","Reference source"],["canvas","Architecture canvas"],["plan","Launch plan"],["note","Straße März"],["memory","Remembered context"],["browser","Docs"],["terminal","Build terminal"],["file","report.md"]]){
    const response=await get(kind);

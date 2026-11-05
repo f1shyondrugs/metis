@@ -2,21 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import Image from "next/image";
-import { ChevronDown, ChevronRight, FileText, FolderOpen, Plus, Search, MoreHorizontal, ArrowUp, ArrowDown, PanelLeft, Upload, Download, Star, Clock, Trash2, Pin, Copy, Move, Settings2, FilePlus2, ListTodo, Loader2, RotateCcw, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, FolderOpen, Plus, Search, MoreHorizontal, ArrowUp, ArrowDown, PanelLeft, Upload, Download, Star, Clock, Trash2, Pin, Copy, Move, Settings2, FilePlus2, ListTodo, Loader2, RotateCcw, Share2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { NotePinDialog } from "@/components/note-pin-dialog";
+import { NoteShareDialog } from "./note-share-dialog";
+import { ProjectIconGlyph } from "@/components/project-avatar";
+import { projectLogoSrc } from "@/lib/project-constants";
+import type { Project } from "@/lib/store";
 import { NoteDocument, type NoteDocumentHandle } from "./note-document";
 import { NoteBannerUpload, NoteIconPicker } from "./note-appearance-controls";
+import { NoteIcon } from "./note-icon";
 import { IssuesView, IssueFileProperties } from "./issues-view";
 import { buildNoteTree, noteAncestors, noteDescendantIds, noteDisplayTitle, notesInContainer, searchNoteTree, type NoteTreeNode, type TreeNote } from "@/lib/notes-tree";
 import { cn } from "@/lib/utils";
 import { notesNavigationTarget, subscribeNotesHashNavigation, type NotesNavigationTarget } from "@/lib/notes-navigation";
 
-type ProjectOption = { id: string; name: string; color?: string };
-type WorkspaceProps = { initialProjectId?: string | null; focusNoteId?: string | null };
+type ProjectOption = Pick<Project, "id" | "name" | "icon" | "color" | "logoStoredName" | "updatedAt">;
+type WorkspaceProps = { initialProjectId?: string | null; focusNoteId?: string | null; embedded?: boolean; active?: boolean };
 type Mode = "files" | "favorites" | "recent" | "trash";
 const scopeKey = (id: string | null) => id || "none";
 const label = (note: TreeNote) => noteDisplayTitle(note.title) || "Untitled";
@@ -27,7 +32,7 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export function NotesWorkspace({ initialProjectId = null, focusNoteId }: WorkspaceProps) {
+export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded = false, active = true }: WorkspaceProps) {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectId, setProjectId] = useState<string | null>(initialProjectId);
   const [cache, setCache] = useState<Record<string, TreeNote[]>>({});
@@ -43,6 +48,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
   const [working, setWorking] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
   const [pinNote, setPinNote] = useState<TreeNote | null>(null);
+  const [shareNote, setShareNote] = useState<TreeNote | null>(null);
   const [moveNote, setMoveNote] = useState<TreeNote | null>(null);
   const [moveProject, setMoveProject] = useState<string | null>(null);
   const [moveParent, setMoveParent] = useState("");
@@ -95,13 +101,14 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
   }, []);
   useEffect(() => { void load(projectId); }, [load, projectId]);
   useEffect(() => {
+    if (!active) return;
     const refresh = () => { if (document.visibilityState === "visible") void load(projectId, true); };
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener("ai-chat:notes-updated", refresh);
     window.addEventListener("metis:notes-changed", refresh);
     window.addEventListener("metis-issues-changed", refresh);
     return () => { clearInterval(timer); window.removeEventListener("ai-chat:notes-updated", refresh); window.removeEventListener("metis:notes-changed", refresh); window.removeEventListener("metis-issues-changed", refresh); };
-  }, [load, projectId]);
+  }, [active, load, projectId]);
   useEffect(() => {
     if (!ownerId) return;
     try { setRecent(JSON.parse(localStorage.getItem("metis:notes:recent:" + ownerId) || "[]")); } catch { setRecent([]); }
@@ -128,9 +135,9 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
         return next;
       });
       setError("");
-      window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search + "#note-" + encodeURIComponent(id) + (blockId ? "/block-" + encodeURIComponent(blockId) : ""));
+      if (!embedded) window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search + "#note-" + encodeURIComponent(id) + (blockId ? "/block-" + encodeURIComponent(blockId) : ""));
     } catch (cause) { if (serial === navigationSerial.current) setError(cause instanceof Error ? cause.message : "Could not open file."); }
-  }, [flush, ownerId]);
+  }, [embedded, flush, ownerId]);
 
   const openIssue = useCallback(async (id: string) => {
     const serial = ++navigationSerial.current;
@@ -146,6 +153,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
   const navigationCallbacks = useRef({ openNote, openIssue });
   navigationCallbacks.current = { openNote, openIssue };
   useEffect(() => {
+    if (embedded || !active) return;
     const navigate = (target: NotesNavigationTarget) => {
       if (target.kind === "issue") void navigationCallbacks.current.openIssue(target.id);
       else void navigationCallbacks.current.openNote(target.id, target.blockId);
@@ -154,8 +162,9 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
     if (initial) navigate(initial);
     // Fragment and Back/Forward navigation can preserve this component instance.
     return subscribeNotesHashNavigation(window, navigate);
-  }, [focusNoteId]);
+  }, [active, embedded, focusNoteId]);
   useEffect(() => {
+    if (embedded || !active) return;
     const focusSearch = () => { setSidebar(true); searchInput.current?.focus(); };
     const openLinkedNote = (event: Event) => {
       const detail = (event as CustomEvent<{ id: string; blockId?: string }>).detail;
@@ -170,7 +179,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
     window.addEventListener("ai-chat:open-note", openLinkedNote);
     window.addEventListener("metis:open-note-block", openLinkedNote);
     return () => { window.removeEventListener("ai-chat:focus-notes-search", focusSearch); window.removeEventListener("ai-chat:open-issue", openLinkedIssue); window.removeEventListener("ai-chat:open-note", openLinkedNote); window.removeEventListener("metis:open-note-block", openLinkedNote); };
-  }, [openIssue, openNote]);
+  }, [active, embedded, openIssue, openNote]);
   useEffect(() => {
     if (!pendingBlock || selectedId !== pendingBlock.noteId) return;
     const focus = () => {
@@ -221,7 +230,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
       if (serial !== navigationSerial.current) return;
       if (parentId) setExpanded(current => new Set([...current, parentId]));
       setSelectedId(note.id); setMode("files"); setSidebar(false); setCreation(null); setError("");
-      window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search + "#note-" + encodeURIComponent(note.id));
+      if (!embedded) window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search + "#note-" + encodeURIComponent(note.id));
     } catch (cause) { if (serial === navigationSerial.current) setError(cause instanceof Error ? cause.message : "Could not create file."); }
     finally { setWorking(false); }
   }
@@ -376,7 +385,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
       >
         <button type="button" aria-label={(isOpen ? "Collapse " : "Expand ") + label(note)} disabled={!children.length} className="flex size-7 shrink-0 items-center justify-center text-muted-foreground disabled:opacity-0" onClick={() => setExpanded(old => { const next = new Set(old); if (next.has(note.id)) next.delete(note.id); else next.add(note.id); return next; })}>{isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}</button>
         <button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left" onClick={() => void openNote(note.id)}>
-          {note.icon ? <span className="shrink-0">{note.icon}</span> : note.kind==="issuebook" ? <ListTodo className="size-3.5 shrink-0 text-muted-foreground" /> : <FileText className="size-3.5 shrink-0 text-muted-foreground" />}
+          {note.icon ? <NoteIcon value={note.icon} className="size-3.5" /> : note.kind==="issuebook" ? <ListTodo className="size-3.5 shrink-0 text-muted-foreground" /> : <FileText className="size-3.5 shrink-0 text-muted-foreground" />}
           <span className="truncate">{label(note)}</span>
           {note.favorite && <Star className="size-3 shrink-0 text-amber-500" />}
         </button>
@@ -389,6 +398,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
               <DropdownMenuItem onClick={() => reorder(note, -1)}><ArrowUp className="size-4" />Move up<span className="ml-auto text-xs text-muted-foreground">Alt ↑</span></DropdownMenuItem>
               <DropdownMenuItem onClick={() => reorder(note, 1)}><ArrowDown className="size-4" />Move down<span className="ml-auto text-xs text-muted-foreground">Alt ↓</span></DropdownMenuItem>
               <DropdownMenuItem onClick={() => { void patch(note, { favorite: !note.favorite }).catch(cause => setError(cause.message)); }}><Star className="size-4" />{note.favorite ? "Remove favorite" : "Add favorite"}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { void flush().then(ok=>{if(ok)setShareNote(note);}); }}><Share2 className="size-4" />Share tree…</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setPinNote(note)}><Pin className="size-4" />Pin in chats…</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive" onClick={() => void archive(note, true)}><Trash2 className="size-4" />Move tree to trash</DropdownMenuItem>
@@ -400,12 +410,12 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
     </div>;
   }
 
-  return <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background" data-notes-workspace>
-    {sidebar && <button type="button" className="absolute inset-0 z-20 bg-black/40 lg:hidden" aria-label="Close file browser" onClick={() => setSidebar(false)} />}
-    <aside aria-label="Notes file browser" className={cn("absolute inset-y-0 left-0 z-30 flex w-[280px] shrink-0 flex-col border-r border-border bg-background lg:relative lg:z-0 lg:flex lg:w-[260px]", sidebar ? "flex" : "hidden")}>
+  return <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background" data-notes-workspace data-embedded={embedded || undefined}>
+    {sidebar && <button type="button" className={cn("absolute inset-0 z-20 bg-black/40", !embedded && "lg:hidden")} aria-label="Close file browser" onClick={() => setSidebar(false)} />}
+    <aside aria-label="Notes file browser" className={cn("absolute inset-y-0 left-0 z-30 w-[280px] max-w-full shrink-0 flex-col border-r border-border bg-background", !embedded && "lg:relative lg:z-0 lg:flex lg:w-[260px]", sidebar ? "flex" : "hidden")}>
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
         <span className="text-sm font-medium">Files</span>
-        <div className="flex items-center gap-0.5"><Button variant="ghost" size="icon" className="size-8" aria-label="New root file" disabled={working} onClick={() => setCreation({parentId:null,kind:"note",title:""})}><Plus className="size-4" /></Button><Button variant="ghost" size="icon" className="size-8 lg:hidden" aria-label="Close file browser" onClick={() => setSidebar(false)}><X className="size-4" /></Button></div>
+        <div className="flex items-center gap-0.5"><Button variant="ghost" size="icon" className="size-8" aria-label="New root file" disabled={working} onClick={() => setCreation({parentId:null,kind:"note",title:""})}><Plus className="size-4" /></Button><Button variant="ghost" size="icon" className={cn("size-8", !embedded && "lg:hidden")} aria-label="Close file browser" onClick={() => setSidebar(false)}><X className="size-4" /></Button></div>
       </div>
       <div className="relative mx-3 my-3"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" /><Input ref={searchInput} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search this file tree…" aria-label="Search files" className="h-9 pl-8 text-xs" /></div>
       <div className="mb-2 flex items-center gap-0.5 px-2" role="tablist" aria-label="File views">
@@ -415,7 +425,13 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
         {[{ id: null, name: "No Project" }, ...projects].map(project => {
           const active = projectId === project.id;
           return <div key={scopeKey(project.id)} role="treeitem" aria-expanded={active}>
-            <button type="button" className={cn("mt-1 flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm", active ? "font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50")} aria-label={"Open " + project.name + " file tree"} aria-pressed={active} onClick={() => void switchContainer(project.id)} onDragOver={event => event.preventDefault()} onDrop={event => drop(event, project.id, null)}>{active ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}<FolderOpen className="size-4 shrink-0" style={project.id ? { color: projects.find(p => p.id === project.id)?.color } : undefined} /><span className="truncate">{project.name}</span></button>
+            <button type="button" className={cn("mt-1 flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm", active ? "font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50")} aria-label={"Open " + project.name + " file tree"} aria-pressed={active} onClick={() => void switchContainer(project.id)} onDragOver={event => event.preventDefault()} onDrop={event => drop(event, project.id, null)}>{active ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}{project.id ? project.logoStoredName ? (
+              <Image src={projectLogoSrc(project.id, project.updatedAt)} alt="" width={16} height={16} unoptimized className="size-4 shrink-0 rounded-sm object-cover" />
+            ) : (
+              <span className="inline-flex size-4 shrink-0" style={{ color: project.color }}>
+                <ProjectIconGlyph icon={project.icon} className="size-4" />
+              </span>
+            ) : <FolderOpen className="size-4 shrink-0" />}<span className="truncate">{project.name}</span></button>
             {active && <div role="group" className="ml-3 border-l border-border/60 pl-1">
               {loading ? <div role="status" className="flex items-center gap-2 px-3 py-5 text-xs text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />Loading files…</div> : baseTree.length ? baseTree.map(node => nodeView(node)) : <div className="px-3 py-5 text-xs leading-relaxed text-muted-foreground">{query ? "No files match your search." : mode === "trash" ? "Trash is empty." : mode === "favorites" ? "Star a file to keep it here." : mode === "recent" ? "Open a file to find it here later." : "No files yet. Create your first Markdown file."}</div>}
             </div>}
@@ -430,11 +446,12 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
     </aside>
     <main className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-3 sm:px-5">
-        <Button variant="ghost" size="icon" aria-label="Open file browser" className="size-9 lg:hidden" onClick={() => setSidebar(true)}><PanelLeft className="size-4" /></Button>
+        <Button variant="ghost" size="icon" aria-label="Open file browser" className={cn("size-9", !embedded && "lg:hidden")} onClick={() => setSidebar(true)}><PanelLeft className="size-4" /></Button>
         <div className="min-w-0 flex-1 overflow-hidden text-sm text-muted-foreground">
           <button className="max-w-[150px] truncate align-middle hover:text-foreground" onClick={() => { void flush().then(ok => { if (ok) setSelectedId(null); }); }}>{containerName}</button>
           {crumbs.map((note, index) => <span key={note.id}><ChevronRight className="mx-1 inline size-3 align-middle" /><button className={cn("max-w-[160px] truncate align-middle hover:text-foreground", index === crumbs.length - 1 && "text-foreground")} onClick={() => void openNote(note.id)}>{label(note)}</button></span>)}
         </div>
+        {selected && !selected.archived && <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs" aria-label="Share note tree" onClick={()=>{void flush().then(ok=>{if(ok)setShareNote(selected);});}}><Share2 className="size-3.5"/><span className="hidden sm:inline">Share</span></Button>}
         {selected && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="File options"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => { setIcon(selected.icon || ""); setCover(selected.cover || ""); setFullWidth(Boolean(selected.fullWidth)); setAppearance(true); }}><Settings2 className="size-4" />Page appearance…</DropdownMenuItem>
           <DropdownMenuItem onClick={() => setPinNote(selected)}><Pin className="size-4" />Pin in chats…</DropdownMenuItem>
@@ -444,16 +461,15 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
       </header>
       {error && <div role="alert" className="flex shrink-0 items-center gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"><span className="min-w-0 flex-1">{error}</span><Button variant="outline" size="sm" onClick={() => void load(projectId)}>Retry</Button><Button variant="ghost" size="icon" className="size-7" aria-label="Dismiss error" onClick={() => setError("")}><X className="size-3.5" /></Button></div>}
       {working && <div role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground"><Loader2 className="size-3 animate-spin" />Saving changes…</div>}
-      {selected?.kind==="issuebook"&&!selected.archived ? <div className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 px-4 pt-5 sm:px-6"><p className="mb-2 flex items-center gap-2 text-xs text-muted-foreground"><ListTodo className="size-3.5"/>Issuebook</p><Input key={selected.id} aria-label="Issuebook title" defaultValue={label(selected)} maxLength={200} className="h-auto border-0 px-0 py-1 text-2xl font-semibold shadow-none md:text-2xl" onBlur={event=>{if(event.target.value.trim()&&event.target.value!==selected.title)void patch(selected,{title:event.target.value}).catch(cause=>setError(cause.message));}}/></div>
-        <IssuesView key={selected.id} projectId={projectId} issuebookId={selected.id} onOpenNote={id=>{void openNote(id);}} onOpenDocument={id=>{void openNote(id);}}/>
+      {selected?.kind==="issuebook"&&!selected.archived && ownerId ? <div className="min-h-0 flex-1 overflow-y-auto">
+        <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} ownerId={ownerId} headerOnly onSaved={saved} onCreateSubpage={() => setCreation({parentId:selected.id,kind:"note",title:""})} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
+        <IssuesView className="h-auto min-h-[24rem]" key={selected.id} projectId={projectId} issuebookId={selected.id} onOpenNote={id=>{void openNote(id);}} onOpenDocument={id=>{void openNote(id);}}/>
       </div> : <div className="min-h-0 flex-1 overflow-y-auto">
         {selected && ownerId ? <>
           {selected.archived && <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-5 py-3 text-sm"><span>This file is in trash.</span><Button variant="outline" size="sm" onClick={() => void archive(selected, false)}><RotateCcw className="size-3.5" />Restore</Button></div>}
-          {selected.issueId&&<IssueFileProperties key={selected.id} issueId={selected.issueId} projectId={projectId} onOpenNote={id=>{void openNote(id);}} onBeforeChange={flush} onChanged={()=>{void load(projectId,true);}}/>}
-          <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} ownerId={ownerId} onSaved={saved} onCreateSubpage={() => { setCreation({parentId:selected.id,kind:"note",title:""}); }} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
-          {subfiles.length > 0 && <section aria-label="Subfiles" className="mx-auto mb-8 max-w-[920px] border-t border-border px-5 py-5 sm:px-10"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Subfiles</h3><div className="grid gap-1">{subfiles.map(note => <button key={note.id} onClick={() => void openNote(note.id)} className="flex min-h-10 items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"><FileText className="size-4 text-muted-foreground" />{label(note)}</button>)}</div></section>}
-          {backlinks.length > 0 && <section className="mx-auto mb-12 max-w-[920px] border-t border-border px-5 py-5 sm:px-10"><h3 className="mb-2 text-xs font-medium text-muted-foreground">Linked from</h3>{backlinks.map(note => <button className="mr-3 text-sm underline underline-offset-4" key={note.id} onClick={() => void openNote(note.id)}>{label(note)}</button>)}</section>}
+          <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} ownerId={ownerId} afterHeader={selected.issueId ? <IssueFileProperties key={selected.id} issueId={selected.issueId} projectId={projectId} onOpenNote={id=>{void openNote(id);}} onBeforeChange={flush} onChanged={()=>{void load(projectId,true);}}/> : undefined} onSaved={saved} onCreateSubpage={() => { setCreation({parentId:selected.id,kind:"note",title:""}); }} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
+          {subfiles.length > 0 && <section aria-label="Subfiles" className={cn("mb-8 border-t border-border py-5", selected.issueId || selected.kind === "issuebook" ? "w-full px-4 sm:px-6" : "mx-auto max-w-[920px] px-5 sm:px-10")}><h3 className="mb-2 text-xs font-medium text-muted-foreground">Subfiles</h3><div className="grid gap-1">{subfiles.map(note => <button key={note.id} onClick={() => void openNote(note.id)} className="flex min-h-10 items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"><FileText className="size-4 text-muted-foreground" />{label(note)}</button>)}</div></section>}
+          {backlinks.length > 0 && <section className={cn("mb-12 border-t border-border py-5", selected.issueId || selected.kind === "issuebook" ? "w-full px-4 sm:px-6" : "mx-auto max-w-[920px] px-5 sm:px-10")}><h3 className="mb-2 text-xs font-medium text-muted-foreground">Linked from</h3>{backlinks.map(note => <button className="mr-3 text-sm underline underline-offset-4" key={note.id} onClick={() => void openNote(note.id)}>{label(note)}</button>)}</section>}
         </> : <div className="mx-auto flex min-h-[420px] max-w-md flex-col items-center justify-center px-8 py-16 text-center">
           <FileText className="mb-5 size-9 text-muted-foreground/50" />
           <h2 className="text-xl font-semibold tracking-tight">{containerName}</h2>
@@ -473,6 +489,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId }: Workspa
         <DialogFooter><Button type="button" variant="outline" disabled={working} onClick={()=>setCreation(null)}>Cancel</Button><Button type="submit" disabled={working}>{working?<Loader2 className="size-4 animate-spin"/>:null}Create</Button></DialogFooter>
       </form>
     </DialogContent></Dialog>
+    {shareNote && <NoteShareDialog key={shareNote.id} note={shareNote} onClose={()=>setShareNote(null)}/>}
     <NotePinDialog note={pinNote} open={Boolean(pinNote)} onOpenChange={open => { if (!open) setPinNote(null); }} />
     <Dialog open={Boolean(moveNote)} onOpenChange={open => { if (!open) setMoveNote(null); }}><DialogContent><DialogHeader><DialogTitle>Move file and subfiles</DialogTitle></DialogHeader>
       <label className="grid gap-2 text-sm">Project<select aria-label="Destination project" className="h-10 rounded-md border border-border bg-background px-3" value={moveProject || ""} onChange={event => { const id = event.target.value || null; setMoveProject(id); setMoveParent(""); void fetchMoveChoices(id).catch(cause => setError(cause.message)); }}><option value="">No Project</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>

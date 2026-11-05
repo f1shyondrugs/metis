@@ -183,7 +183,7 @@ async function handleBrowserEngine(request, response) {
 }
 
 async function sendFrame(socket, context, tabId, quality, streamState, includeMetadata = false) {
-  if (socket.readyState !== 1 || socket.bufferedAmount > 2_000_000) return;
+  if (socket.readyState !== 1 || socket.bufferedAmount > 2_000_000 || streamState.awaitingAck) return;
   const frame = await captureBrowserFrame(context.userId, context.chatId, tabId, quality, includeMetadata);
   if (socket.readyState !== 1) return;
   if (includeMetadata) {
@@ -209,6 +209,13 @@ async function sendFrame(socket, context, tabId, quality, streamState, includeMe
     }
   }
   if (socket.readyState !== 1) return;
+  if (streamState.frameAck) {
+    // TCP delivery does not mean the browser has decoded/painted an image.
+    // An opt-in client owns at most this one image until its matching receipt.
+    streamState.sequence += 1;
+    streamState.awaitingAck = streamState.sequence;
+    socket.send(JSON.stringify({ type: "frame", sequence: streamState.sequence }));
+  }
   socket.send(frame.data, { binary: true });
   return frame.tabId;
 }
@@ -222,31 +229,54 @@ websocketServer.on("connection", async (socket, request, context, options) => {
   let timer;
   let startupTimer = null;
   let initialRetryTimer = null;
+  let acknowledgementTimer = null;
   let initialFrameSent = false;
   let initialCaptureRetries = 0;
-  const streamState = { metadataKey: "" };
+  const streamState = { metadataKey: "", frameAck: options.frameAck === true, sequence: 0, awaitingAck: 0 };
   const fps = Math.max(1, Math.min(Number(options.fps) || 5, 30));
   const quality = Math.max(35, Math.min(Number(options.quality) || 70, 90));
   const realtime = options.realtime !== false;
+  const scheduleNextFrame = () => {
+    if (stopped || timer || streamState.awaitingAck) return;
+    timer = setTimeout(async () => {
+      timer = null;
+      await push();
+      // Opt-in streams resume from the client's acknowledgement instead.
+      if (realtime && !streamState.frameAck) scheduleNextFrame();
+    }, Math.round(1000 / fps));
+  };
 
   const push = async (includeMetadata = false) => {
     if (stopped || socket.readyState !== 1 || initialRetryTimer) return;
-    if (inFlight) {
+    if (inFlight || streamState.awaitingAck) {
       pendingPush = true;
       pendingMetadata ||= includeMetadata;
       return;
     }
+    const nextMetadata = includeMetadata || pendingMetadata;
+    pendingPush = pendingMetadata = false;
     inFlight = true;
     try {
-      const sentTabId = await sendFrame(socket, context, tabId, quality, streamState, includeMetadata);
+      const sentTabId = await sendFrame(socket, context, tabId, quality, streamState, nextMetadata);
       if (sentTabId !== undefined && !stopped) {
         tabId = sentTabId;
         initialFrameSent = true;
         if (startupTimer) clearTimeout(startupTimer);
         startupTimer = null;
+        if (streamState.awaitingAck) {
+          acknowledgementTimer = setTimeout(() => {
+            acknowledgementTimer = null;
+            failStream(new Error("Browser image acknowledgement timed out"));
+          }, 30_000);
+        }
       }
     } catch (error) {
       if (stopped || socket.readyState !== 1) return;
+      // If a send failed after reserving a sequence, no matching image can
+      // settle on the client. Release it before the normal bounded recovery.
+      streamState.awaitingAck = 0;
+      if (acknowledgementTimer) clearTimeout(acknowledgementTimer);
+      acknowledgementTimer = null;
       if (!initialFrameSent && initialCaptureRetries === 0) {
         // One transient first-frame failure should recover without an action or
         // leaving an error banner over the successful retry.
@@ -262,11 +292,13 @@ websocketServer.on("connection", async (socket, request, context, options) => {
       }
     } finally {
       inFlight = false;
-      if (pendingPush && !stopped && !initialRetryTimer) {
-        const nextMetadata = pendingMetadata;
-        pendingPush = false;
-        pendingMetadata = false;
-        queueMicrotask(() => void push(nextMetadata));
+      if (pendingPush && !stopped && !initialRetryTimer && !streamState.awaitingAck) {
+        if (streamState.frameAck) scheduleNextFrame();
+        else {
+          const nextMetadata = pendingMetadata;
+          pendingPush = pendingMetadata = false;
+          queueMicrotask(() => void push(nextMetadata));
+        }
       }
     }
   };
@@ -278,6 +310,10 @@ websocketServer.on("connection", async (socket, request, context, options) => {
     if (stopped) return;
     if (event?.tabId) tabId = event.tabId;
     streamState.metadataKey = "";
+    if (streamState.awaitingAck) {
+      pendingPush = pendingMetadata = true;
+      return;
+    }
     // Small debounce lets the DOM settle after a click/type while preserving a
     // near-live preview. Bursts are coalesced instead of scheduling one image
     // encode per tool event. push() also remembers one update while in flight.
@@ -297,7 +333,9 @@ websocketServer.on("connection", async (socket, request, context, options) => {
     if (notifyTimer) clearTimeout(notifyTimer);
     if (startupTimer) clearTimeout(startupTimer);
     if (initialRetryTimer) clearTimeout(initialRetryTimer);
-    notifyTimer = startupTimer = initialRetryTimer = null;
+    if (acknowledgementTimer) clearTimeout(acknowledgementTimer);
+    timer = notifyTimer = startupTimer = initialRetryTimer = acknowledgementTimer = null;
+    streamState.awaitingAck = 0;
     pendingPush = pendingMetadata = false;
     subscribers.delete(notify);
     if (!subscribers.size) browserStreamSubscribers.delete(subscriberKey);
@@ -318,6 +356,16 @@ websocketServer.on("connection", async (socket, request, context, options) => {
     if (stopped || socket.readyState !== 1) return;
     let message;
     try { message = JSON.parse(raw.toString()); } catch { return; }
+    if (!message || typeof message !== "object" || Array.isArray(message)) return;
+    if (message.type === "frame_ack") {
+      if (!streamState.frameAck || !Number.isSafeInteger(message.sequence) ||
+          !streamState.awaitingAck || message.sequence !== streamState.awaitingAck) return;
+      streamState.awaitingAck = 0;
+      if (acknowledgementTimer) clearTimeout(acknowledgementTimer);
+      acknowledgementTimer = null;
+      if (pendingPush || realtime) scheduleNextFrame();
+      return;
+    }
     if (message.type !== "action" || !message.action) return;
     try {
       const result = await performSharedBrowserAction(context.userId, context.chatId, {
@@ -367,13 +415,6 @@ websocketServer.on("connection", async (socket, request, context, options) => {
     return;
   }
   if (!realtime || stopped) return;
-  const scheduleNextFrame = () => {
-    if (stopped) return;
-    timer = setTimeout(async () => {
-      await push();
-      scheduleNextFrame();
-    }, Math.round(1000 / fps));
-  };
   scheduleNextFrame();
 });
 
@@ -476,6 +517,7 @@ server.on("upgrade", async (request, socket, head) => {
         fps: url.searchParams.get("fps"),
         quality: url.searchParams.get("quality"),
         realtime: url.searchParams.get("realtime") !== "0",
+        frameAck: url.searchParams.get("frameAck") === "1",
         width: url.searchParams.get("width"),
         height: url.searchParams.get("height"),
       });

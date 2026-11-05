@@ -130,7 +130,7 @@ export function startRemoteClient({ config: suppliedConfig, configPath, onEvent 
         let captureSuspended = false;
         try {
           if (controller.signal.aborted) throw new Error("Computer Use was cancelled");
-          if (!["status", "preview"].includes(operation)) emit({ type: "computer_use", phase: "start", operation, key: operation === "key" ? params.key : undefined });
+          if (!["status", "preview", "monitors"].includes(operation)) emit({ type: "computer_use", phase: "start", operation, key: operation === "key" ? params.key : undefined });
           if (operation === "observe") {
             emit({ type: "computer_use", phase: "capture-start", operation });
             captureSuspended = true;
@@ -138,7 +138,7 @@ export function startRemoteClient({ config: suppliedConfig, configPath, onEvent 
           return await runComputerUse(params, controller.signal);
         } finally {
           if (captureSuspended) emit({ type: "computer_use", phase: "capture-end", operation });
-          if (!["status", "preview"].includes(operation)) emit({ type: "computer_use", phase: "end", operation });
+          if (!["status", "preview", "monitors"].includes(operation)) emit({ type: "computer_use", phase: "end", operation });
         }
       };
       const result = computerUseQueue.catch(() => {}).then(task);

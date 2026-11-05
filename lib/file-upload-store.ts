@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileResponse } from "@/lib/file-response";
 import { config } from "@/lib/config";
 import { chatUploadDir, isImageMime, sanitizeFileName, type StoredAttachment } from "@/lib/uploads";
-import { MAX_ATTACHMENTS, UPLOAD_CHUNK_BYTES, type UploadedFile } from "@/lib/upload-limits";
+import { MAX_ATTACHMENTS, UPLOAD_CHUNK_BYTES, validateAttachmentSize, type UploadedFile } from "@/lib/upload-limits";
 import { validateOwnerAttachmentSize } from "@/lib/attachment-settings";
 
 type UploadSession = UploadedFile & { offset: number; complete: boolean; createdAt: number };
@@ -21,9 +21,10 @@ function save(ownerId: string, upload: UploadSession) {
   writeFileSync(tmp, JSON.stringify(upload));
   renameSync(tmp, path.join(dir, "metadata.json"));
 }
-export function createUpload(ownerId: string, input: { name: string; mimeType: string; size: number }): UploadSession {
+export function createUpload(ownerId: string, input: { name: string; mimeType: string; size: number }, limits?: { maxBytes: number }): UploadSession {
   if (!input.name) throw new Error("File name is required");
-  validateOwnerAttachmentSize(input.size, input.name, ownerId);
+  if (limits) validateAttachmentSize(input.size, limits.maxBytes, input.name);
+  else validateOwnerAttachmentSize(input.size, input.name, ownerId);
   const mimeType = input.mimeType?.split(";")[0].trim().toLowerCase().replace(/[\r\n]/g, "").slice(0, 200) || "application/octet-stream";
   const upload: UploadSession = { id: randomUUID(), name: input.name.replace(/[\r\n]/g, "").slice(0, 255), mimeType, size: input.size, kind: isImageMime(mimeType) ? "image" : "file", offset: 0, complete: false, createdAt: Date.now() };
   const dir = directory(ownerId, upload.id);

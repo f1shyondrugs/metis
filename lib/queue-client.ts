@@ -26,6 +26,36 @@ export async function removeQueuedFollowUp(options: {
   }
 }
 
+/**
+ * Persist before yielding to React or a background timer. Ordinary saves do not
+ * share the browser's 64 KiB keepalive budget with unload/visibility requests.
+ * Lifecycle saves use keepalive only for small bodies and fall back if that
+ * shared budget is already exhausted; stable queue IDs make the retry safe.
+ */
+export async function saveQueuedFollowUps(
+  chatId: string,
+  messages: ReadonlyArray<{ id: string; text: string }>,
+  options: { request?: typeof fetch; keepalive?: boolean } = {},
+) {
+  const body = JSON.stringify({ queuedMessages: messages });
+  const keepalive = Boolean(options.keepalive && new TextEncoder().encode(body).byteLength < 60_000);
+  const request = options.request ?? fetch;
+  const send = (retain: boolean) => request(`/api/chats/${encodeURIComponent(chatId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body,
+    ...(retain ? { keepalive: true } : {}),
+  });
+  let response: Response;
+  try {
+    response = await send(keepalive);
+  } catch (error) {
+    if (!keepalive || !(error instanceof TypeError)) throw error;
+    response = await send(false);
+  }
+  if (!response.ok) throw new Error("Could not save queued messages. Check your connection and try again.");
+}
+
 /** Queue ownership travels with its items, independent of navigation refs. */
 export type ChatQueueState<T> = { chatId: string | null; messages: T[] };
 export type ChatQueueUpdate<T> = T[] | ((current: T[]) => T[]);

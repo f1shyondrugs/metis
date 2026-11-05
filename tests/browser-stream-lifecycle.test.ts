@@ -125,6 +125,145 @@ function backendHarness(capture: (attempt: number) => Promise<StreamFrame>, acti
   };
 }
 
+test("an opted-in slow client retains one unacknowledged image instead of a growing network backlog", async () => {
+  const h = backendHarness(async () => streamFrame());
+  const { socket, done } = h.connect({ frameAck: true, realtime: true, fps: 5 });
+  await done;
+  for (let i = 0; i < 1000; i++) {
+    h.notify();
+    const notify = [...h.timers.values()].find(timer => timer.delay === 45);
+    if (notify) await h.runTimer(45);
+    const periodic = [...h.timers.values()].find(timer => timer.delay === 200);
+    if (periodic) await h.runTimer(200);
+  }
+  assert.equal(socket.frames().length, 1);
+  assert.equal(h.captures.length, 1, "Do not encode images the client cannot consume");
+  assert.ok(h.timers.size <= 1, "Only the acknowledgement deadline may remain");
+  socket.close();
+  assert.equal(h.timers.size, 0);
+});
+
+function frameSequences(socket: StreamSocket) {
+  return socket.sent.filter(item => !item.binary).map(item => JSON.parse(String(item.data)))
+    .filter(message => message.type === "frame").map(message => message.sequence as number);
+}
+
+test("a matching receipt releases only one paced latest frame with current metadata", async () => {
+  const h = backendHarness(async () => streamFrame());
+  const { socket, done } = h.connect({ frameAck: true, realtime: true, fps: 5 });
+  await done;
+  assert.deepEqual(frameSequences(socket), [1]);
+  const headerIndex = socket.sent.findIndex(item => !item.binary && JSON.parse(String(item.data)).type === "frame");
+  assert.ok(socket.sent[headerIndex + 1].binary, "The sequence header immediately precedes its binary image");
+  for (let i = 0; i < 2000; i++) h.notify();
+  assert.equal(h.timers.size, 1, "notifications while decoding retain only one deadline");
+  await socket.message({ type: "frame_ack", sequence: 1 });
+  assert.equal(socket.frames().length, 1, "receipt is paced rather than an immediate capture");
+  assert.deepEqual([...h.timers.values()].map(timer => timer.delay), [200]);
+  await h.runTimer(200);
+  assert.deepEqual(frameSequences(socket), [1, 2]);
+  assert.equal(h.captures.length, 2);
+  assert.equal(h.captures[1][4], true, "coalesced actions still refresh browser metadata");
+  assert.deepEqual([...h.timers.values()].map(timer => timer.delay), [30_000]);
+  socket.close();
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.subscribers.size, 0);
+});
+
+test("wrong, stale and duplicated receipts cannot release an outstanding image", async () => {
+  const h = backendHarness(async () => streamFrame());
+  const { socket, done } = h.connect({ frameAck: true, realtime: true, fps: 5 });
+  await done;
+  for (const invalid of [null, "frame_ack", [], 1, true]) await socket.message(invalid);
+  for (const sequence of [undefined, null, "1", 0, -1, 1.5, 2, Number.MAX_SAFE_INTEGER + 1]) {
+    await socket.message({ type: "frame_ack", sequence });
+  }
+  assert.equal(h.captures.length, 1);
+  assert.deepEqual([...h.timers.values()].map(timer => timer.delay), [30_000]);
+  await socket.message({ type: "frame_ack", sequence: 1 });
+  await socket.message({ type: "frame_ack", sequence: 1 });
+  assert.equal(h.timers.size, 1);
+  await h.runTimer(200);
+  await socket.message({ type: "frame_ack", sequence: 1 });
+  assert.equal(h.captures.length, 2);
+  assert.deepEqual([...h.timers.values()].map(timer => timer.delay), [30_000]);
+  socket.close();
+});
+
+test("action-driven receipts do not create an unsolicited continuous capture loop", async () => {
+  const h = backendHarness(async () => streamFrame());
+  const { socket, done } = h.connect({ frameAck: true });
+  await done;
+  await socket.message({ type: "frame_ack", sequence: 1 });
+  assert.equal(h.timers.size, 0);
+  h.notify();
+  await h.runTimer(45);
+  assert.deepEqual(frameSequences(socket), [1, 2]);
+  await socket.message({ type: "frame_ack", sequence: 2 });
+  assert.equal(h.timers.size, 0);
+  socket.close();
+});
+
+test("unconsumed images close only their stream socket at the bounded receipt deadline", async () => {
+  const h = backendHarness(async () => streamFrame());
+  const { socket, done } = h.connect({ frameAck: true, realtime: true });
+  await done;
+  h.notify();
+  await h.runTimer(30_000);
+  assert.deepEqual(socket.closes, [{ code: 1011 }]);
+  assert.match(socket.errors()[0].message, /acknowledgement timed out/);
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.subscribers.size, 0);
+  await socket.message({ type: "frame_ack", sequence: 1 });
+  h.notify();
+  assert.equal(h.captures.length, 1);
+});
+
+test("legacy clients retain their existing binary-only periodic stream", async () => {
+  const h = backendHarness(async () => streamFrame());
+  const { socket, done } = h.connect({ realtime: true, fps: 5 });
+  await done;
+  await socket.message({ type: "frame_ack", sequence: 1 });
+  for (let i = 0; i < 10; i++) await h.runTimer(200);
+  assert.equal(socket.frames().length, 11);
+  assert.deepEqual(frameSequences(socket), []);
+  assert.equal(h.timers.size, 1);
+  socket.close();
+  assert.equal(h.timers.size, 0);
+});
+
+test("thousands of receipt cycles keep one image and one timer in flight", async () => {
+  const h = backendHarness(async () => streamFrame());
+  const { socket, done } = h.connect({ frameAck: true, realtime: true, fps: 30 });
+  await done;
+  for (let sequence = 1; sequence <= 2000; sequence++) {
+    assert.equal(h.captures.length, sequence);
+    await socket.message({ type: "frame_ack", sequence });
+    assert.equal(h.timers.size, 1);
+    await h.runTimer(33);
+    assert.equal(h.timers.size, 1);
+  }
+  assert.equal(socket.frames().length, 2001);
+  assert.equal(frameSequences(socket).at(-1), 2001);
+  socket.close();
+  assert.equal(h.timers.size, 0);
+});
+
+test("opt-in startup retry reserves a sequence only when a frame is actually sent", async () => {
+  const h = backendHarness(async attempt => {
+    if (attempt === 1) throw new Error("transient");
+    return streamFrame();
+  });
+  const { socket, done } = h.connect({ frameAck: true });
+  await done;
+  assert.deepEqual(frameSequences(socket), []);
+  await h.runTimer(500);
+  assert.deepEqual(frameSequences(socket), [1]);
+  await socket.message({ type: "frame_ack", sequence: 1 });
+  assert.equal(h.timers.size, 0);
+  socket.close();
+});
+
 test("action-driven stream silently retries a transient initial capture without another action", async () => {
   const h = backendHarness(async attempt => {
     if (attempt === 1) throw new Error("Temporary screenshot failure");

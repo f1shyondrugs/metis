@@ -8,7 +8,7 @@ import { monitorRows, ramPercent, type MonitorRange, type MonitorRow } from "@/l
 
 type Kind = "cpu" | "ram" | "load" | "network" | "gpu";
 type Series = { label: string; color: string; value: (row: ServerMetric) => number | null };
-const timeLabel = (time: number) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const timeLabel = (time: number) => new Date(time).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const percent = (value: number | null) => value === null ? "—" : `${value.toFixed(1)}%`;
 
 export function MetricTooltip({ metric, kind, gpuId }: { metric: ServerMetric; kind: Kind; gpuId?: string }) {
@@ -27,7 +27,7 @@ export function MetricTooltip({ metric, kind, gpuId }: { metric: ServerMetric; k
     ["Temperature", gpu.temperatureC === null ? "—" : `${gpu.temperatureC.toFixed(1)} °C`],
   ] : [];
   return <div role="tooltip" className="max-w-64 rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
-    <p className="mb-1.5 font-medium">{new Date(metric.timestamp).toLocaleDateString()} · {timeLabel(Date.parse(metric.timestamp))}</p>
+    <p className="mb-1.5 font-medium">{new Date(metric.timestamp).toLocaleDateString("en")} · {timeLabel(Date.parse(metric.timestamp))}</p>
     <dl className="space-y-1">{rows.map(([label, value]) => <div key={label} className="flex justify-between gap-5"><dt className="text-muted-foreground">{label}</dt><dd className="font-mono tabular-nums">{value}</dd></div>)}</dl>
   </div>;
 }

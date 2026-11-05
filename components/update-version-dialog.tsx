@@ -24,7 +24,7 @@ function formatWhen(value?: string | null) {
   if (!value) return "Date unknown";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Date unknown";
-  return date.toLocaleString();
+  return date.toLocaleString("en");
 }
 
 export function UpdateVersionDialog({

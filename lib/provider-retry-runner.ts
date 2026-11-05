@@ -2,8 +2,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { appendRunEvent, getJob, touchJob, updateJob } from "@/lib/db-jobs";
 import type { AgentJob } from "@/lib/jobs";
 import { getProviderRetryEnabled } from "@/lib/provider-retry-settings";
-import { isTransientProviderError, MAX_PROVIDER_RETRIES, providerRetryDetail, type ProviderRetryPart } from "@/lib/provider-retry";
+import { MAX_PROVIDER_RETRIES, providerRetryDetail, type ProviderRetryPart } from "@/lib/provider-retry";
 import { transaction } from "@/lib/sqlite";
+import { appendMessage } from "@/lib/db-store";
+import { commitPendingModelSwitch } from "@/lib/model-switch";
+import type { ModelSwitchPart } from "@/lib/run-control-event";
 import { providerContinuationPrompt } from "@/lib/provider-continuation";
 
 /** Publish/checkpoint the retry while retaining the same worker lease and runtime budget. */
@@ -12,7 +15,6 @@ export function requestProviderRetry(
   error: unknown,
   checkpoint: (event: ProviderRetryPart) => void,
 ): boolean {
-  if (!isTransientProviderError(error)) return false;
   return transaction(() => {
     const current = getJob(jobId);
     if (!current || current.status !== "running" || !getProviderRetryEnabled(current.userId)) return false;
@@ -27,7 +29,7 @@ export function requestProviderRetry(
     };
     const updated = updateJob(jobId, {
       providerRetryCount: attempt,
-      resumePrompt: providerContinuationPrompt(current, "A transient provider error interrupted this same run."),
+      resumePrompt: providerContinuationPrompt(current, "An error interrupted this same run."),
       resumeRequestedAt: new Date().toISOString(),
     }, { expectedRevision: current.revision ?? 0 });
     if (!updated) return false;
@@ -51,6 +53,12 @@ async function waitForProviderRetry(job: AgentJob): Promise<AgentJob | null> {
   return current?.status === "running" ? current : null;
 }
 
+function checkpointRecoveryEvent(job: AgentJob, event: ProviderRetryPart | ModelSwitchPart) {
+  const id = crypto.randomUUID();
+  appendMessage(job.chatId, { id, role: "assistant", content: "", parts: [event] }, job.userId);
+  appendRunEvent(job.id, job.chatId, job.userId, "assistantId", { messageId: id });
+}
+
 /** Start another attempt only after cleanup and a bounded, cancellable backoff. */
 export async function runWithProviderRetries<T>(
   initialJob: AgentJob,
@@ -58,7 +66,13 @@ export async function runWithProviderRetries<T>(
 ): Promise<T> {
   let job = initialJob;
   for (;;) {
-    const result = await runAttempt(job);
+    let result!: T;
+    try {
+      result = await runAttempt(job);
+    } catch (error) {
+      if (commitPendingModelSwitch(job.id, job.modelId || "", event => checkpointRecoveryEvent(job, event))) return result;
+      if (!requestProviderRetry(job.id, error, event => checkpointRecoveryEvent(job, event))) throw error;
+    }
     const current = getJob(job.id);
     if (!current || current.status !== "running"
       || (current.providerRetryCount ?? 0) <= (job.providerRetryCount ?? 0)) return result;

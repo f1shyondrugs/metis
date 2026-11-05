@@ -22,7 +22,7 @@ export function UsageProviderFilter({providers,excluded,onChange,disabled}: {
       {providers.length ? providers.map(provider=><DropdownMenuCheckboxItem key={provider.id} checked={!excluded.includes(provider.id)} aria-label={"Include "+provider.name} className="min-h-11 gap-2 px-2 pr-8" onSelect={event=>event.preventDefault()} onCheckedChange={checked=>onChange(checked ? excluded.filter(id=>id!==provider.id):[...excluded,provider.id])}>
         <span aria-hidden="true"><ProviderLogo providerId={provider.id} className="size-4"/></span>
         <span className="min-w-0 flex-1 truncate" title={provider.name}>{provider.name}</span>
-        <span className="text-xs tabular-nums text-muted-foreground">{provider.requests.toLocaleString()}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">{provider.requests.toLocaleString("en")}</span>
       </DropdownMenuCheckboxItem>):<p className="px-2 py-3 text-xs text-muted-foreground">No providers recorded in this period.</p>}
       <DropdownMenuSeparator/>
       <DropdownMenuItem className="min-h-11 px-2" onSelect={()=>onChange([])} disabled={!excluded.length}>Show all providers</DropdownMenuItem>

@@ -68,6 +68,8 @@ export type ProviderDefinition = {
   /** CLI configuration options available across this provider, independent of model discovery. */
   configParameters?: ReadonlyArray<ProviderModelParameter>;
   setupHint: string;
+  /** Verified account-level reset integration; availability still comes from live account data. */
+  usageResets?: { adapter: "codex"; authTypes: ReadonlyArray<ProviderAuthType>; documentationUrl: string };
 };
 
 export type ProviderConnection = {

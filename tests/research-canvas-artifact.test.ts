@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {mkdtempSync,rmSync,readdirSync,readFileSync,writeFileSync} from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {createResearchWorkflow} from "../lib/mcp-core/research-workflow.mjs";
+const root=mkdtempSync(path.join(os.tmpdir(),"metis-report-canvas-state-"));
+test.after(()=>rmSync(root,{recursive:true,force:true}));
+const context={userId:"owner",chatId:"chat",jobId:"run",modeId:"deep-research"};
+test("report completion requires a confirmed Canvas and reuses it after retry and reload",async()=>{
+ let confirmed=false,calls=0;
+ const artifact={canvasId:"canvas-report",workspaceLink:"workspace://canvas/canvas-report",markdown:"[Open report in Canvas](workspace://canvas/canvas-report)"};
+ const workflow=createResearchWorkflow({stateDir:root,ask:async()=>({questionId:"q",values:{decision:"approve",plan:["Read","Write"],source_target:1,minimum_words:500}}),evidence:async()=>({sources:[{}],openedCount:1,readCount:1}),attachReport:async()=>{calls++;return confirmed?artifact:{markdown:"unconfirmed"};}});
+ await workflow.plan({title:"Study",plan:["Read","Write"]},context);
+ const report={title:"Report",content:"Evidence ".repeat(500)};
+ await assert.rejects(workflow.report(report,context),/Canvas was not confirmed/);
+ assert.equal((await workflow.state(context))?.status,"approved");
+ confirmed=true;const first=await workflow.report(report,context);
+ assert.equal(first.workspaceLink,artifact.workspaceLink);
+ assert.equal((first.research as {workspaceLink:string}).workspaceLink,artifact.workspaceLink);
+ assert.equal(first.downloadUrl,undefined);assert.equal(first.attachment,undefined);
+ const restored=createResearchWorkflow({stateDir:root,attachReport:async()=>{throw new Error("No duplicate Canvas");}});
+ const repeated=await restored.report({...report,title:"Different retry title"},context);
+ assert.equal(repeated.canvasId,first.canvasId);assert.equal(calls,2);
+ assert.equal((await restored.snapshot(context))?.canvasId,artifact.canvasId);
+ assert.ok((await restored.snapshot(context))?.steps.every(step=>step.status==="completed"));
+ // Older in-flight gateways save the returned Canvas only inside artifact.
+ const file=path.join(root,"research-workflows",readdirSync(path.join(root,"research-workflows"))[0]);
+ const legacy=JSON.parse(readFileSync(file,"utf8"));delete legacy.canvasId;delete legacy.workspaceLink;writeFileSync(file,JSON.stringify(legacy));
+ assert.equal((await restored.snapshot(context))?.workspaceLink,artifact.workspaceLink);
+ assert.equal((await restored.snapshot(context))?.canvasId,artifact.canvasId);
+});

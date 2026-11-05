@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { writeWorkerHeartbeat } from "@/lib/worker-health";
-import { appendRunEvent, cancelAgentJob, cancelChildJobs, claimNextJob, drainNextQueuedMessage, enqueueJob, getActiveParentJob, getJob, listChildJobs, reapExpiredJobLeases, recoverStaleJobs, requeueSwitchingJob, updateJob } from "@/lib/db-jobs";
+import { appendRunEvent, cancelAgentJob, cancelChildJobs, claimNextJob, drainNextQueuedMessage, enqueueJob, getActiveParentJob, getJob, listChildJobs, reapExpiredJobLeases, recoverStaleJobs, requeueSwitchingJob, syncQueuedMemoryWait, updateJob } from "@/lib/db-jobs";
 import { snapshotInterruptedJob } from "@/lib/recovery";
 import { appendMessage, appendMessageInTransaction, getChat, listChatsWithQueuedMessages, updateChat } from "@/lib/db-store";
 import { expireProjectHandoffs, getProjectAgentForChat } from "@/lib/project-team";
@@ -399,8 +399,11 @@ async function main() {
         : "[ai-chat-worker] memory available; accepting queued jobs");
       waitingForMemory = memoryBlocked;
     }
-    while (!stopping && active.size < concurrency && admission.additionalJobs > 0) {
+    syncQueuedMemoryWait(memoryBlocked);
+    while (!stopping && active.size < concurrency) {
       const job = claimNextJob({
+        // Only an explicit request for this queued run can bypass RAM admission.
+        memoryOverrideOnly: admission.additionalJobs === 0,
         // Keep one slot available for a normal interactive chat while
         // background automation/MCP work is already occupying the pool.
         interactiveOnly: Number.isFinite(concurrency) &&
@@ -434,6 +437,7 @@ async function main() {
       starting.set(task, Date.now());
       admission = workerMemoryAdmission(memory, countStartingJobs(starting.values()));
     }
+    syncQueuedMemoryWait(admission.additionalJobs === 0);
     await waitForSchedulerTick(active, concurrency, pollMs);
   }
   await Promise.all(active);

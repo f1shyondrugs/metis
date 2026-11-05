@@ -23,7 +23,7 @@ export type EditableMarkdownProps = {
   /** Checkboxes are editable blocks in the shared engine; kept for caller compatibility. */
   interactiveTasks?: boolean;
   noteId?: string;
-  workspace?: { chatId: string; id: string };
+  workspace?: { chatId: string; id: string; type?: string; idempotencyKey?: string };
   editorId?: string;
   hideAttachmentButton?: boolean;
   onFiles?: (files: File[]) => void | Promise<void>;

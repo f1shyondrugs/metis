@@ -22,6 +22,7 @@ import "katex/dist/katex.min.css";
 import "highlight.js/styles/github-dark.css";
 import { parseWorkspaceFileLink } from "@/lib/workspace-file-link";
 import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
+import { parseReferenceLink } from "@/lib/reference-link";
 import { MarkdownSpan } from "@/components/markdown-span";
 import { remarkChatIcons } from "@/lib/markdown-icons";
 import { markdownSourceTitle } from "@/lib/markdown-source-title";
@@ -29,8 +30,12 @@ import { FileEmbed } from "@/components/file-embed";
 import { NotesRichBlockPreview } from "@/components/notes/rich-block-preview";
 import { collectNotesMarkdownHeadings, type NotesHeading } from "@/lib/notes-editor-headings";
 import { FileLink } from "@/components/file-link";
+import { PublicMarkdownLink } from "@/components/public-markdown-link";
+import { usePublicMarkdownShare } from "@/components/public-markdown-context";
+import { publicMarkdownAssetUrl, publicMarkdownImageUrl, publicMarkdownLinkTarget, type PublicMarkdownShare } from "@/lib/public-markdown";
 import { parseFileEmbed, isFileUrl, mimeTypeFromFileName } from "@/lib/file-types";
 import { normalizeMath, splitStreamingMath } from "@/lib/math";
+import { protectMathTablePipes, remarkMathTablePipes } from "@/lib/markdown-math-tables";
 import { LinkPreview } from "@/components/link-preview";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { GraphBoard } from "@/components/graph-board";
@@ -89,6 +94,8 @@ function MarkdownLink({
       )}
       title={props.title}
       onClick={(event) => {
+        const reference=parseReferenceLink(href);
+        if(reference){event.preventDefault();event.stopPropagation();window.dispatchEvent(new CustomEvent("ai-chat:open-reference",{detail:reference}));return;}
         if (navigation) {
           event.preventDefault();
           event.stopPropagation();
@@ -186,7 +193,7 @@ export function splitThinkingBlocks(content: string): ThinkingSegment[] {
 
 function transformMarkdownUrl(url: string) {
   if (parseWorkspaceFileLink(url)) return url;
-  if (parseInternalLink(url) || /^subagent:\/\//i.test(url)) return url;
+  if (parseReferenceLink(url) || parseInternalLink(url) || /^subagent:\/\//i.test(url)) return url;
   return defaultUrlTransform(url);
 }
 
@@ -196,9 +203,10 @@ function CodeBlock({
   inline,
   editableFiles,
   notesHeadings,
+  publicShare,
   node,
   ...props
-}: HTMLAttributes<HTMLElement> & { inline?: boolean; editableFiles?: boolean; notesHeadings?:NotesHeading[]; node?:{position?:{start?:{offset?:number}}} }) {
+}: HTMLAttributes<HTMLElement> & { inline?: boolean; editableFiles?: boolean; notesHeadings?:NotesHeading[]; publicShare?: PublicMarkdownShare; node?:{position?:{start?:{offset?:number}}} }) {
   const code = String(children).replace(/\n$/, "");
   const isInline = inline ?? (!className && !code.includes("\n"));
   const fileRoot = useRef<HTMLDivElement>(null);
@@ -211,8 +219,12 @@ function CodeBlock({
     );
   }
   const declaredLanguage = className?.match(/language-([\w-]+)/)?.[1];
-  if (declaredLanguage === "metis-block") return <NotesRichBlockPreview source={code} headings={notesHeadings} sourceOffset={node?.position?.start?.offset} />;
+  if (declaredLanguage === "metis-block") return <NotesRichBlockPreview source={code} headings={notesHeadings} sourceOffset={node?.position?.start?.offset} publicShare={publicShare} />;
   const file = declaredLanguage === "file" ? parseFileEmbed(code) : null;
+  if (file && publicShare) {
+    const url = publicMarkdownAssetUrl(file.url, publicShare);
+    return url ? <FileEmbed file={{...file, url}} resizable={false} className="my-2 min-h-40 rounded border border-border/40" /> : <span>{file.name} (file unavailable)</span>;
+  }
   if (file && !editableFiles) return <FileLink href={file.url} file={file}>{file.name}</FileLink>;
   if (file) return <div ref={fileRoot} data-editor-control="file" onPointerDown={e=>e.stopPropagation()}>
     <FileEmbed file={file} className="my-2 min-h-40 rounded border border-border/40"
@@ -220,13 +232,13 @@ function CodeBlock({
       onRemove={editableFiles ? () => { fileRoot.current?.dispatchEvent(new CustomEvent("metis:markdown-embed-change",{bubbles:true,detail:{kind:"file",source:""}})); } : undefined}/>
   </div>;
   if (isChartSource(declaredLanguage, code)) {
-    return <ChartBoard code={code} language={declaredLanguage} />;
+    return <ChartBoard code={code} language={declaredLanguage} readOnly={Boolean(publicShare)} />;
   }
   if (isGraphSource(declaredLanguage, code)) {
-    return <GraphBoard code={code} language={declaredLanguage} />;
+    return <GraphBoard code={code} language={declaredLanguage} readOnly={Boolean(publicShare)} />;
   }
   if (isMermaidSource(declaredLanguage, code)) {
-    return <MermaidDiagram code={code} language={declaredLanguage} />;
+    return <MermaidDiagram code={code} language={declaredLanguage} publicShare={Boolean(publicShare)} />;
   }
   const detectedLanguage =
     declaredLanguage && hljs.getLanguage(declaredLanguage)
@@ -304,6 +316,7 @@ export const Markdown = memo(function Markdown({
   interactiveTasks = false,
   thinkingDurationMs,
   editableFiles = false,
+  publicShare: suppliedShare,
   animateText = streaming,
   initialBornAt,
 }: {
@@ -312,28 +325,40 @@ export const Markdown = memo(function Markdown({
   interactiveTasks?: boolean;
   thinkingDurationMs?: number;
   editableFiles?: boolean;
+  publicShare?: PublicMarkdownShare;
   animateText?: boolean;
   initialBornAt?: number;
 }) {
+  const inheritedShare = usePublicMarkdownShare();
+  const publicShare = inheritedShare || suppliedShare;
   const { ready, pending } = streaming ? splitStreamingMath(content) : { ready: normalizeMath(content), pending: "" };
-  const source = wrapBareMermaid(ready);
+  const protectedMath = useMemo(() => protectMathTablePipes(wrapBareMermaid(ready)), [ready]);
+  const source = protectedMath.source;
   const noteHeadings = useMemo(() => source.includes("tableOfContents") && source.includes("metis-block") ? collectNotesMarkdownHeadings(source) : [], [source]);
   const markdownComponentsWithCode = useMemo(() => ({
     ...markdownComponents,
+    ...(publicShare ? { a: ({href, children, title, className}: AnchorHTMLAttributes<HTMLAnchorElement>) => <PublicMarkdownLink href={href || ""} share={publicShare} title={title} className={className}>{children}</PublicMarkdownLink> } : {}),
     pre: ({ children }: HTMLAttributes<HTMLPreElement>) => <>{children}</>,
-    code: (props: HTMLAttributes<HTMLElement>) => <CodeBlock {...props} editableFiles={editableFiles} notesHeadings={noteHeadings}/>,
+    code: (props: HTMLAttributes<HTMLElement>) => <CodeBlock {...props} editableFiles={editableFiles && !publicShare} notesHeadings={noteHeadings} publicShare={publicShare}/>,
     h1: (props: HTMLAttributes<HTMLHeadingElement>) => <MarkdownHeading {...props} level={1} headings={noteHeadings}/>,
     h2: (props: HTMLAttributes<HTMLHeadingElement>) => <MarkdownHeading {...props} level={2} headings={noteHeadings}/>,
     h3: (props: HTMLAttributes<HTMLHeadingElement>) => <MarkdownHeading {...props} level={3} headings={noteHeadings}/>,
     h4: (props: HTMLAttributes<HTMLHeadingElement>) => <MarkdownHeading {...props} level={4} headings={noteHeadings}/>,
     h5: (props: HTMLAttributes<HTMLHeadingElement>) => <MarkdownHeading {...props} level={5} headings={noteHeadings}/>,
     h6: (props: HTMLAttributes<HTMLHeadingElement>) => <MarkdownHeading {...props} level={6} headings={noteHeadings}/>,
-    img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => typeof props.src === "string" && isFileUrl(props.src) ? <FileEmbed file={{url:props.src,name:props.alt || "Image",mimeType:mimeTypeFromFileName(props.alt || "image.png")}} className="my-2 max-h-96"/> : <img {...props} alt={props.alt || "Image"}/>,
+    img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => {
+      if (publicShare) {
+        const src = typeof props.src === "string" ? publicMarkdownImageUrl(props.src, publicShare) : undefined;
+        return src ? <img src={src} alt={props.alt || "Image"} title={props.title} loading="lazy" referrerPolicy="no-referrer" /> : <span>{props.alt || "Image unavailable"}</span>;
+      }
+      return typeof props.src === "string" && isFileUrl(props.src) ? <FileEmbed file={{url:props.src,name:props.alt || "Image",mimeType:mimeTypeFromFileName(props.alt || "image.png")}} className="my-2 max-h-96"/> : <img {...props} alt={props.alt || "Image"}/>;
+    },
     p: ({children}: HTMLAttributes<HTMLParagraphElement>) => Children.toArray(children).some(child => isValidElement<{href?:string;src?:string}>(child) && isFileUrl(child.props.src || "")) ? <div className="my-2">{children}</div> : <p>{children}</p>,
+    table: (props: HTMLAttributes<HTMLTableElement>) => <div className="max-w-full overflow-x-auto"><table {...props}/></div>,
     input: (props: InputHTMLAttributes<HTMLInputElement>) => (
-      <TaskCheckbox {...props} interactive={interactiveTasks} />
+      <TaskCheckbox {...props} interactive={interactiveTasks && !publicShare} />
     ),
-  }), [editableFiles, interactiveTasks, noteHeadings]);
+  }), [editableFiles, interactiveTasks, noteHeadings, publicShare]);
   const [arrivalState, setArrivalState] = useState(() => initialStreamingArrival(source, Date.now(), initialBornAt));
   const arrival = appendStreamingArrival(arrivalState, source, Date.now());
   if (arrival !== arrivalState) setArrivalState(arrival);
@@ -363,6 +388,7 @@ export const Markdown = memo(function Markdown({
               initialBornAt={initialBornAt}
               interactiveTasks={interactiveTasks}
               editableFiles={editableFiles}
+              publicShare={publicShare}
               thinkingDurationMs={thinkingDurationMs}
             />
           ) : null,
@@ -374,9 +400,9 @@ export const Markdown = memo(function Markdown({
   return (
     <div className="markdown-body">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkChatIcons]}
+        remarkPlugins={[remarkGfm, remarkMath, [remarkMathTablePipes, {marker:protectedMath.marker}], remarkChatIcons]}
         rehypePlugins={rehypePlugins}
-        urlTransform={transformMarkdownUrl}
+        urlTransform={publicShare ? (url, key) => (key === "src" ? publicMarkdownImageUrl(url, publicShare) : publicMarkdownLinkTarget(url, publicShare) ? url : undefined) || "" : transformMarkdownUrl}
         components={markdownComponentsWithCode}
       >
         {source}

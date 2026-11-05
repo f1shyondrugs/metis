@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, ftruncateSync, mkdtempSync, openSync, readdirSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -92,4 +92,90 @@ test("foreign owners, mismatched chats and absent run messages cannot register f
   assert.throws(() => registerProvidedFile(empty.id, f.job.id, f.owner, attachment), /could not be found/);
   assert.throws(() => registerProvidedFile(f.chat.id, randomUUID(), f.owner, attachment), /could not be found/);
   assert.equal(getChat(f.chat.id, f.owner)!.messages[0].attachments, undefined);
+});
+
+function provideRequest(f: Awaited<ReturnType<typeof fixture>>, file: string, signal?: AbortSignal) {
+  return new Request("http://test/api/internal/mcp-file", {
+    method: "POST", signal,
+    headers: {
+      authorization: "Bearer local-file-test", "Content-Type": "application/json",
+      "x-ai-chat-id": f.chat.id, "x-ai-chat-user-id": f.owner, "x-ai-chat-job-id": f.job.id,
+      "x-ai-chat-worker-id": f.claimed.leaseOwner!, "x-ai-chat-lease-token": f.claimed.leaseToken!,
+    },
+    body: JSON.stringify({ path: file }),
+  });
+}
+
+test("Unlimited provides 630 MiB and files above 1 GiB without file-sized memory; downloads stream and seek", async () => {
+  const f = await fixture();
+  const { getUserAgentCwd } = await import("../lib/mcp");
+  const { saveGlobalModelSettings, getChat } = await import("../lib/db-store");
+  const { POST } = await import("../app/api/internal/mcp-file/route");
+  const { GET } = await import("../app/api/uploads/[chatId]/[name]/route");
+  saveGlobalModelSettings({ attachmentMaxBytes: 0 }, f.owner);
+  const head = Buffer.from("large-file-head");
+  const tail = Buffer.from("large-file-tail");
+  for (const size of [630 * 1024 * 1024, 1024 ** 3 + 123]) {
+    const file = path.join(getUserAgentCwd(f.owner), "archive-" + size + ".zip");
+    const fd = openSync(file, "w");
+    try {
+      ftruncateSync(fd, size);
+      writeSync(fd, head, 0, head.length, 0);
+      writeSync(fd, tail, 0, tail.length, size - tail.length);
+    } finally { closeSync(fd); }
+    const memoryBefore = process.resourceUsage().maxRSS;
+    const response = await POST(provideRequest(f, file));
+    assert.equal(response.status, 200, await response.clone().text());
+    const result = await response.json();
+    assert.equal(result.attachment.size, size);
+    assert.ok(JSON.stringify(result).length < 3000, "delivery returns metadata rather than file contents");
+    assert.ok((process.resourceUsage().maxRSS - memoryBefore) < 128 * 1024, "copy must not allocate memory proportional to file size");
+    assert.ok(getChat(f.chat.id, f.owner)!.messages[0].attachments?.some(a => a.id === result.attachment.id));
+    const context = { params: Promise.resolve({ chatId: f.chat.id, name: result.attachment.storedName }) };
+    const request = (range?: string, session = f.token) => new Request("http://test" + result.downloadUrl, {
+      headers: { cookie: "ai_chat_auth=" + session, ...(range ? { range } : {}) },
+    });
+    assert.equal((await GET(request(undefined, f.otherToken), context)).status, 404);
+    const download = await GET(request(), context);
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get("content-length"), String(size));
+    const reader = download.body!.getReader();
+    const first = await reader.read();
+    assert.ok(first.value!.length <= 128 * 1024);
+    assert.deepEqual(Buffer.from(first.value!).subarray(0, head.length), head);
+    await reader.cancel();
+    // Changing the source later must not change the delivered attachment.
+    const edit = openSync(file, "r+");
+    try { writeSync(edit, Buffer.alloc(tail.length, 42), 0, tail.length, size - tail.length); }
+    finally { closeSync(edit); }
+    const ranged = await GET(request("bytes=" + (size - tail.length) + "-"), context);
+    assert.equal(ranged.status, 206);
+    assert.equal(ranged.headers.get("content-range"), "bytes " + (size - tail.length) + "-" + (size - 1) + "/" + size);
+    assert.deepEqual(Buffer.from(await ranged.arrayBuffer()), tail);
+  }
+});
+
+test("provided files respect saved finite limits and remove files after failed registration or cancellation", async () => {
+  const f = await fixture();
+  const { getUserAgentCwd } = await import("../lib/mcp");
+  const { saveGlobalModelSettings, getChat } = await import("../lib/db-store");
+  const { chatUploadDir } = await import("../lib/uploads");
+  const { getDatabase } = await import("../lib/sqlite");
+  const { POST } = await import("../app/api/internal/mcp-file/route");
+  const file = path.join(getUserAgentCwd(f.owner), "limited.txt");
+  writeFileSync(file, "12345");
+  saveGlobalModelSettings({ attachmentMaxBytes: 4 }, f.owner);
+  const limited = await POST(provideRequest(f, file));
+  assert.equal(limited.status, 400);
+  assert.match((await limited.json()).error, /attachment limit/);
+  assert.equal(existsSync(chatUploadDir(f.chat.id, f.owner)), false, "reject before storing bytes");
+  saveGlobalModelSettings({ attachmentMaxBytes: 0 }, f.owner);
+  const abort = new AbortController();
+  abort.abort();
+  assert.equal((await POST(provideRequest(f, file, abort.signal))).status, 499);
+  assert.equal(getChat(f.chat.id, f.owner)!.messages[0].attachments, undefined);
+  getDatabase().prepare("DELETE FROM run_events WHERE job_id = ? AND event = 'assistantId'").run(f.job.id);
+  const failed = await POST(provideRequest(f, file));
+  assert.equal(failed.status, 400);
+  assert.deepEqual(readdirSync(chatUploadDir(f.chat.id, f.owner)), [], "do not leave an unregistered copy");
 });

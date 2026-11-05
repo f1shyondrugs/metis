@@ -476,7 +476,7 @@ export function modelMessages(
 }
 
 export function effectiveModelParams(chat: Chat, job: AgentJob) {
-  return job.modelParams?.length ? job.modelParams : chat.modelParams;
+  return Array.isArray(job.modelParams) ? job.modelParams : chat.modelParams;
 }
 
 export function estimateProviderInputTokens(

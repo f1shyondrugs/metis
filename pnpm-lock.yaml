@@ -119,6 +119,9 @@ importers:
       diff:
         specifier: 9.0.0
         version: 9.0.0
+      emoji-picker-react:
+        specifier: 5.1.4
+        version: 5.1.4(react@19.2.8)
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
@@ -129,8 +132,8 @@ importers:
         specifier: ^1.13.3
         version: 1.13.3
       katex:
-        specifier: ^0.18.1
-        version: 0.18.1
+        specifier: ^0.16.47
+        version: 0.16.47
       lucide-react:
         specifier: ^1.28.0
         version: 1.28.0(react@19.2.8)
@@ -3973,6 +3976,12 @@ packages:
   emoji-mart@5.6.0:
     resolution: {integrity: sha512-eJp3QRe79pjwa+duv+n7+5YsNhRcMl812EcFVwrnRvYKoNPoQb5qxU8DG6Bgwji0akHdp6D4Ln6tYLG58MFSow==}
 
+  emoji-picker-react@5.1.4:
+    resolution: {integrity: sha512-kWBAgDCFPcRJrINeRE7/o7VAVNc0Yeg1n7gMHSvJ54qffidCV8Jdmeb9iEHkx1CtClzhnutCax8bQFDTHAbyTg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: '>=16.8'
+
   emoji-regex@10.6.0:
     resolution: {integrity: sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==}
 
@@ -6055,6 +6064,9 @@ packages:
   shiki@4.4.2:
     resolution: {integrity: sha512-P8F/dFhRevaw2uSdeIYlq/5SXZNY85DPtmXQ947gD1Zj2JqO5AkNvVVBar0Me9JkFx3uzVud/qOtP5ek9NEQGA==}
     engines: {node: '>=20'}
+
+  shipstyles@1.0.0:
+    resolution: {integrity: sha512-1AcihfXo/mSxqeOdoKqq/5TNv+vSH0dBYPFq88PUX5FBkK5pRmY5TP9SuMNio85PQ+euUI67+KpSVk1cUVDCgA==}
 
   side-channel-list@1.0.1:
     resolution: {integrity: sha512-mjn/0bi/oUURjc5Xl7IaWi/OJJJumuoJFQJfDDyO46+hBWsfaVM65TBHq2eoZBhzl9EchxOijpkbRC8SVBQU0w==}
@@ -10712,6 +10724,11 @@ snapshots:
 
   emoji-mart@5.6.0: {}
 
+  emoji-picker-react@5.1.4(react@19.2.8):
+    dependencies:
+      react: 19.2.8
+      shipstyles: 1.0.0
+
   emoji-regex@10.6.0: {}
 
   encodeurl@2.0.0: {}
@@ -13507,6 +13524,8 @@ snapshots:
       '@shikijs/types': 4.4.2
       '@shikijs/vscode-textmate': 10.0.2
       '@types/hast': 3.0.5
+
+  shipstyles@1.0.0: {}
 
   side-channel-list@1.0.1:
     dependencies:

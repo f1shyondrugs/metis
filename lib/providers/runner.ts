@@ -1,4 +1,7 @@
 import { deferProviderLimitedJob } from "@/lib/db-jobs";
+import { commitPendingModelSwitch } from "@/lib/model-switch";
+import { requestTaskContinuation } from "@/lib/task-continuation";
+import { researchContinuationForJob } from "@/lib/research-completion";
 import { requestProviderRetry, runWithProviderRetries } from "@/lib/provider-retry-runner";
 import {
   appendMessage,
@@ -142,18 +145,10 @@ async function runAlternativeProviderAttempt(
   const markProviderProgress = () => {
     lastProviderProgressAt = Date.now();
   };
-  let modelSwitchTarget: {
-    modelId: string;
-    modelParams?: Array<{ id: string; value: string }>;
-  } | null = null;
   const cancellationWatcher = setInterval(() => {
     const currentJob = getJob(job.id);
     const pendingModelId = currentJob?.pendingModelId?.trim();
     if (pendingModelId && pendingModelId !== job.modelId) {
-      modelSwitchTarget = {
-        modelId: pendingModelId,
-        modelParams: currentJob?.pendingModelParams,
-      };
       abortCause = "model_switch";
       controller.abort();
       return;
@@ -233,39 +228,15 @@ async function runAlternativeProviderAttempt(
       if (checkpointDirty) checkpointNow();
     }, 500);
   };
-  const handoffModelSwitch = () => {
-    if (!modelSwitchTarget) return false;
+  const handoffModelSwitch = () => commitPendingModelSwitch(job.id, job.modelId || initialChat.modelId || "", event => {
+    for (const tool of tools.filter(tool => tool.status === "running")) {
+      tool.status = "cancelled";
+      upsertToolMessagePart(parts, tool);
+      emit("tool", { callId: tool.id, name: tool.name, status: tool.status, kind: tool.kind });
+    }
+    parts.push(event);
     checkpoint(true);
-    const target = modelSwitchTarget;
-    const switchedAt = new Date().toISOString();
-    updateChat(
-      job.chatId,
-      {
-        modelId: target.modelId,
-        modelParams: target.modelParams || [],
-        agentId: null,
-        runStatus: "running",
-        runUpdatedAt: switchedAt,
-        queueMessage: null,
-        badge: null,
-      },
-      job.userId,
-    );
-    emit("status", { status: "switching_model", modelId: target.modelId });
-    updateJob(job.id, {
-      status: "switching",
-      error: undefined,
-      agentId: undefined,
-      modelId: target.modelId,
-      modelParams: target.modelParams,
-      pendingModelId: undefined,
-      pendingModelParams: undefined,
-      modelSwitchRequestedAt: undefined,
-      resumePrompt: `The user switched the active model to ${target.modelId}. Continue the in-progress task from the saved chat/tool/browser state. Do not repeat completed work.`,
-      resumeRequestedAt: switchedAt,
-    });
-    return true;
-  };
+  });
 
   const onText = (value: string) => {
     if (!value) return;
@@ -379,7 +350,7 @@ async function runAlternativeProviderAttempt(
   );
 
   try {
-    const runParams = (job.modelParams?.length ? job.modelParams : chat.modelParams)?.map(param => ({ ...param }));
+    const runParams = (Array.isArray(job.modelParams) ? job.modelParams : chat.modelParams)?.map(param => ({ ...param }));
     const selectedModel = providerModelsForConnection(credential)
       .find((candidate) => candidate.id === parsed.modelId);
     const selectedContextWindow = contextWindowForSelection(
@@ -392,7 +363,7 @@ async function runAlternativeProviderAttempt(
         .find((candidate) => candidate.id === parsed.modelId);
       const contextWindow = contextWindowForSelection(
         selectedModel || { id: parsed.modelId, providerId: definition.key },
-        job.modelParams?.length ? job.modelParams : chat.modelParams,
+        Array.isArray(job.modelParams) ? job.modelParams : chat.modelParams,
       );
       if (binding?.lastKnownGoodCursor && nativeSessionNeedsManagedCompaction(execution, binding, contextWindow)) {
         emit("status", {
@@ -419,7 +390,7 @@ async function runAlternativeProviderAttempt(
         emit(data.type === "compaction" ? "compaction" : "stream", data);
       },
     });
-    if (modelSwitchTarget && handoffModelSwitch()) return true;
+    if (handoffModelSwitch()) return true;
     const durableStatus = getJob(job.id)?.status;
     if (durableStatus === "interrupted") {
       checkpoint();
@@ -433,8 +404,9 @@ async function runAlternativeProviderAttempt(
       checkpoint(true);
       if (parkEndedUserInputWriter(job.id)) return true;
     }
+    if (abortCause === "stalled" || abortCause === "lease_lost") throw new Error(abortDetail);
     const cancelled =
-      controller.signal.aborted || durableStatus === "cancelled";
+      abortCause === "cancelled" || durableStatus === "cancelled";
     if (cancelled) {
       updateChat(
         job.chatId,
@@ -453,6 +425,17 @@ async function runAlternativeProviderAttempt(
     // An empty provider response is kept empty. Do not fabricate assistant text;
     // the caller can surface the actual run status and diagnostics.
     finalizeAlternativeTools(tools);
+    checkpoint(true);
+    const research = await researchContinuationForJob(getJob(job.id) || job);
+    if (handoffModelSwitch()) return true;
+    if (requestTaskContinuation({
+      jobId: job.id,
+      assistantMessage: { id: assistantMessageId, role: "assistant", content: text, tools, parts },
+      outcome: "success",
+      checkpoint: () => checkpoint(true),
+      agentId: result.agentId,
+      research,
+    })) return true;
     const extractedSuggestions = extractSuggestions(text);
     text = extractedSuggestions.text;
     suggestions = extractedSuggestions.suggestions;
@@ -596,7 +579,7 @@ async function runAlternativeProviderAttempt(
       completionCommitted = true;
     }, result.agentId, assistantMessageId);
   } catch (error) {
-    if (modelSwitchTarget && handoffModelSwitch()) return true;
+    if (handoffModelSwitch()) return true;
     if (completionCommitted) {
       const message = error instanceof Error ? error.message : String(error);
       void logError({
@@ -625,9 +608,9 @@ async function runAlternativeProviderAttempt(
             : "Provider run failed.";
     const interruptedTools = tools.filter(tool => tool.status === "running");
     finalizeAlternativeTools(tools);
-    if (!cancelled && !interrupted && !runtimeFailure) {
+    if (!cancelled && !interrupted && abortCause !== "lease_lost") {
       checkpoint(true);
-      if (deferProviderLimitedJob(job.id, error)) return true;
+      if (deferProviderLimitedJob(job.id, error, event => { parts.push(event); checkpoint(true); })) return true;
       if (requestProviderRetry(job.id, error, event => {
         for (const tool of interruptedTools) emit("tool", {
           callId: tool.id, name: tool.name, status: tool.status, kind: tool.kind,

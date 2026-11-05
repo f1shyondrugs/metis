@@ -27,14 +27,18 @@ export function UploadProgress({ taskId }: { taskId?: string }) {
 export function UploadTray() {
   const [collapsed, setCollapsed] = useState(false);
   const tasks = useSyncExternalStore(subscribeUploads, getUploadSnapshot, getServerUploadSnapshot);
-  if (!tasks.length) return null;
-  return <aside aria-label="Background uploads" className="fixed bottom-24 right-4 z-[85] w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border bg-background shadow-lg">
-    <button type="button" className="flex w-full items-center justify-between gap-2 border-b border-border px-3 py-2 text-left hover:bg-secondary/50" aria-expanded={!collapsed} aria-label={collapsed ? "Expand uploads" : "Collapse uploads"} onClick={() => setCollapsed((value) => !value)}>
+  const [hiddenTasks, setHiddenTasks] = useState<Set<string>>(() => new Set());
+  if (!tasks.length || tasks.every(task => hiddenTasks.has(task.id))) return null;
+  return <aside data-swipe-ignore aria-label="Background uploads" className="fixed top-[max(0.75rem,env(safe-area-inset-top))] right-3 z-[85] w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-lg border border-border bg-background shadow-lg sm:top-auto sm:right-4 sm:bottom-24">
+    <div className="flex items-center border-b border-border">
+    <button type="button" className="flex min-h-11 min-w-0 flex-1 items-center justify-between gap-2 px-3 py-2 text-left hover:bg-secondary/50" aria-expanded={!collapsed} aria-label={collapsed ? "Expand uploads" : "Collapse uploads"} onClick={() => setCollapsed((value) => !value)}>
       <span className="text-xs font-medium">Uploads · {tasks.length}</span>
       <span className="text-[10px] text-muted-foreground">{tasks.some((task) => ["queued", "uploading", "finishing"].includes(task.status)) ? "Uploading in background" : "Uploads finished"}</span>
       <ChevronDown className={`size-3.5 shrink-0 ${collapsed ? "-rotate-90" : ""}`} />
     </button>
-    {!collapsed && <div className="max-h-64 overflow-y-auto">
+    <button type="button" aria-label="Close uploads" title="Hide upload queue" className="flex size-11 shrink-0 items-center justify-center rounded hover:bg-secondary/50 focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setHiddenTasks(new Set(tasks.map(task => task.id)))}><X className="size-4" aria-hidden="true" /></button>
+    </div>
+    {!collapsed && <div className="max-h-[min(16rem,50dvh)] overflow-y-auto">
       {tasks.map((task) => <div key={task.id} className="flex items-start gap-2 border-b border-border/50 px-3 py-2 last:border-0">
         {task.status === "completed" ? <Check className="mt-1 size-4 text-primary" /> : <Loader2 className={`mt-1 size-4 shrink-0 text-muted-foreground ${["uploading", "finishing"].includes(task.status) ? "animate-spin" : ""}`} />}
         <div className="min-w-0 flex-1">

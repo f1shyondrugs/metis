@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import { captureDesktopPreview } from "./desktop-preview.mjs";
+import { captureDesktopPreview, listDesktopMonitors } from "./desktop-preview.mjs";
 import { unixComputerUse } from "./computer-use-unix.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -188,7 +188,8 @@ function finiteInt(value, label, min = -100000, max = 100000) {
 
 export async function computerUse(params = {}, { signal } = {}) {
   const operation = String(params.operation || "");
-  if (operation === "preview") return captureDesktopPreview({ signal });
+  if (operation === "preview") return captureDesktopPreview({ signal, monitorId: params.monitorId });
+  if (operation === "monitors") return listDesktopMonitors({ signal });
   const allowed = ["status", "list_windows", "observe", "move", "click", "scroll", "drag", "type", "key", "request_permissions"];
   if (!allowed.includes(operation)) throw new Error("Unsupported computer use operation");
   const payload = { operation };

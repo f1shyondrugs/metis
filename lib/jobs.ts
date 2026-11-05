@@ -7,6 +7,7 @@ import type { StoredAttachment } from "@/lib/uploads";
 export type JobStatus =
   | "queued"
   | "running"
+  /** Old writer is retiring; scheduler queues the handoff only after its process exits. */
   | "switching"
   | "waiting_input"
   | "waiting_for_user"
@@ -18,6 +19,10 @@ export type JobStatus =
 export type AgentJob = {
   /** Automatic transient provider retries consumed by this logical run. */
   providerRetryCount?: number;
+  /** Bounded repairs of a successful provider exit with unfinished current Goal tasks. */
+  taskContinuationCount?: number;
+  /** Deep Research repairs without new persisted source/step/report progress. */
+  researchContinuationState?: { count: number; signature?: string };
   /** Durable deferred claim metadata; cleared atomically when the reset is due. */
   providerRateLimit?: import("@/lib/provider-rate-limit").ProviderRateLimit;
   id: string;
@@ -84,6 +89,10 @@ export type AgentJob = {
   userInputResume?: { questionId: string; attempt: number; progress: import("@/lib/user-input-progress").UserInputProgress };
   runId?: string;
   queueMessage?: string;
+  /** Scheduler-owned wait reason; independent of provider reset waits. */
+  memoryWaiting?: boolean;
+  /** Explicit owner request, consumed on claim and never inherited by another run. */
+  memoryOverrideRequestedAt?: string;
   status: JobStatus;
   /** Monotonic optimistic-concurrency revision for durable job updates. */
   revision?: number;

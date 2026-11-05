@@ -5,10 +5,13 @@ import katex from "katex";
 import { type EditorNode, readNotesRichBlock } from "@/lib/notes-editor-format";
 import { type NotesHeading } from "@/lib/notes-editor-headings";
 import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
+import { PublicMarkdownLink } from "@/components/public-markdown-link";
+import { publicMarkdownImageUrl, type PublicMarkdownShare } from "@/lib/public-markdown";
 
 const stringAttr = (node: EditorNode, name: string) => typeof node.attrs?.[name] === "string" ? node.attrs[name] as string : "";
 const safeHref = (value: string) => /^(https?:\/\/|mailto:|\/(?!\/)|#|note:\/\/|issue:\/\/|metis:\/\/note\/)/i.test(value) ? value : undefined;
-function RichLink({ href, children }: { href: string; children: ReactNode }) {
+function RichLink({ href, children, publicShare }: { href: string; children: ReactNode; publicShare?: PublicMarkdownShare }) {
+  if (publicShare) return <PublicMarkdownLink href={href} share={publicShare}>{children}</PublicMarkdownLink>;
   const safe = safeHref(href);
   if (!safe) return <span>{children}</span>;
   const target = parseInternalLink(safe), navigation = target ? internalLinkNavigation(target) : null;
@@ -18,9 +21,9 @@ function RichLink({ href, children }: { href: string; children: ReactNode }) {
   }}>{children}</a>;
 }
 function safeColor(value: unknown) { return typeof value === "string" && /^(#[\da-f]{3,8}|(?:rgb|hsl)a?\([\d.,% /-]+\)|[a-z]{3,20})$/i.test(value) ? value : undefined; }
-function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [] }: { node: EditorNode; depth?: number; headings?: NotesHeading[]; sourceOffset?:number; path?:number[] }) {
+function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [], publicShare }: { node: EditorNode; depth?: number; headings?: NotesHeading[]; sourceOffset?:number; path?:number[]; publicShare?: PublicMarkdownShare }) {
   if (depth > 50) return <span>Nested content limit reached.</span>;
-  const children = (node.content || []).map((child, index) => <RichNode key={index} node={child} depth={depth + 1} headings={headings} sourceOffset={sourceOffset} path={[...path,index]}/>);
+  const children = (node.content || []).map((child, index) => <RichNode key={index} node={child} depth={depth + 1} headings={headings} sourceOffset={sourceOffset} path={[...path,index]} publicShare={publicShare}/>);
   const attrs = node.attrs || {}, blockId = stringAttr(node, "blockId");
   const headingId = node.type === "heading" ? headings.find((heading) => heading.sourceOffset === sourceOffset && heading.path === path.join("."))?.id : undefined;
   const common = blockId ? { id: "block-" + blockId } : headingId ? { id: headingId } : {};
@@ -32,7 +35,7 @@ function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [] 
       else if (mark.type === "strike") value = <s>{value}</s>;
       else if (mark.type === "underline") value = <u>{value}</u>;
       else if (mark.type === "code") value = <code>{value}</code>;
-      else if (mark.type === "link") value = <RichLink href={String(mark.attrs?.href || "")}>{value}</RichLink>;
+      else if (mark.type === "link") value = <RichLink href={String(mark.attrs?.href || "")} publicShare={publicShare}>{value}</RichLink>;
       else if (mark.type === "textStyle") value = <span style={{color:safeColor(mark.attrs?.color)}}>{value}</span>;
       else if (mark.type === "highlight") value = <mark style={{backgroundColor:safeColor(mark.attrs?.color),color:"inherit"}}>{value}</mark>;
     }
@@ -59,8 +62,9 @@ function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [] 
     case "hardBreak": return <br/>;
     case "codeBlock": return <pre {...common}><code>{(node.content || []).map((child) => child.text || "").join("")}</code></pre>;
     case "image": {
-      const src = stringAttr(node,"src");
-      return /^(https?:\/\/|\/(?!\/))/i.test(src) ? <img src={src} alt={stringAttr(node,"alt")} title={stringAttr(node,"title") || undefined} className="max-w-full h-auto"/> : <span>{stringAttr(node,"alt") || "Image address unavailable"}</span>;
+      const original = stringAttr(node,"src");
+      const src = publicShare ? publicMarkdownImageUrl(original, publicShare) || "" : original;
+      return /^(https?:\/\/|\/(?!\/))/i.test(src) ? <img src={src} alt={stringAttr(node,"alt")} title={stringAttr(node,"title") || undefined} className="max-w-full h-auto" referrerPolicy={publicShare ? "no-referrer" : undefined}/> : <span>{stringAttr(node,"alt") || "Image address unavailable"}</span>;
     }
     case "inlineMath":
     case "mathBlock": {
@@ -72,8 +76,8 @@ function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [] 
     case "toggleBlock": return <details {...common} open={attrs.open !== false} className="my-2"><summary className="cursor-pointer font-medium">{stringAttr(node,"title") || "Details"}</summary><div className="pl-5">{children}</div></details>;
     case "columns": return <div {...common} className="my-3 flex flex-col gap-5 sm:flex-row">{children}</div>;
     case "column": return <div className="min-w-0 flex-1">{children}</div>;
-    case "pageReference": return <p {...common} className="my-2"><RichLink href={"note://" + encodeURIComponent(stringAttr(node,"noteId"))}>↗ {stringAttr(node,"title") || "Page"}</RichLink></p>;
-    case "embedBlock": return <div {...common} className="my-3 rounded border border-border px-3 py-2"><RichLink href={stringAttr(node,"url")}>{stringAttr(node,"title") || stringAttr(node,"url")}</RichLink></div>;
+    case "pageReference": return <p {...common} className="my-2"><RichLink href={"note://" + encodeURIComponent(stringAttr(node,"noteId"))} publicShare={publicShare}>↗ {stringAttr(node,"title") || "Page"}</RichLink></p>;
+    case "embedBlock": return <div {...common} className="my-3 rounded border border-border px-3 py-2"><RichLink href={stringAttr(node,"url")} publicShare={publicShare}>{stringAttr(node,"title") || stringAttr(node,"url")}</RichLink></div>;
     case "table": return <div {...common} className="overflow-x-auto"><table><tbody>{children}</tbody></table></div>;
     case "tableRow": return <tr>{children}</tr>;
     case "tableHeader":
@@ -85,8 +89,8 @@ function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [] 
     default: return <Fragment>{children}</Fragment>;
   }
 }
-export function NotesRichBlockPreview({ source, headings = [], sourceOffset = 0 }: { source: string; headings?:NotesHeading[]; sourceOffset?:number }) {
+export function NotesRichBlockPreview({ source, headings = [], sourceOffset = 0, publicShare }: { source: string; headings?:NotesHeading[]; sourceOffset?:number; publicShare?: PublicMarkdownShare }) {
   const node = readNotesRichBlock(source);
   if (!node) return <div className="my-2"><p className="text-xs text-destructive">This rich block could not be read. Its source is preserved.</p><pre><code>{source}</code></pre></div>;
-  return <div className="notes-rich-block-preview" data-notes-rich-preview=""><RichNode node={node} headings={headings} sourceOffset={sourceOffset}/></div>;
+  return <div className="notes-rich-block-preview" data-notes-rich-preview=""><RichNode node={node} headings={headings} sourceOffset={sourceOffset} publicShare={publicShare}/></div>;
 }

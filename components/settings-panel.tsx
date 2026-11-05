@@ -1745,7 +1745,7 @@ export function SettingsPanel({
          <span className="min-w-0">
            <span className="block truncate text-sm">{item.origin}</span>
            <span className="mt-1 block text-[11px] text-muted-foreground">
-             {item.storageTypes.join(" · ")} · {item.sizeBytes.toLocaleString()} bytes
+             {item.storageTypes.join(" · ")} · {item.sizeBytes.toLocaleString("en")} bytes
            </span>
          </span>
        </button>
@@ -2589,7 +2589,7 @@ export function SettingsPanel({
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                         <span>{client.status}</span>
                         {client.version ? <span>v{client.version}</span> : null}
-                        {client.lastSeenAt ? <span>seen {new Date(client.lastSeenAt).toLocaleString()}</span> : null}
+                        {client.lastSeenAt ? <span>seen {new Date(client.lastSeenAt).toLocaleString("en")}</span> : null}
                       </div>
 
                     </div>

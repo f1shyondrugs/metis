@@ -1,7 +1,7 @@
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import { appendRunEvent, requestJobCancel, updateJob } from "@/lib/db-jobs";
 import { resolveApproval } from "@/lib/db-approvals";
-import { cancelQuestion } from "@/lib/db-questions";
+import { POST as respondToQuestion } from "@/app/api/chat/answer/route";
 import { getChat, updateChat } from "@/lib/db-store";
 
 export const runtime = "nodejs";
@@ -27,13 +27,9 @@ export async function POST(req: Request) {
     }
   }
   if (chat?.pendingQuestion?.questionId) {
-    const cancelled = cancelQuestion(chat.pendingQuestion.questionId, userId);
-    if (cancelled) {
-      if (cancelled.jobId) updateJob(cancelled.jobId, { status: "cancelled", error: "Question cancelled by user." });
-      updateChat(chatId, { runStatus: "cancelled", pendingQuestion: null, badge: null }, userId);
-      if (cancelled.jobId) appendRunEvent(cancelled.jobId, chatId, userId, "status", { status: "cancelled", questionId: chat.pendingQuestion.questionId });
-      return Response.json({ ok: true, status: "cancelled" });
-    }
+    return respondToQuestion(new Request(req.url, { method: "POST", headers: req.headers,
+      body: JSON.stringify({ questionId: chat.pendingQuestion.questionId, version: chat.pendingQuestion.version, cancelled: true }),
+    }));
   }
   const active = requestJobCancel(chatId, userId);
   if (!active) return Response.json({ error: "No active run" }, { status: 404 });

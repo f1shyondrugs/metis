@@ -28,7 +28,7 @@ function formatWhen(value?: string) {
   if (!value) return "Time unknown";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Time unknown";
-  return date.toLocaleString();
+  return date.toLocaleString("en");
 }
 
 function statusLabel(status: UpdateHistoryEntry["status"]) {

@@ -1,3 +1,6 @@
+import { providerRetryDetail } from "@/lib/provider-retry";
+import type { ModelSwitchPart, ProviderWaitPart } from "@/lib/run-control-event";
+import { MEMORY_WAIT_MESSAGE, MEMORY_OVERRIDE_MESSAGE, WORKER_QUEUE_MESSAGE } from "@/lib/memory-queue";
 import { projectRole } from "@/lib/project-access";
 import { projectModelOverride, validateProjectModelSelection } from "@/lib/project-model-server";
 import { modeById } from "@/lib/modes";
@@ -16,7 +19,7 @@ import {
   withSqliteRetry,
 } from "@/lib/sqlite";
 import type { AgentJob, JobStatus } from "@/lib/jobs";
-import { claimQueuedMessageInTransaction, getChat, getChatMetadata, getGlobalModelSettings, updateChat } from "@/lib/db-store";
+import { appendMessage, claimQueuedMessageInTransaction, getChat, getChatMetadata, getGlobalModelSettings, updateChat } from "@/lib/db-store";
 import {
   describeQueueWait,
   parseWorkerConcurrency,
@@ -309,7 +312,7 @@ export function drainNextQueuedMessage(chatId: string, userId?: string) {
       ...(chat.agentId ? { agentId: chat.agentId } : {}),
       ...(chat.sessionState?.modeId ? { modeId: chat.sessionState.modeId } : {}),
       ...(chat.modelId ? { modelId: chat.modelId } : {}),
-      ...(chat.modelParams?.length ? { modelParams: chat.modelParams } : {}),
+      ...(Array.isArray(chat.modelParams) ? { modelParams: chat.modelParams } : {}),
       ...(chat.incognito ? { incognito: true } : {}),
     });
   });
@@ -422,9 +425,61 @@ export function listJobs(chatId?: string, userId?: string) {
     .filter((job): job is AgentJob => Boolean(job));
 }
 
+/** Publish only transitions; keep queue timestamps so status refreshes preserve FIFO. */
+export function syncQueuedMemoryWait(blocked: boolean) {
+  return transaction(() => {
+    const db = getDatabase();
+    const rows = db.prepare(`
+      SELECT data FROM jobs WHERE status = 'queued' AND json_valid(data)
+        AND (json_extract(data, '$.providerRateLimit.resetAt') IS NULL
+          OR json_extract(data, '$.providerRateLimit.resetAt') <= ?)
+        AND json_extract(data, '$.memoryOverrideRequestedAt') IS NULL
+        AND COALESCE(json_extract(data, '$.memoryWaiting'), 0) != ?
+        AND NOT EXISTS (SELECT 1 FROM job_leases l WHERE l.job_id = jobs.id AND l.expires_at > ?)
+      LIMIT 100
+    `).all(iso(), blocked ? 1 : 0, iso());
+    let changed = 0;
+    for (const row of rows) {
+      const job = parseData<AgentJob>(row);
+      if (!job) continue;
+      const queueMessage = blocked ? MEMORY_WAIT_MESSAGE : WORKER_QUEUE_MESSAGE;
+      const updated = { ...job, memoryWaiting: blocked || undefined, queueMessage, revision: jobRevision(job) + 1 };
+      db.prepare("UPDATE jobs SET data = ? WHERE id = ? AND status = 'queued'")
+        .run(JSON.stringify(updated), job.id);
+      updateChat(job.chatId, { runStatus: "running", queueMessage }, job.userId);
+      appendRunEvent(job.id, job.chatId, job.userId, "status", {
+        status: blocked ? "waiting_memory" : "queued", message: queueMessage,
+      });
+      changed++;
+    }
+    return changed;
+  });
+}
+
+/** Acknowledge one queued run only; all normal claim/lease/provider guards still apply. */
+export function requestMemoryOverride(jobId: string, userId: string) {
+  return transaction(() => {
+    const job = getJob(jobId);
+    if (!job || job.userId !== userId || !getChatMetadata(job.chatId, userId)) return null;
+    if (job.status !== "queued" || (job.providerRateLimit && Date.parse(job.providerRateLimit.resetAt) > Date.now())) return null;
+    if (job.memoryOverrideRequestedAt) return job;
+    if (!job.memoryWaiting) return null;
+    const updated = {
+      ...job, memoryWaiting: undefined, memoryOverrideRequestedAt: iso(),
+      queueMessage: MEMORY_OVERRIDE_MESSAGE, revision: jobRevision(job) + 1,
+    };
+    getDatabase().prepare("UPDATE jobs SET data = ? WHERE id = ? AND status = 'queued'")
+      .run(JSON.stringify(updated), job.id);
+    updateChat(job.chatId, { queueMessage: MEMORY_OVERRIDE_MESSAGE }, userId);
+    appendRunEvent(job.id, job.chatId, userId, "status", { status: "queued", message: MEMORY_OVERRIDE_MESSAGE });
+    return updated;
+  });
+}
+
 export function claimNextJob(
   options: {
     interactiveOnly?: boolean;
+    memoryOverrideOnly?: boolean;
     workerId?: string;
     leaseMs?: number;
   } = {},
@@ -439,6 +494,7 @@ export function claimNextJob(
       `SELECT id, chat_id as chatId, user_id as userId, data
        FROM jobs
        WHERE status = 'queued'
+         AND (? = 0 OR (json_valid(data) AND json_extract(data, '$.memoryOverrideRequestedAt') IS NOT NULL))
          AND (NOT json_valid(data) OR json_extract(data, '$.providerRateLimit.resetAt') IS NULL
               OR json_extract(data, '$.providerRateLimit.resetAt') <= ?)
          AND NOT EXISTS (
@@ -503,7 +559,7 @@ export function claimNextJob(
        LIMIT 1`,
     );
     for (;;) {
-      const row = selectQueued.get(iso(), iso(), options.interactiveOnly ? 1 : 0) as
+      const row = selectQueued.get(options.memoryOverrideOnly ? 1 : 0, iso(), iso(), options.interactiveOnly ? 1 : 0) as
         | { id: string; chatId: string; userId: string | null; data: string }
         | undefined;
       if (!row) return null;
@@ -532,6 +588,9 @@ export function claimNextJob(
       const claimed = {
         ...job,
         providerRateLimit: undefined,
+        memoryWaiting: undefined,
+        memoryOverrideRequestedAt: undefined,
+        queueMessage: undefined,
         ...(waiting && Number.isFinite(Date.parse(job.agentRuntimeDeadlineAt || "")) ? {
           agentRuntimeDeadlineAt: new Date(Date.parse(job.agentRuntimeDeadlineAt!) + waitedMs).toISOString(),
         } : {}),
@@ -569,6 +628,9 @@ export function claimNextJob(
           jobRevision(job),
         );
       if (result.changes) {
+        if (job.memoryWaiting || job.memoryOverrideRequestedAt) {
+          updateChat(job.chatId, { queueMessage: null, runStatus: "running" }, job.userId);
+        }
         syncHandoffForJob(claimed);
         return {
           ...claimed,
@@ -645,6 +707,8 @@ export function updateJob(
       | "cancellationCause"
       | "subagentAutoReview"
       | "providerRetryCount"
+      | "taskContinuationCount"
+      | "researchContinuationState"
     >
   > & { providerRateLimit?: ProviderRateLimit },
   options: { expectedRevision?: number; control?: boolean } = {},
@@ -1166,6 +1230,7 @@ export function requestJobModelSwitch(
   modelId: string,
   modelParams?: Array<{ id: string; value: string }>,
 ) {
+  return transaction(() => {
   const job = getActiveJob(chatId, userId);
   if (!job) return null;
   const chat = getChat(chatId, userId);
@@ -1178,13 +1243,30 @@ export function requestJobModelSwitch(
   // model can become effective immediately. A running job receives a pending
   // handoff request that its worker observes without changing run status.
   if (job.status !== "running") {
-    return updateJob(job.id, {
-      modelId: nextModelId,
-      modelParams,
-      pendingModelId: undefined,
-      pendingModelParams: undefined,
-      modelSwitchRequestedAt: undefined,
-    });
+    const changedModel = job.modelId !== nextModelId;
+    const resetWait = changedModel && job.status === "queued" && Boolean(job.providerRateLimit);
+    const updated = updateJob(job.id, {
+      modelId: nextModelId, modelParams,
+      pendingModelId: undefined, pendingModelParams: undefined, modelSwitchRequestedAt: undefined,
+      ...(resetWait ? {
+        providerRateLimit: undefined,
+        ...(Number.isFinite(Date.parse(job.agentRuntimeDeadlineAt || "")) && Number.isFinite(Date.parse(job.providerRateLimit?.detectedAt || "")) ? {
+          agentRuntimeDeadlineAt: new Date(Date.parse(job.agentRuntimeDeadlineAt!) + Math.max(0, Date.now() - Date.parse(job.providerRateLimit!.detectedAt))).toISOString(),
+        } : {}),
+        resumePrompt: providerContinuationPrompt(job, `The user switched the model to ${nextModelId} during the previous provider wait.`),
+        resumeRequestedAt: iso(),
+      } : {}),
+    }, { control: true });
+    if (updated && resetWait) {
+      const timestamp = iso();
+      const event: ModelSwitchPart = { type: "model-switch", id: `model-switch:${job.id}:${timestamp}`, fromModelId: job.modelId || "", toModelId: nextModelId, timestamp };
+      const messageId = randomUUID();
+      const message = appendMessage(chatId, { id: messageId, role: "assistant", content: "", parts: [event] }, userId);
+      if (message) appendRunEvent(job.id, chatId, userId, "assistantId", { messageId });
+      updateChat(chatId, { runStatus: "running", queueMessage: null }, userId);
+      appendRunEvent(job.id, chatId, userId, "run-event", event);
+    }
+    return updated;
   }
   const requestedParams = modelParams ?? job.modelParams;
   if (job.modelId === nextModelId && modelParamsEqual(job.modelParams, requestedParams)) {
@@ -1199,6 +1281,7 @@ export function requestJobModelSwitch(
     pendingModelId: nextModelId,
     pendingModelParams: modelParams,
     modelSwitchRequestedAt: iso(),
+  }, { control: true });
   });
 }
 
@@ -1237,7 +1320,7 @@ export function requestJobCancel(chatId: string, userId?: string) {
 }
 
 /** Atomically publish the pause before releasing the writer lease. No sleeping worker. */
-export function deferProviderLimitedJob(jobId: string, error: unknown) {
+export function deferProviderLimitedJob(jobId: string, error: unknown, checkpoint?: (event: ProviderWaitPart) => void) {
   // Old schedulers must never claim a deferred job before its reset.
   // New workers advertise support to their isolated job processes.
   if (process.env.NODE_ENV === "production" && process.env.AI_CHAT_PROVIDER_LIMIT_WAITER !== "1") return null;
@@ -1247,6 +1330,12 @@ export function deferProviderLimitedJob(jobId: string, error: unknown) {
     const current = getJob(jobId);
     if (!current || current.status !== "running" || !getProviderLimitResumeEnabled(current.userId)
         || !hasActiveWorkerLease(getDatabase(), jobId, iso())) return null;
+    const event: ProviderWaitPart = {
+      type: "provider-wait", id: `provider-wait:${current.id}:${limit.detectedAt}`,
+      resetAt: limit.resetAt, detectedAt: limit.detectedAt, detail: providerRetryDetail(error),
+    };
+    checkpoint?.(event);
+    appendRunEvent(current.id, current.chatId, current.userId, "run-event", event);
     const message = `Provider usage limit reached. This run resumes automatically at ${limit.resetAt}.`;
     const projected = updateChat(current.chatId, {
       runStatus: "paused", runUpdatedAt: iso(), queueMessage: message,

@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { MAX_ATTACHMENTS } from "@/lib/upload-limits";
 import { Button } from "@/components/ui/button";
 import { notifyClientError } from "@/lib/client-error-notifications";
-import { chooseDesktopClient, desktopUnavailableReason } from "@/lib/remote-desktop-view";
+import { chooseDesktopClient, desktopUnavailableReason, desktopMonitorLabel } from "@/lib/remote-desktop-view";
+import { useDesktopMonitors } from "@/components/use-desktop-monitors";
 import type { RemoteClient } from "@/lib/remote-clients";
 
 async function responseError(response: Response, fallback: string) {
@@ -24,7 +25,7 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
   const [loading, setLoading] = useState(true);
   const [inventoryError, setInventoryError] = useState("");
   const [paused, setPaused] = useState(false);
-  const [frame, setFrame] = useState<{ url: string; at: number } | null>(null);
+  const [frame, setFrame] = useState<{ url: string; at: number; sourceKey: string } | null>(null);
   const [frameError, setFrameError] = useState("");
   const [retry, setRetry] = useState(0);
   const refresh = useCallback(() => setRetry(value => value + 1), []);
@@ -61,10 +62,14 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
   const selected = chooseDesktopClient(clients, selectedId);
   const unavailable = selected ? desktopUnavailableReason(selected) : null;
   const deviceId = selected?.id ?? null;
+  const { monitors, monitor, monitorId, ready: monitorReady, selectionSupported, error: monitorError, reason: monitorReason, selectMonitor } =
+    useDesktopMonitors({ active: active && !inventoryError, deviceId, unavailable, retry });
+  const sourceKey = JSON.stringify([deviceId, monitorId]);
+  const visibleFrame = frame?.sourceKey === sourceKey ? frame : null;
 
   useEffect(() => {
     setFrame(null); setFrameError("");
-    if (!active || !deviceId || unavailable || paused || inventoryError) return;
+    if (!active || !deviceId || unavailable || paused || inventoryError || !monitorReady || monitorError) return;
     let disposed = false, stopped = false, objectUrl: string | null = null;
     let controller: AbortController | null = null, timer: ReturnType<typeof setTimeout>;
     const capture = async () => {
@@ -73,18 +78,24 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
       controller = requestController;
       try {
         const response = await fetch("/api/remote-clients/" + encodeURIComponent(deviceId) + "/desktop",
-          { method: "POST", signal: requestController.signal, cache: "no-store" });
+          { method: "POST", signal: requestController.signal, cache: "no-store",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify(monitorId ? { monitorId } : {}) });
         if (!response.ok) throw new Error(await responseError(response, "Desktop preview failed"));
+        if (monitorId) {
+          const capturedMonitor = response.headers.get("X-Desktop-Monitor-Id");
+          if (!capturedMonitor || decodeURIComponent(capturedMonitor) !== monitorId) throw new Error("The device returned a frame from a different monitor");
+        }
         const blob = await response.blob();
         if (disposed || requestController.signal.aborted) return;
         const next = URL.createObjectURL(blob), previous = objectUrl;
         objectUrl = next;
         const capturedAt = Number(response.headers.get("X-Desktop-Captured-At"));
-        setFrame({ url: next, at: Number.isFinite(capturedAt) && capturedAt > 0 ? capturedAt : Date.now() });
+        setFrame({ url: next, at: Number.isFinite(capturedAt) && capturedAt > 0 ? capturedAt : Date.now(), sourceKey });
         if (previous) URL.revokeObjectURL(previous);
       } catch (error) {
         if (disposed || requestController.signal.aborted) return;
         stopped = true; setFrame(null);
+        if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
         const message = error instanceof Error ? error.message : "Desktop preview failed";
         setFrameError(message);
         notifyClientError(error, { title: "Desktop preview failed", key: "desktop-frame:" + deviceId });
@@ -104,7 +115,7 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [active, deviceId, unavailable, paused, retry, inventoryError]);
+  }, [active, deviceId, unavailable, paused, retry, inventoryError, monitorId, monitorReady, monitorError, sourceKey]);
 
   const transferReady = active && selected?.status === "online" && selected.policy.mode === "full_access" && !inventoryError;
   function uploadFiles(files: FileList) {
@@ -123,7 +134,7 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
     } });
   }
 
-  const error = inventoryError || unavailable || frameError;
+  const error = inventoryError || unavailable || monitorError || frameError;
   return <FileDropZone className="relative flex min-h-0 flex-1 flex-col gap-2" enabled={Boolean(transferReady)}
     title={"Drop files onto " + (selected?.name || "this desktop")} detail="Files are saved in this device’s Desktop folder." onFiles={uploadFiles}>
     <input ref={fileInputRef} type="file" multiple className="hidden" aria-label="Upload files to remote desktop" onChange={event => {
@@ -146,10 +157,21 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
       <Button size="icon-sm" variant="ghost" className="size-9" aria-label="Refresh remote desktops" onClick={refresh}><RefreshCw className="size-4" /></Button>
       <Button size="icon-sm" variant="ghost" className="size-9" aria-label="Manage Remote Devices" onClick={onOpenDevices}><Settings2 className="size-4" /></Button>
     </div>
+    {selected && !unavailable && <div className="flex shrink-0 items-center gap-2">
+      <label htmlFor="desktop-monitor" className="shrink-0 text-xs text-muted-foreground">Monitor</label>
+      <select id="desktop-monitor" aria-label="Select monitor" value={monitorId || ""} disabled={!monitorReady || !selectionSupported || Boolean(monitorError)}
+        onChange={event => { selectMonitor(event.target.value); setPaused(false); }}
+        className="h-9 min-w-0 flex-1 rounded-md border border-border/50 bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-ring">
+        {!monitorReady ? <option value="">Loading monitors…</option> : !selectionSupported ? <option value="">Default display</option> :
+          monitors.map((item, index) => <option key={item.id} value={item.id}>{"Monitor " + (index + 1) + " · " + desktopMonitorLabel(item)}</option>)}
+      </select>
+    </div>}
+    {selected && monitorReady && !selectionSupported && !monitorError && !unavailable &&
+      <p className="text-xs text-muted-foreground">{monitorReason || "Update this Remote Client to choose a monitor."}</p>}
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-muted/20">
       {error ? <div className="max-w-sm space-y-3 p-6 text-center">
-        <p className={inventoryError || frameError ? "text-sm text-destructive" : "text-sm text-muted-foreground"} role={inventoryError || frameError ? "alert" : "status"}>{error}</p>
-        {frameError || inventoryError ? <Button size="sm" variant="outline" onClick={refresh}>Try again</Button> : null}
+        <p className={inventoryError || monitorError || frameError ? "text-sm text-destructive" : "text-sm text-muted-foreground"} role={inventoryError || monitorError || frameError ? "alert" : "status"}>{error}</p>
+        {frameError || inventoryError || monitorError ? <Button size="sm" variant="outline" onClick={refresh}>Try again</Button> : null}
       </div> : !loading && !selected ? <div className="space-y-3 p-6 text-center">
         <Monitor className="mx-auto size-8 text-muted-foreground" aria-hidden="true" />
         <p className="text-sm">No Remote Devices connected</p>
@@ -158,12 +180,12 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
       </div> : paused ? <p className="p-6 text-sm text-muted-foreground" role="status">Desktop preview paused</p>
         // Blob frames already arrive bounded and optimized by the capture endpoint.
         // eslint-disable-next-line @next/next/no-img-element
-        : frame ? <img src={frame.url} alt={"Live desktop of " + (selected?.name || "Remote Client")} className="size-full object-contain" />
-        : <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground" role="status"><LoaderCircle className="size-4 animate-spin" />{loading ? "Loading Remote Devices…" : "Connecting to desktop…"}</div>}
+        : visibleFrame ? <img src={visibleFrame.url} alt={"Live desktop of " + (selected?.name || "Remote Client") + (monitor ? " · " + monitor.name : "")} className="size-full object-contain" />
+        : <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground" role="status"><LoaderCircle className="size-4 animate-spin" />{loading ? "Loading Remote Devices…" : !monitorReady ? "Loading monitors…" : "Connecting to desktop…"}</div>}
     </div>
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-      <span>{frame && !error && !paused ? "Live · " + new Date(frame.at).toLocaleTimeString() : selected?.hostname || "Remote Devices"}</span>
-      <span>{agentActive && agentClientId === deviceId ? "Agent is using this desktop" : "View only · primary display"}</span>
+      <span>{visibleFrame && !error && !paused ? "Live · " + new Date(visibleFrame.at).toLocaleTimeString("en") : selected?.hostname || "Remote Devices"}</span>
+      <span>{agentActive && agentClientId === deviceId ? "Agent is using this desktop" : "View only" + (monitor ? " · " + monitor.name : " · default display")}</span>
     </div>
   </FileDropZone>;
 }

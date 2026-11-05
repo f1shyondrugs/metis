@@ -1,3 +1,4 @@
+import { codexEventsUntilCompleted, isCodexReconnectNotice } from "@/lib/providers/codex-events";
 import { USER_INPUT_TRANSPORT_TIMEOUT_MS } from "@/lib/mcp-core/user-question-gate.mjs";
 import { codexLimitErrorFromRollout } from "@/lib/providers/codex-rate-limit";
 import { providerErrorWithCause } from "@/lib/provider-rate-limit";
@@ -319,7 +320,7 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
     }, { resume: Boolean(previousId), signal: context.signal });
     let usage: ProviderResult["usage"] | undefined;
     let emittedAgentMessage = false;
-    for await (const event of events) {
+    for await (const event of codexEventsUntilCompleted(events, context.signal)) {
       // Persist the native thread as soon as the provider assigns it, including failed turns.
       if (event.type === "thread.started") {
         updateProviderSessionBinding({ chatId: context.chat.id, ownerId: context.job.userId,
@@ -356,6 +357,7 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
           ? codexLimitErrorFromRollout(event.error, codexHome.home, thread.id, turnStartedAt)
           : providerErrorWithCause(event.error.message, event.error);
       } else if (event.type === "error") {
+        if (isCodexReconnectNotice(event.message)) continue;
         throw codexHome && thread.id
           ? codexLimitErrorFromRollout(event, codexHome.home, thread.id, turnStartedAt)
           : providerErrorWithCause(event.message, event);

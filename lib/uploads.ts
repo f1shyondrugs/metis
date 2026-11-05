@@ -5,6 +5,7 @@ import {
   writeFileSync,
   readFileSync, openSync, readSync, closeSync, statSync,
 } from "node:fs";
+import { copyFile, mkdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { getAgentCwd } from "@/lib/mcp";
 
@@ -68,6 +69,36 @@ export function decodeBase64Size(data: string): number {
   const clean = data.replace(/\s/g, "");
   const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
   return Math.max(0, Math.floor((clean.length * 3) / 4) - padding);
+}
+
+/** Snapshot a workspace file without a file-sized Buffer or Base64 string. */
+export async function saveFileAttachment(
+  chatId: string,
+  source: string,
+  options: { name: string; mimeType: string },
+  ownerId?: string,
+): Promise<StoredAttachment> {
+  if (!chatId || chatId.includes("..") || /[/\\\\]/.test(chatId)) throw new Error("Invalid chat id");
+  const original = await stat(source);
+  if (!original.isFile()) throw new Error("The selected path is not a file.");
+  validateOwnerAttachmentSize(original.size, options.name, ownerId);
+  const name = sanitizeFileName(options.name);
+  const mimeType = (options.mimeType || "application/octet-stream").toLowerCase().split(";")[0].trim();
+  const id = randomUUID();
+  const storedName = `${id}-${name}`;
+  const dir = chatUploadDir(chatId, ownerId);
+  await mkdir(dir, { recursive: true });
+  const destination = path.join(dir, storedName);
+  try {
+    await copyFile(source, destination);
+    const size = (await stat(destination)).size;
+    // A file that grew during the copy still has to respect the account limit.
+    validateOwnerAttachmentSize(size, name, ownerId);
+    return { id, name, mimeType, storedName, size, kind: isImageMime(mimeType) ? "image" : "file" };
+  } catch (error) {
+    await unlink(destination).catch(() => undefined);
+    throw error;
+  }
 }
 
 export function saveAttachments(

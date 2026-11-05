@@ -12,9 +12,10 @@ import {
   listProviderConnections,
   updateProviderConnection,
 } from "@/lib/provider-connections";
-import { readCodexOAuthCredentials } from "@/lib/providers/discovery";
+import { requestCodexAccount } from "@/lib/providers/codex-account";
 import type { UsageProvider, UsageSnapshot, UsageWindow } from "@/lib/usage-display";
 import { parseCursorUsageBody } from "@/lib/usage-display";
+import { parseResetCredits } from "@/lib/usage-reset-types";
 import { isHostAdmin } from "@/lib/user-access";
 
 export type { UsageProvider, UsageSnapshot, UsageWindow };
@@ -82,7 +83,6 @@ function persistUsage(ownerId: string | undefined, snapshot: UsageSnapshot) {
 }
 
 const HOME = homedir();
-const CODEX_BIN = process.env.CODEX_BIN || path.join(config.root, "node_modules/.bin/codex");
 const GATEWAY_DB = process.env.GATEWAY_DB_PATH || `${HOME}/AiApi-Wrapper/data/gateway.db`;
 const WRAPPER_ENV = process.env.WRAPPER_ENV || path.join(homedir(), "AiApi-Wrapper/.env");
 
@@ -149,210 +149,29 @@ export function normalizeCodexWindow(w: CodexWindow): UsageWindow | null {
   };
 }
 
-type CodexUsageHome = {
-  home: string;
-  authTokens?: { accessToken: string; chatgptAccountId: string; chatgptPlanType?: string | null };
-  apiKey?: string;
-  cleanup: () => void;
-};
-
-export function readCodexUsageOAuthCredentials(secret: string) {
-  // The Codex app server can exchange the refresh token even when the cached
-  // access token has expired. Rejecting the credential here prevents that
-  // refresh and incorrectly reports a configured account as disconnected.
-  return readCodexOAuthCredentials(secret, { allowExpired: true });
-}
-
-function createCodexUsageHome(ownerId?: string): CodexUsageHome | null {
-  if (!ownerId) return null;
-  try {
-    const connection = findActiveConnection(ownerId, "codex");
-    if (!connection || !connection.enabled) return null;
-    const credential = getProviderConnectionSecret(connection.id, ownerId);
-    if (!credential?.secret?.trim()) return null;
-
-    let auth: Record<string, unknown> = {};
-    let authTokens: CodexUsageHome["authTokens"];
-    if (connection.authType === "oauth") {
-      const oauth = readCodexUsageOAuthCredentials(credential.secret);
-      authTokens = {
-        accessToken: oauth.access,
-        chatgptAccountId: oauth.accountId,
-      };
-      auth = {
-        auth_mode: "chatgpt",
-        OPENAI_API_KEY: null,
-        tokens: {
-          access_token: oauth.access,
-          refresh_token: oauth.refresh,
-          id_token: oauth.idToken,
-          account_id: oauth.accountId,
-        },
-        last_refresh: new Date(oauth.expires).toISOString(),
-      };
-    } else if (connection.authType === "account") {
-      const parsed = JSON.parse(credential.secret) as unknown;
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-      auth = parsed as Record<string, unknown>;
-    } else if (connection.authType !== "api_key") {
-      return null;
-    }
-
-    const home = mkdtempSync(path.join(tmpdir(), "metis-codex-usage-"));
-    writeFileSync(path.join(home, "auth.json"), `${JSON.stringify(auth)}\n`, { mode: 0o600 });
-    return {
-      home,
-      ...(authTokens ? { authTokens } : {}),
-      ...(connection.authType === "api_key" ? { apiKey: credential.secret.trim() } : {}),
-      cleanup: () => {
-        try { rmSync(home, { recursive: true, force: true }); } catch { /* already gone */ }
-      },
-    };
-  } catch {
-    return null;
-  }
-}
+export { readCodexUsageOAuthCredentials } from "@/lib/providers/codex-account";
 
 async function fetchCodexUsage(ownerId?: string): Promise<UsageProvider> {
   const connection = ownerId ? findActiveConnection(ownerId, "codex") : null;
-  const base: UsageProvider = {
-    key: "codex",
-    name: "Codex (ChatGPT plan)",
-    status: "live",
-    windows: [],
-    source: "dashboard",
-    ...(connection?.id ? { connectionId: connection.id } : {}),
-  };
-  const usageHome = createCodexUsageHome(ownerId);
-  if (!usageHome) return { ...base, status: "no_auth", error: "no authenticated Codex account connection" };
-
-  return new Promise<UsageProvider>((resolve) => {
-    let settled = false;
-    let child: ReturnType<typeof execFile> | null = null;
-    const done = (provider: UsageProvider) => {
-      if (settled) return;
-      settled = true;
-      try { child?.kill("SIGTERM"); } catch { /* noop */ }
-      usageHome.cleanup();
-      resolve(provider);
-    };
-    const timer = setTimeout(() => done({ ...base, status: "error", error: "timeout" }), 8_000);
-    try {
-      child = execFile(
-        CODEX_BIN,
-        ["app-server", "--stdio"],
-        {
-          env: {
-            ...process.env,
-            ...(usageHome.apiKey ? { CODEX_API_KEY: usageHome.apiKey } : {}),
-            CODEX_HOME: usageHome.home,
-          },
-          timeout: 7_500,
-        },
-        () => {
-          /* handled via stdout below */
-        },
-      );
-      if (!child.stdout || !child.stdin) {
-        clearTimeout(timer);
-        return done({ ...base, status: "error", error: "spawn failed" });
-      }
-      let buffer = "";
-      const send = (obj: unknown) => {
-        try { child?.stdin?.write(`${JSON.stringify(obj)}\n`); } catch { /* closed */ }
-      };
-      child.stdin.on("error", () => {});
-      child.stdout.setEncoding("utf8");
-      child.stdout.on("data", (chunk: string) => {
-        buffer += chunk;
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, idx).trim();
-          buffer = buffer.slice(idx + 1);
-          if (!line) continue;
-          let msg: Record<string, unknown>;
-          try { msg = JSON.parse(line); } catch { continue; }
-          if (msg.id === 2 && usageHome.authTokens) {
-            const loginError = msg.error && typeof msg.error === "object"
-              ? msg.error as Record<string, unknown>
-              : null;
-            if (loginError) {
-              clearTimeout(timer);
-              const message = typeof loginError.message === "string" ? loginError.message : "Codex login failed";
-              return done({ ...base, status: "no_auth", error: message });
-            }
-            send({ jsonrpc: "2.0", id: 3, method: "account/rateLimits/read", params: {} });
-            continue;
-          }
-          const rateLimitId = usageHome.authTokens ? 3 : 2;
-          if (msg.id !== rateLimitId) continue;
-          clearTimeout(timer);
-          const rpcError = msg.error && typeof msg.error === "object"
-            ? msg.error as Record<string, unknown>
-            : null;
-          if (rpcError) {
-            const message = typeof rpcError.message === "string" ? rpcError.message : "rate-limit request failed";
-            const code = typeof rpcError.code === "number" || typeof rpcError.code === "string"
-              ? ` (${rpcError.code})`
-              : "";
-            const status = /auth|login|credential|unauthorized|required|401|403/i.test(message)
-              ? "no_auth"
-              : "error";
-            return done({ ...base, status, error: `${message}${code}` });
-          }
-          const result = (msg.result as { rateLimits?: Record<string, unknown> } | undefined)?.rateLimits;
-          if (!result) return done({ ...base, status: "error", error: "unsupported: no rate limits in response" });
-          const planType = typeof result.planType === "string" ? result.planType : undefined;
-          const windows = [
-            normalizeCodexWindow(result.primary as CodexWindow),
-            normalizeCodexWindow(result.secondary as CodexWindow),
-            normalizeCodexWindow(result.weekly as CodexWindow),
-            normalizeCodexWindow(result.fiveHour as CodexWindow),
-          ].filter((window): window is UsageWindow => window !== null);
-          return done({
-            ...base,
-            planLabel: planType ? planType.charAt(0).toUpperCase() + planType.slice(1) : undefined,
-            windows,
-            extra: {
-              spendControlReached: result.spendControlReached === true ? "yes" : "no",
-              rateLimitReachedType: typeof result.rateLimitReachedType === "string"
-                ? result.rateLimitReachedType
-                : null,
-              credits: typeof result.credits === "number" ? result.credits : null,
-              resetsAt: typeof result.resetAt === "string" ? result.resetAt : null,
-            },
-          });
-        }
-      });
-      child.on("error", (error) => {
-        clearTimeout(timer);
-        done({ ...base, status: "error", error: error.message || "spawn error" });
-      });
-      child.on("close", (code, signal) => {
-        clearTimeout(timer);
-        done({
-          ...base,
-          status: "error",
-          error: signal ? `app-server ${signal}` : `app-server exited (${code ?? "unknown"})`,
-        });
-      });
-      send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "metis-usage", version: "1.0" }, capabilities: { experimentalApi: true } } });
-      send({ jsonrpc: "2.0", method: "notifications/initialized" });
-      if (usageHome.authTokens) {
-        send({
-          jsonrpc: "2.0",
-          id: 2,
-          method: "account/login/start",
-          params: { type: "chatgptAuthTokens", ...usageHome.authTokens },
-        });
-      } else {
-        send({ jsonrpc: "2.0", id: 2, method: "account/rateLimits/read", params: {} });
-      }
-    } catch (error) {
-      clearTimeout(timer);
-      done({ ...base, status: "error", error: error instanceof Error ? error.message : "spawn failed" });
-    }
-  });
+  const base: UsageProvider = { key: "codex", name: "Codex (ChatGPT plan)", status: "live", windows: [], source: "dashboard",
+    ...(connection?.id ? { connectionId: connection.id } : {}) };
+  if (!ownerId || !connection) return { ...base, status: "no_auth", error: "no authenticated Codex account connection" };
+  try {
+    const { result: response } = await requestCodexAccount(ownerId, connection.id, { method: "account/rateLimits/read", params: { excludeResetCreditDetails: true } });
+    const result = response.rateLimits as Record<string, unknown> | undefined;
+    if (!result) return { ...base, status: "unsupported", error: "No rate limits were returned." };
+    const planType = typeof result.planType === "string" ? result.planType : undefined;
+    return { ...base, planLabel: planType ? planType.charAt(0).toUpperCase() + planType.slice(1) : undefined,
+      windows: [normalizeCodexWindow(result.primary as CodexWindow), normalizeCodexWindow(result.secondary as CodexWindow),
+        normalizeCodexWindow(result.weekly as CodexWindow), normalizeCodexWindow(result.fiveHour as CodexWindow)].filter((w): w is UsageWindow => w !== null),
+      extra: { resetCredits: parseResetCredits(response.rateLimitResetCredits)?.availableCount ?? null,
+        spendControlReached: result.spendControlReached === true ? "yes" : "no",
+        rateLimitReachedType: typeof result.rateLimitReachedType === "string" ? result.rateLimitReachedType : null,
+        credits: typeof result.credits === "number" ? result.credits : null, resetsAt: typeof result.resetAt === "string" ? result.resetAt : null } };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Codex usage could not be loaded.";
+    return { ...base, status: /auth|login|credential|401|403/i.test(message) ? "no_auth" : "error", error: message };
+  }
 }
 
 /* ---------------- z.ai Coding Plan ---------------- */

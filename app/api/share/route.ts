@@ -1,4 +1,5 @@
-import { getChatByShareId } from "@/lib/db-store";
+import { getChatByShareId, unlockChatShare } from "@/lib/db-store";
+import { chatShareAccessCookie } from "@/lib/chat-share-access";
 import { consumeSharePasswordLimit } from "@/lib/share-rate-limit";
 
 export const runtime = "nodejs";
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
   if (result.status === "password_required") {
     return Response.json({ error: "Password required", share: result.share }, { status: 401 });
   }
-  return Response.json({ chat: result.chat });
+  return Response.json({ chat: result.chat }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function POST(req: Request) {
@@ -42,5 +43,8 @@ export async function POST(req: Request) {
     return Response.json({ error: "Incorrect password", share: result.share }, { status: 401 });
   }
   rateLimit.reset();
-  return Response.json({ chat: result.chat });
+  const response = Response.json({ chat: result.chat }, { headers: { "Cache-Control": "private, no-store" } });
+  const credential = unlockChatShare(body.id, body.password || "");
+  if (credential) response.headers.set("Set-Cookie", chatShareAccessCookie(req,body.id,credential));
+  return response;
 }

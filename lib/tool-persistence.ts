@@ -2,6 +2,7 @@ import type { MessagePart, ToolPart } from "@/lib/store";
 import { getDatabase } from "@/lib/sqlite";
 import { editedFileFromTool } from "@/lib/edited-files";
 import { unwrapToolRecord } from "@/lib/tool-call-display";
+import { researchProgressFromTool, researchToolNameFromTool } from "@/lib/research-progress";
 import { acknowledgeFileEditSnapshot } from "@/lib/mcp-core/file-edit-snapshots.mjs";
 
 const TOOL_INPUT_MAX_CHARS = 32_000;
@@ -62,8 +63,12 @@ export function compactToolForPersistence(tool: ToolPart, nested = false): ToolP
       }
     : undefined;
 
+  const researchToolName = researchToolNameFromTool(tool);
+  const research = researchToolName ? researchProgressFromTool(tool) : undefined;
   return {
     ...tool,
+    researchToolName,
+    research,
     ...(tool.status === "completed" ? { editedFile: editedFileFromTool(tool) } : {}),
     // Full before/after snapshots live in tool_revert_snapshots. Keeping them in
     // the transcript made a handful of edits inflate chats to tens of MB.
@@ -87,12 +92,16 @@ export function compactToolForPersistence(tool: ToolPart, nested = false): ToolP
 export function compactMessagePartsForPersistence(parts: MessagePart[]): MessagePart[] {
   return parts.map((part) => {
     if (part.type !== "tool") return part;
+    const researchToolName = researchToolNameFromTool(part);
+    const research = researchToolName ? researchProgressFromTool(part) : undefined;
     return {
       type: "tool",
       id: part.id,
       name: part.name,
       status: part.status,
       ...(part.kind ? { kind: part.kind } : {}),
+      ...(researchToolName ? { researchToolName } : {}),
+      ...(research ? { research } : {}),
       ...(part.source ? { source: part.source } : {}),
       ...(part.path ? { path: part.path } : {}),
       ...(part.status === "completed" ? { editedFile: editedFileFromTool(part) } : {}),

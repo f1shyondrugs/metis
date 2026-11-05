@@ -44,7 +44,7 @@ test("typed submission persists values, emits one readable message and preserves
     const result = await response.json();
     assert.deepEqual(result.values, { hz: 60, enabled: false });
     assert.equal(result.summary, "Display 60 Hz. Enabled: No.");
-    assert.deepEqual(result.message.questionAnswer, { questionId: pending.questionId, assistantMessageId: "form-assistant", toolCallId: "ask-call" });
+    assert.deepEqual(result.message.questionAnswer, { questionId: pending.questionId, assistantMessageId: "form-assistant", toolCallId: "ask-call", cursor: { partIndex: 2 } });
     const firstAnswerMessage = result.message;
     assert.deepEqual(await pending.promise, ["60", "false"]);
     assert.equal(jobs.isJobLeaseActive(job.id, lease.leaseOwner!, lease.leaseToken!), true);
@@ -71,7 +71,7 @@ test("wrapped ask_user answers persist their exact transcript boundary before th
     const response = await submit(pending.questionId, { choice: "Keep this answer here" });
     assert.equal(response.status, 200);
     const result = await response.json();
-    assert.deepEqual(result.message.questionAnswer, { questionId: pending.questionId, assistantMessageId: "wrapped-assistant", toolCallId: "wrapped-ask" });
+    assert.deepEqual(result.message.questionAnswer, { questionId: pending.questionId, assistantMessageId: "wrapped-assistant", toolCallId: "wrapped-ask", cursor: { partIndex: 2 } });
     assert.deepEqual(await pending.promise, ["Keep this answer here"]);
     const restored = store.getChat(chat.id, owner.id)!;
     assert.deepEqual(restored.messages.at(-1)!.questionAnswer, result.message.questionAnswer);
@@ -81,6 +81,36 @@ test("wrapped ask_user answers persist their exact transcript boundary before th
     assert.deepEqual((await repeated.json()).message, result.message);
   } finally { pending.stop(); }
 });
+test("opaque provider questions persist their submission cursor and stay before later streamed text", async () => {
+  const { projectQuestionTranscript } = await import("../lib/question-transcript");
+  const chat = store.createChat("Opaque form flow", undefined, owner.id);
+  const pending = questions.createPendingQuestion([{ question: "Choice", key: "choice", type: "text" }], chat.id, owner.id);
+  store.appendMessage(chat.id, {
+    id: "opaque-assistant", role: "assistant", content: "Before.",
+    parts: [{ type: "text", content: "Before." }],
+  }, owner.id);
+  try {
+    const response = await submit(pending.questionId, { choice: "Accepted" });
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(result.message.questionAnswer, {
+      questionId: pending.questionId, assistantMessageId: "opaque-assistant",
+      cursor: { partIndex: 0, textOffset: 7 },
+    });
+    assert.deepEqual(await pending.promise, ["Accepted"]);
+    store.checkpointAssistantMessage(chat.id, {
+      id: "opaque-assistant", role: "assistant", content: "Before.After.",
+      parts: [{ type: "text", content: "Before.After." }],
+    });
+    const restored = store.getChat(chat.id, owner.id)!;
+    assert.deepEqual(projectQuestionTranscript(restored.messages).map(message => message.content), [
+      "Before.", result.summary, "After.",
+    ]);
+    const repeated = await submit(pending.questionId, { choice: "Changed" });
+    assert.deepEqual((await repeated.json()).message, result.message);
+  } finally { pending.stop(); }
+});
+
 test("invalid values return field errors and leave the durable form open", async () => {
   const chat = store.createChat("Validation", undefined, owner.id);
   const pending = questions.createPendingQuestion([{ question: "Count", key: "count", type: "number", min: 1, max: 10 }], chat.id, owner.id);

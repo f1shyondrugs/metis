@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { UsageResetsEntry } from "@/components/usage-resets-shortcut";
+import { UsageResetsDialog, UsageResetsShortcut } from "@/components/usage-resets-shortcut";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   formatResetAt,
@@ -186,18 +188,21 @@ function UsageDetails({ provider }: { provider: UsageProvider }) {
         </div>;
       })}
       {!usable.length ? <p className="text-[10px] leading-snug text-muted-foreground">{status === "no_auth" ? "No authenticated quota source is connected." : status === "unsupported" ? "This connection does not expose a quota window." : provider.error ? `Live quota could not be loaded: ${provider.error}` : "No percentage quota is available. Metis will not invent one."}</p> : null}
-      {displayUsageExtra(provider).length ? <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">{displayUsageExtra(provider).map(({ key, label, value }) => <span key={key}>{label}: <span className="tabular-nums text-foreground">{typeof value === "number" ? value.toLocaleString() : value}</span></span>)}</div> : null}
+      {displayUsageExtra(provider).length ? <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">{displayUsageExtra(provider).map(({ key, label, value }) => <span key={key}>{label}: <span className="tabular-nums text-foreground">{typeof value === "number" ? value.toLocaleString("en") : value}</span></span>)}</div> : null}
     </div>
   );
 }
 
 export function PlanUsageGauge({ provider, providerName, className }: { provider?: UsageProvider | null; providerName?: string; className?: string }) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [resetsOpen, setResetsOpen] = useState(false);
+  const usageTriggerRef = useRef<HTMLButtonElement>(null);
   const primary = provider ? selectPrimaryUsageWindow(provider.windows) : null;
   const left = primary ? percentLeft(primary.usedPercent) : null;
   const displayName = provider?.name || providerName || "Selected provider";
   const stale = provider?.status === "stale";
   return (
+    <>
     <TooltipProvider>
       <Tooltip open={tooltipOpen} onOpenChange={setTooltipOpen}>
         <TooltipTrigger asChild>
@@ -213,17 +218,23 @@ export function PlanUsageGauge({ provider, providerName, className }: { provider
               stale && "opacity-60",
               className,
             )}
+            ref={usageTriggerRef}
             aria-label={left !== null ? `${displayName} usage: ${left.toFixed(0)}% left${stale ? ", stale" : ""}` : `${displayName} usage unavailable`}
             onClick={() => setTooltipOpen((open) => !open)}
           >
             {left !== null ? `${left.toFixed(0)}%` : "—"}
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" align="end" sideOffset={8} collisionPadding={8} arrowClassName="!bg-popover !fill-popover" className="w-64 max-w-[calc(100vw-1rem)] rounded-xl border border-border/60 bg-popover p-3 text-popover-foreground shadow-xl">
+        <TooltipContent side="bottom" align="end" sideOffset={8} collisionPadding={8} arrowClassName="!bg-popover !fill-popover" className="w-64 max-w-[calc(100vw-1rem)] rounded-xl border border-border/60 bg-popover p-3 pb-1.5 text-popover-foreground shadow-xl">
+          <div className="min-w-0 w-full">
           {provider ? <UsageDetails provider={provider} /> : <div className="space-y-1.5"><p className="font-medium">{displayName}</p><p className="text-[10px] leading-snug text-muted-foreground">Quota unavailable for this connection.</p></div>}
+          <div className="mt-2 border-t border-border/50 pt-1"><UsageResetsShortcut provider={provider} onClick={() => { setTooltipOpen(false); setResetsOpen(true); }} /></div>
+          </div>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+    <UsageResetsDialog provider={provider} open={resetsOpen} onOpenChange={setResetsOpen} onCloseFocus={() => usageTriggerRef.current?.focus()} />
+    </>
   );
 }
 
@@ -305,6 +316,7 @@ export function PlanUsagePanel({
           ))}
         </div>
       )}
+      <UsageResetsEntry />
     </section>
   );
 }
@@ -422,6 +434,13 @@ export function usePlanUsageSnapshot(enabled = true) {
       });
     }
   }, [enabled, snapshot]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const updated = () => { void loadSharedPlanUsage(true); };
+    window.addEventListener("metis:plan-usage-changed", updated);
+    return () => window.removeEventListener("metis:plan-usage-changed", updated);
+  }, [enabled]);
 
   const refresh = useCallback(async (force = false) => {
     await loadSharedPlanUsage(force);

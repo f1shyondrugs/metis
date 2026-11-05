@@ -3,7 +3,7 @@ import path from "node:path";
 import { databasePath,getDatabase } from "./sqlite";
 import type { ReferenceKind,ReferenceResult } from "./reference-search";
 
-type Input={ownerId:string;query:string;kind?:ReferenceKind|null;currentChatId:string};
+type Input={ownerId:string;query:string;kind?:ReferenceKind|null;kinds?:readonly ReferenceKind[];currentChatId:string};
 export type ReferencePayload={results:ReferenceResult[];indexing:boolean};
 type Task={resolve:(value:ReferencePayload)=>void;reject:(error:Error)=>void;cleanup:()=>void};
 type Pool={worker?:Worker;serial:number;tasks:Map<number,Task>;idle?:ReturnType<typeof setTimeout>};

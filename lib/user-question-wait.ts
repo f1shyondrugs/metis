@@ -16,7 +16,7 @@ export async function waitForJobUserInput(jobId: string, userId?: string, signal
       "SELECT question_id AS id FROM pending_questions WHERE job_id = ? AND user_id IS ? ORDER BY CASE WHEN status = 'waiting_for_user' THEN 0 ELSE 1 END, created_at DESC, rowid DESC LIMIT 1",
     ).get(jobId, userId ?? null) as { id: string } | undefined;
     const pending = row ? getPendingQuestion(row.id, userId) : null;
-    if (!pending || pending.status === "answered") return;
+    if (!pending || pending.status === "answered" || pending.cancelled) return;
     if (pending.status !== "waiting_for_user") throw new Error("The user question was cancelled.");
     await delay(250, undefined, { signal });
   }

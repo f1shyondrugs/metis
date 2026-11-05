@@ -25,6 +25,12 @@ Do not stop live Metis systemd units as a side effect of a test.
   native file, shell, browser, task, or subagent tools as an undocumented
   fallback.
 
+## Product UI Language
+
+- Built-in interface text, labels, accessibility text, system forms, errors and default templates are English, regardless of the browser or conversation language.
+- Format generated interface dates and numbers with an explicit English locale while preserving the user's time zone.
+- Preserve user-authored chats, notes, task names and other content. Multilingual input recognition, search aliases and responses in the user's requested language remain supported.
+
 ## Change Requirements
 
 - When adding or changing a provider/model contract, update the typed registry,

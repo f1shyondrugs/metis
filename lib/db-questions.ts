@@ -15,6 +15,8 @@ type StoredQuestion = QuestionForm & {
   answers?: string[];
   values?: Record<string, QuestionValue>;
   summary?: string;
+  /** Explicit form dismissal is a response; cancelling the run is not. */
+  cancelled?: true;
 };
 
 export function questionLimits() {
@@ -121,6 +123,7 @@ export type ResolvedQuestion = {
   values?: Record<string, QuestionValue>;
   summary?: string;
   heartbeatAt?: string;
+  cancelled?: true;
 };
 
 export function resolveQuestion(
@@ -176,11 +179,15 @@ export function resolveQuestion(
   });
 }
 
+export function cancelQuestionAsResponse(questionId: string, userId?: string, expectedVersion?: number): ResolvedQuestion | false {
+  return transitionQuestion(questionId, "cancelled", userId, { response: true, expectedVersion });
+}
+
 export function cancelQuestion(questionId: string, userId?: string): ResolvedQuestion | false {
   return transitionQuestion(questionId, "cancelled", userId);
 }
 
-function transitionQuestion(questionId: string, status: "cancelled" | "expired", userId?: string): ResolvedQuestion | false {
+function transitionQuestion(questionId: string, status: "cancelled" | "expired", userId?: string, options: { response?: boolean; expectedVersion?: number } = {}): ResolvedQuestion | false {
   return transaction(() => {
     const db = getDatabase();
     const row = db.prepare(
@@ -189,11 +196,14 @@ function transitionQuestion(questionId: string, status: "cancelled" | "expired",
     if (!row?.chatId || !row.data || (userId && row.userId !== userId)) return false;
     const data = parseStored({ data: row.data });
     if (!data) return false;
-    if (data.status === status && data.answers) {
-      return { questionId, chatId: row.chatId, ...(data.jobId ? { jobId: data.jobId } : {}), ...(data.runId ? { runId: data.runId } : {}), version: data.version, status, answers: data.answers, values: data.values, summary: data.summary, heartbeatAt: row.heartbeatAt };
+    if (data.status === status && data.answers && (!options.response || data.cancelled)) {
+      return { cancelled: data.cancelled, questionId, chatId: row.chatId, ...(data.jobId ? { jobId: data.jobId } : {}), ...(data.runId ? { runId: data.runId } : {}), version: data.version, status, answers: data.answers, values: data.values, summary: data.summary, heartbeatAt: row.heartbeatAt };
     }
-    if (data.status !== "waiting_for_user") return false;
-    const updated = { ...data, status, version: data.version + 1 };
+    if (data.status !== "waiting_for_user" || options.expectedVersion !== undefined && options.expectedVersion !== data.version) return false;
+    const answers = options.response ? data.questions.map(() => "User cancelled") : answerFallback(status, data.questions.length);
+    const updated: StoredQuestion = { ...data, status, version: data.version + 1, answers,
+      ...(options.response ? { cancelled: true, values: {}, summary: "User cancelled" } : {}),
+    };
     db.prepare(
       "UPDATE pending_questions SET data = ?, version = ?, status = ?, heartbeat_at = ? WHERE question_id = ? AND status = 'waiting_for_user' AND version = ?",
     ).run(JSON.stringify(updated), updated.version, status, new Date().toISOString(), questionId, data.version);
@@ -204,7 +214,10 @@ function transitionQuestion(questionId: string, status: "cancelled" | "expired",
       ...(data.runId ? { runId: data.runId } : {}),
       version: updated.version,
       status,
-      answers: answerFallback(status, data.questions.length),
+      answers,
+      cancelled: updated.cancelled,
+      values: updated.values,
+      summary: updated.summary,
       heartbeatAt: row.heartbeatAt,
     };
   });

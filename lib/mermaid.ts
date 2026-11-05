@@ -45,18 +45,27 @@ export function isMermaidErrorSvg(svg: string) {
 }
 
 export function fitMermaidSvg(svg: string) {
-  return svg
-    .replace(/\s(height|width)="[^"]*"/gi, "")
-    .replace(/style="([^"]*)"/i, (_, style: string) => {
-      const cleaned = style
-        .replace(/max-width\s*:[^;]+;?/gi, "")
-        .replace(/height\s*:[^;]+;?/gi, "")
-        .replace(/width\s*:[^;]+;?/gi, "")
-        .trim()
-        .replace(/;+$/, "");
-      const next = [cleaned, "max-width:100%;height:auto"].filter(Boolean).join(";");
-      return `style="${next}"`;
+  // Only resize the outer viewport. Node shapes, labels and nested SVGs
+  // need their original dimensions to remain visible.
+  return svg.replace(/<svg\b[^>]*>/i, (root) => {
+    const sizedRoot = root.replace(/\s(?:height|width)=(?:"[^"]*"|'[^']*')/gi, "");
+    const viewBox = root.match(/\sviewBox=["']([^"']+)["']/i)?.[1].trim().split(/[\s,]+/).map(Number);
+    const naturalWidth = viewBox?.[2];
+    // Shrink wide diagrams to the chat column without enlarging narrow ones.
+    const width = naturalWidth && Number.isFinite(naturalWidth) && naturalWidth > 0 ? `${naturalWidth}px` : "100%";
+    const responsiveStyle = `width:${width};max-width:100%;height:auto`;
+    if (!/\sstyle=/.test(sizedRoot)) {
+      return sizedRoot.replace(/>$/, ` style="${responsiveStyle}">`);
+    }
+    return sizedRoot.replace(/\sstyle=(?:"([^"]*)"|'([^']*)')/i, (_, double: string, single: string) => {
+      const cleaned = (double ?? single)
+        .split(";")
+        .filter((declaration) => !/^\s*(?:max-width|width|height)\s*:/i.test(declaration))
+        .filter((declaration) => declaration.trim())
+        .join(";");
+      return ` style="${[cleaned, responsiveStyle].filter(Boolean).join(";")}"`;
     });
+  });
 }
 
 export function wrapBareMermaid(content: string) {

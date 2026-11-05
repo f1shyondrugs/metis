@@ -1,5 +1,7 @@
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import { getChat, updateChat } from "@/lib/db-store";
+import { workspaceContentError } from "@/lib/workspace-limits";
+import { createChatWorkspace } from "@/lib/workspace-create";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +21,14 @@ export async function GET(req: Request) {
   return Response.json({ workspace, workspaceLink: `workspace://${workspace.type}/${workspace.id}` });
 }
 
+export async function POST(req: Request) {
+  if (!(await isAuthenticated(req))) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = (await getAuthenticatedUserId(req)) ?? undefined;
+  let body: unknown;
+  try { body = await req.json(); } catch { return Response.json({ error: "Invalid request" }, { status: 400 }); }
+  return createChatWorkspace(body, userId);
+}
+
 export async function PATCH(req: Request) {
   if (!(await isAuthenticated(req))) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const userId = (await getAuthenticatedUserId(req)) ?? undefined;
@@ -33,9 +43,8 @@ export async function PATCH(req: Request) {
   if (expectedVersion !== undefined && expectedVersion !== (current.version || 1)) {
     return Response.json({ error: "Workspace changed by another client", workspace: current }, { status: 409 });
   }
-  if (typeof body.content === "string" && body.content.length > 100_000) {
-    return Response.json({ error: "Workspace content exceeds 100,000 characters. Shorten the document before saving." }, { status: 413 });
-  }
+  const contentError = typeof body.content === "string" ? workspaceContentError(current, body.content) : undefined;
+  if (contentError) return Response.json({ error: contentError }, { status: 413 });
   const updated = {
     ...current,
     ...(typeof body.title === "string" ? { name: body.title.trim().slice(0, 200) || current.name } : {}),

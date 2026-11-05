@@ -8,14 +8,15 @@ export function replaceBrowserFrameUrl(
     if (previous) URL.revokeObjectURL(previous);
     return null;
   }
-  const next = URL.createObjectURL(blob);
+  let next: string | null = null;
   try {
+    next = URL.createObjectURL(blob);
     image.onload = null;
     image.onerror = null;
     image.src = next;
     return next;
   } catch (error) {
-    URL.revokeObjectURL(next);
+    if (next) URL.revokeObjectURL(next);
     throw error;
   } finally {
     // Waiting for onload leaks the older URL if another frame replaces its handler.

@@ -391,7 +391,7 @@ export function UpdateSettingsPanel({
           <label className="text-xs font-medium">Timezone<input value={scheduleTimezone} onChange={(event) => setScheduleTimezone(event.target.value)} className="mt-1 block h-9 w-48 rounded-md border border-input bg-background px-2 text-sm" /></label>
           <Button type="button" size="sm" onClick={() => void saveSchedule(!(schedule?.schedule?.enabled))}>{schedule?.schedule?.enabled ? "Disable automatic updates" : "Enable automatic updates"}</Button>
         </div>
-        {schedule?.nextRunAt ? <p className="text-xs text-muted-foreground">Next check: {new Date(schedule.nextRunAt).toLocaleString()}</p> : null}
+        {schedule?.nextRunAt ? <p className="text-xs text-muted-foreground">Next check: {new Date(schedule.nextRunAt).toLocaleString("en")}</p> : null}
       </div>
       {available && channel === "commits" ? (
         <p className="text-xs text-muted-foreground">This runs the installer against the current checkout (git pull on master, then rebuild and restart). Master commits may be buggy or broken.</p>

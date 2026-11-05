@@ -23,6 +23,28 @@ func geometry(_ item: [String: Any]) -> [String: Any] {
             "title": item[kCGWindowName as String] as? String ?? item[kCGWindowOwnerName as String] as? String ?? "",
             "x": Int(r.minX), "y": Int(r.minY), "width": Int(r.width), "height": Int(r.height)]
 }
+func monitors() throws -> [[String: Any]] {
+    var count: UInt32 = 0
+    guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0, count <= 64 else {
+        try fail("No active monitors found")
+    }
+    let capacity = count
+    var displays = [CGDirectDisplayID](repeating: 0, count: Int(capacity))
+    let status = displays.withUnsafeMutableBufferPointer { buffer in
+        CGGetActiveDisplayList(capacity, buffer.baseAddress, &count)
+    }
+    guard status == .success else { try fail("Monitor discovery is unavailable") }
+    return displays.prefix(Int(count)).map { id in
+        // Global Quartz bounds are logical points, as required by screencapture -R.
+        let bounds = CGDisplayBounds(id)
+        let screen = NSScreen.screens.first { candidate in
+            (candidate.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == id
+        }
+        return ["id": String(id), "name": screen?.localizedName ?? "Display " + String(id),
+                "x": Int(bounds.minX), "y": Int(bounds.minY), "width": Int(bounds.width),
+                "height": Int(bounds.height), "primary": id == CGMainDisplayID()]
+    }
+}
 func run() throws {
     guard CommandLine.arguments.count == 2, let data = Data(base64Encoded: CommandLine.arguments[1]),
           let p = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -43,6 +65,9 @@ func run() throws {
         return
     }
     guard available else { try fail(reason.isEmpty ? "No interactive macOS windows are available" : reason) }
+    if operation == "monitors" {
+        try output(["monitors": try monitors()]); return
+    }
     if operation == "list_windows" {
         try output(["windows": windows().map { item -> [String: Any] in
             var g = geometry(item); g["id"] = g.removeValue(forKey: "windowId"); return g

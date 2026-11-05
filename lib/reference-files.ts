@@ -36,7 +36,7 @@ export async function referenceFiles(db: DatabaseSync, chatId: string, title: st
     const detail = typeof row.name === "string" ? row.name : `${row.target} · in ${title}`;
     const content = String(row.content || "");
     if (referenceMatches(query,label,detail,path,content)) push({
-      kind:"file",id:`${chatId}:${row.id || path}`,label,detail,chatId,path,content,
+      kind:"file",id:`${chatId}:${row.id || path}`,label,detail,chatId,path,content,target:String(row.target || "server"),
     });
     if (full()) return;
     if (++count % 8 === 0) await new Promise<void>(resolve => setImmediate(resolve));

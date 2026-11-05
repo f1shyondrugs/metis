@@ -5,7 +5,9 @@ import { isChatWaitingForUser } from "@/lib/user-input-resume";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
+import { hashSharePassword, verifySharePassword } from "@/lib/share-password";
+import { createChatShareAccess, validChatShareAccess } from "@/lib/chat-share-access";
+import { chatShareAssets } from "@/lib/chat-share-assets";
 import { getDatabase, parseData, transaction } from "@/lib/sqlite";
 import { config } from "@/lib/config";
 import { recordAccountUsage, syncAccountUsage } from "@/lib/account-usage";
@@ -62,19 +64,7 @@ export function clearStoreCaches() {
 }
 let chatIndexCache: { key: string; expiresAt: number; chats: ChatIndexEntry[] } | null = null;
 
-function hashSharePassword(password: string, salt = randomBytes(16).toString("hex")) {
-  return `${salt}:${pbkdf2Sync(password, salt, 120_000, 32, "sha256").toString("hex")}`;
-}
-
-function verifySharePassword(password: string, encoded: string) {
-  const [salt, digest] = encoded.split(":");
-  if (!salt || !digest) return false;
-  const actual = pbkdf2Sync(password, salt, 120_000, 32, "sha256");
-  const expected = Buffer.from(digest, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-export type PublicChatShare = Omit<ChatShare, "passwordHash"> & { passwordProtected: boolean };
+export type PublicChatShare = Omit<ChatShare, "passwordHash" | "accessKey"> & { passwordProtected: boolean };
 
 function publicShare(share?: ChatShare): PublicChatShare | undefined {
   if (!share) return undefined;
@@ -95,7 +85,7 @@ function publicShare(share?: ChatShare): PublicChatShare | undefined {
   };
 }
 
-function publicChat(chat: Chat): Omit<Chat, "ownerId"> & { share?: PublicChatShare } {
+function publicChat(chat: Chat): Omit<Chat, "ownerId"> & { share?: PublicChatShare; assets: Record<string,string> } {
   const { ownerId: _ownerId, share, ...rest } = chat;
   const content = {
     attachments: share?.content?.attachments ?? true,
@@ -125,6 +115,7 @@ function publicChat(chat: Chat): Omit<Chat, "ownerId"> & { share?: PublicChatSha
   return {
     ...rest,
     messages,
+    assets: content.attachments && share ? chatShareAssets(chat.id,share.id,messages) : {},
     ...(content.workspaces ? {} : { workspaces: undefined, canvas: undefined }),
     ...(publicShare(share) ? { share: publicShare(share) } : {}),
   };
@@ -591,7 +582,7 @@ export function createChat(
       title: title.trim() || "New chat",
       titleSource: "default",
       ...(model?.id ? { modelId: model.id } : {}),
-      ...(model?.params?.length ? { modelParams: model.params } : {}),
+      ...(Array.isArray(model?.params) ? { modelParams: model.params } : {}),
       messages: [],
       ...(browserContext ? { browserContext: { ...browserContext, updatedAt: timestamp } } : {}),
       createdAt: timestamp,
@@ -965,11 +956,13 @@ export function updateChatShare(
     const current = chat.share;
     const share: ChatShare = {
       id: current?.id || randomUUID(),
+      accessKey: randomUUID(),
       active: patch.active ?? current?.active ?? true,
       createdAt: current?.createdAt || timestamp,
       updatedAt: timestamp,
       ...(current?.passwordHash ? { passwordHash: current.passwordHash } : {}),
-      ...(current?.content ? { content: { ...current.content } } : {}),
+      ...(!current ? { content: { attachments: true, thinking: true, tools: true, suggestions: true, sources: true, workspaces: true } }
+        : current.content ? { content: { ...current.content } } : {}),
     };
     if (patch.password !== undefined) {
       if (patch.password?.trim()) share.passwordHash = hashSharePassword(patch.password.trim());
@@ -1012,14 +1005,20 @@ function findChatByShareId(shareId: string) {
   return chat?.share?.id === trimmed && chat.share.active ? chat : null;
 }
 
-export function getChatByShareId(shareId: string, password?: string) {
+export function getChatByShareId(shareId: string, password?: string, credential?: string) {
   if (!shareId.trim()) return { status: "not_found" as const };
   const chat = findChatByShareId(shareId);
   if (!chat?.share || !chat.share.active) return { status: "not_found" as const };
-  if (chat.share.passwordHash && (!password || !verifySharePassword(password, chat.share.passwordHash))) {
+  if (chat.share.passwordHash && (!password || !verifySharePassword(password, chat.share.passwordHash)) && !validChatShareAccess(chat.share,credential)) {
     return { status: "password_required" as const, share: publicShare(chat.share) };
   }
   return { status: "ok" as const, chat: publicChat(chat), ownerId: chat.ownerId };
+}
+
+export function unlockChatShare(shareId: string, password: string) {
+  const chat = findChatByShareId(shareId);
+  if (!chat?.share || (chat.share.passwordHash && !verifySharePassword(password,chat.share.passwordHash))) return null;
+  return createChatShareAccess(chat.share);
 }
 
 export function cloneChatByShareId(shareId: string, password: string | undefined, ownerId: string) {

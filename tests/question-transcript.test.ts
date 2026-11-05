@@ -35,7 +35,7 @@ test("wrapped MCP questions split live continuation before the result arrives an
   ]) {
     const message: Message = { id: "assistant", role: "assistant", content: "Before", parts: [text("Before"), tool], streaming: true };
     const anchor = questionAnswerAnchor([message], "wrapped-q");
-    assert.deepEqual(anchor, { assistantMessageId: "assistant", toolCallId: "wrapped" });
+    assert.deepEqual(anchor, { assistantMessageId: "assistant", toolCallId: "wrapped", cursor: { partIndex: 2 } });
     const response = { ...answer("wrapped-q"), questionAnswer: { questionId: "wrapped-q", ...anchor } };
     const waiting = projectQuestionTranscript([message, response]);
     assert.deepEqual(waiting.map(m => m.id), ["assistant", response.id]);
@@ -71,7 +71,7 @@ test("old persisted chats with deferred raw results anchor multiple answers in t
   const projected = projectQuestionTranscript(messages);
   assert.deepEqual(projected.map(m => m.content), ["One", "Answer first-q", "Two", "Answer second-q", "Three"]);
   assert.equal(projected.filter(m => m.streaming).length, 1);
-  assert.deepEqual(questionAnswerAnchor(messages.slice(0, 2), "second-q"), { assistantMessageId: "assistant", toolCallId: "second" });
+  assert.deepEqual(questionAnswerAnchor(messages.slice(0, 2), "second-q"), { assistantMessageId: "assistant", toolCallId: "second", cursor: { partIndex: 4 } });
   assert.deepEqual(projectQuestionTranscript(JSON.parse(JSON.stringify(messages))), projected);
 });
 

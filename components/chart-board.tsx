@@ -25,6 +25,7 @@ import {
   YAxis,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { publicChartDocument } from "@/lib/public-visualization";
 import {
   parseChartDocument,
   serializeChartDocument,
@@ -314,12 +315,15 @@ function InteractiveChart({
 export function ChartBoard({
   code,
   language,
+  readOnly = false,
 }: {
   code: string;
   language?: string;
+  readOnly?: boolean;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [mode, setMode] = useState<Mode>("board");
+  const [requestedMode, setMode] = useState<Mode>("board");
+  const mode = readOnly ? "board" : requestedMode;
   const [fullscreen, setFullscreen] = useState(false);
   const [source, setSource] = useState(code);
   const [draft, setDraft] = useState(code);
@@ -336,13 +340,14 @@ export function ChartBoard({
 
   useEffect(() => {
     try {
-      setDocument(parseChartDocument(source));
+      const parsed = parseChartDocument(source);
+      setDocument(readOnly ? publicChartDocument(parsed) : parsed);
       setError("");
     } catch (cause) {
       setDocument(null);
       setError(cause instanceof Error ? cause.message : "Could not parse chart.");
     }
-  }, [source]);
+  }, [source, readOnly]);
 
   const persist = useCallback((next: ChartDocument) => {
     const serialized = serializeChartDocument(next);
@@ -350,13 +355,13 @@ export function ChartBoard({
     setSource(serialized);
     setDraft(serialized);
     setError("");
-    queueMicrotask(() => {
+    if (!readOnly) queueMicrotask(() => {
       rootRef.current?.dispatchEvent(new CustomEvent("metis:markdown-embed-change", {
         bubbles: true,
         detail: { kind: "chart", source: serialized },
       }));
     });
-  }, []);
+  }, [readOnly]);
 
   const applyDraft = () => {
     try {
@@ -381,7 +386,7 @@ export function ChartBoard({
   const charts = document?.charts || [];
   const toolbar = (
     <div className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-md border border-border/50 bg-background/90 p-0.5 text-[11px]">
-      {(["board", "edit", "code"] as const).map((item) => (
+      {(readOnly ? ["board"] as const : ["board", "edit", "code"] as const).map((item) => (
         <button
           key={item}
           type="button"
@@ -419,7 +424,7 @@ export function ChartBoard({
     </div>
   ) : error && !document ? (
     <div className="px-3 py-8 pr-28 text-sm text-muted-foreground">
-      {error}. Switch to Code to fix the JSON.
+      {error}{readOnly ? "." : ". Switch to Code to fix the JSON."}
     </div>
   ) : (
     <div className={cn("flex min-h-0 flex-col", fullscreen && "flex-1")}>
@@ -433,7 +438,7 @@ export function ChartBoard({
           height={height}
         />
       ))}
-      {mode === "edit" ? charts.map((spec, index) => (
+      {!readOnly && mode === "edit" ? charts.map((spec, index) => (
         <ChartEditor
           key={`edit-${index}`}
           spec={spec}

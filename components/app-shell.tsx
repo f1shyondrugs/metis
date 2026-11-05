@@ -1,6 +1,10 @@
 "use client";
 import { useReferenceSearch } from "@/components/use-reference-search";
+import { ReferencePicker, referenceLabel, referenceIcon } from "@/components/reference-picker";
 import { MessageHistoryControl } from "@/components/message-history-control";
+import { MessageSources } from "@/components/message-sources";
+import { WebsiteIcon } from "@/components/website-icon";
+import { extractMessageSources } from "@/lib/message-sources";
 import { ProjectMessageAuthor, useProjectMessageMembers } from "@/components/project-message-author";
 import { REFERENCE_KINDS } from "@/lib/reference-search";
 import { ResearchModeOption } from "@/components/research-mode-option";
@@ -8,6 +12,7 @@ import { consumeModeMention, showDeepResearchAction } from "@/lib/composer-mode-
 import { DEEP_RESEARCH_MODE_ID } from "@/lib/deep-research";
 import { WorkspaceDesktopsPanel } from "@/components/workspace-desktops-panel";
 import { WorkspaceExportMenu } from "@/components/workspace-export-menu";
+import { workspaceContentMaxLength } from "@/lib/workspace-limits";
 import { createClientId } from "@/lib/client-id";
 import { modelAccountGroups, modelAccountKey, modelAccountLabel, modelMatchesAccount, type ModelAccountGroup } from "@/lib/model-account-groups";
 import { notifyClientError } from "@/lib/client-error-notifications";
@@ -22,6 +27,10 @@ import { flushNoteEditors } from "@/lib/note-editor-lifecycle";
 import { composerMentionQuery, replaceComposerMention, composerReferenceKeyAction, composerIsComposing } from "@/lib/composer-references";
 import { workspaceFileHref, parseWorkspaceFileLink, type WorkspaceFileRequest } from "@/lib/workspace-file-link";
 import { QuestionForm } from "@/components/question-form";
+import { copyText } from "@/lib/copy-text";
+import { ShareLinkControls } from "@/components/share-link-controls";
+import { ResearchProgressCard } from "@/components/research-progress-card";
+import { researchTracks, researchTrackKey, researchProgressFromTool } from "@/lib/research-progress";
 import { normalizeStoredQuestions, initialQuestionAnswers, restoreQuestionDraft, type PendingChatQuestion as PendingQuestion, type QuestionAnswers } from "@/lib/question-contract";
 
 import { RunStatus } from "@/components/run-status";
@@ -43,6 +52,8 @@ import {
 } from "react";
 import { startUpload, waitForUpload, cancelUpload, subscribeUploads, getUploadStatus, getCompletedUploadResult } from "@/lib/background-uploads";
 import { UploadProgress, UploadTray } from "@/components/upload-progress";
+import { ComposerAddMenu } from "@/components/composer-add-menu";
+import { ignoresNavigationSwipe } from "@/lib/navigation-swipe";
 import { readTextFilePreview } from "@/lib/text-file-preview";
 import { MAX_ATTACHMENTS } from "@/lib/upload-limits";
 import { useSearchParams } from "next/navigation";
@@ -89,7 +100,6 @@ import {
   Image as ImageIcon,
   KeyRound,
   Keyboard,
-  Link2,
   LockKeyhole,
   LoaderCircle,
   Menu,
@@ -126,6 +136,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { FileEmbed } from "@/components/file-embed";
+import { FileWorkspaceContext } from "@/components/file-workspace-actions";
 import { ImageViewer } from "@/components/image-viewer";
 import { canAutoRevealBrowser } from "@/lib/browser-auto-reveal";
 import { fileViewKind, isTextAttachment, isOfficeAttachment, mimeTypeFromFileName } from "@/lib/file-types";
@@ -179,6 +190,7 @@ import { ApprovalPanel, type ApprovalDecisionValue, type PendingApprovalView } f
 import { ProviderLogo } from "@/components/provider-logo";
 import { ProjectModelLock } from "@/components/project-model-select";
 import { projectDefaultModel, projectModelLockMessage } from "@/lib/project-model";
+import { createChatModelSettingsQueue, type ChatModelSettingsSelection } from "@/lib/chat-model-settings";
 import { ModelOptionsMenu } from "@/components/model-options-menu";
 import { modelForSelection } from "@/lib/model-selection";
 import type {
@@ -204,10 +216,11 @@ import {
   isChildRunLive,
 } from "@/lib/subagent-bar";
 import { ToolCallGroup, type ActivityEntry, type ToolCallData } from "@/components/tool-call-chip";
-import { ProviderRetryEvent } from "@/components/provider-retry-event";
+import { RunEventDivider } from "@/components/run-event-divider";
+import { parseRunControlEvent } from "@/lib/run-control-event";
 import type { ProviderRetryPart } from "@/lib/provider-retry";
 import { canvasFromToolPayload, classifyToolKind, isToolRunning, layoutAssistantParts, mergeChatMessages, planFromToolPayload, remoteClientHostnameMap, todosFromToolPayload, workspaceIdFromLink } from "@/lib/tool-call-display";
-import { reconcileMessageParts } from "@/lib/message-parts";
+import { reconcileChatMessageWindow } from "@/lib/chat-message-window";
 import { stripTranscriptDump } from "@/lib/agent-transcript";
 import { planLooksParallelizable } from "@/lib/modes";
 import { BUILT_IN_SLASH_COMMANDS, goalCommandAction, matchSlashCommand, slashCommandQuery } from "@/lib/slash-commands";
@@ -226,7 +239,7 @@ import {
   shouldPersistComposerSession,
   shouldStartQueuedFollowUp,
 } from "@/lib/composer-send";
-import { removeQueuedFollowUp, updateChatQueue, type ChatQueueState, type ChatQueueUpdate } from "@/lib/queue-client";
+import { removeQueuedFollowUp, saveQueuedFollowUps, updateChatQueue, type ChatQueueState, type ChatQueueUpdate } from "@/lib/queue-client";
 import { hiddenTranscriptMessageCount, anchoredTranscriptScrollTop, pinScrollTop, shouldPinOpenedChat, shouldLoadEarlierMessages, transcriptScrollAction, visibleTranscriptMessages } from "@/lib/chat-scroll";
 import { mergeIncomingWorkspace, remainingWorkspaceDraft, type WorkspaceDraftPatch } from "@/lib/workspace-drafts";
 import { getMetisDeviceId } from "@/lib/metis-device";
@@ -305,6 +318,7 @@ import {
 const AutomationsPanel = dynamic(() => import("@/components/automations-panel").then((mod) => mod.AutomationsPanel));
 const CommandPalette = dynamic(() => import("@/components/command-palette").then((mod) => mod.CommandPalette));
 const NotesVoid = dynamic(() => import("@/components/notes-void").then((mod) => mod.NotesVoid));
+const WorkspaceNotesPanel = dynamic(() => import("@/components/workspace-notes-panel").then((mod) => mod.WorkspaceNotesPanel));
 const NotesWorkspace = dynamic(() => import("@/components/notes/notes-workspace").then((mod) => mod.NotesWorkspace));
 const ProjectHome = dynamic(() => import("@/components/project-home").then((mod) => mod.ProjectHome));
 const ProviderSetupDialog = dynamic(() => import("@/components/provider-setup-dialog").then((mod) => mod.ProviderSetupDialog));
@@ -349,39 +363,18 @@ function formatCompletedAt(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(date);
+    : new Intl.DateTimeFormat("en", { dateStyle: "short", timeStyle: "short" }).format(date);
 }
 
 const ServerMonitor = dynamic(() => import("@/components/server-monitor").then(module => module.ServerMonitor), { ssr: false });
 
 function formatMetricNumber(value: number) {
-  return Math.max(0, Math.round(value)).toLocaleString();
-}
-
-function copyTextAreaFallback(raw: string) {
-  const area = document.createElement("textarea");
-  area.value = raw;
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  document.body.appendChild(area);
-  area.select();
-  const copied = document.execCommand("copy");
-  area.remove();
-  if (!copied) throw new Error("Clipboard copy failed");
+  return Math.max(0, Math.round(value)).toLocaleString("en");
 }
 
 async function copyRawMessage(raw: string) {
   try {
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(raw);
-      } catch {
-        copyTextAreaFallback(raw);
-      }
-    } else {
-      copyTextAreaFallback(raw);
-    }
+    await copyText(raw);
     toast.success("Copied");
   } catch {
     toast.error("Could not copy message");
@@ -403,6 +396,7 @@ type ToolPart = StoredToolPart & {
 };
 
 type MsgPart =
+  | import("@/lib/run-control-event").RunControlPart
   | ProviderRetryPart
   | { type: "thinking"; content: string; done?: boolean; durationMs?: number }
   | {
@@ -459,11 +453,6 @@ type Msg = {
   runMetadata?: RunMetadata;
   references?: ReferenceItem[];
   serverSequence?: number;
-};
-
-type SourceLink = {
-  label: string;
-  url: string;
 };
 
 type PendingFile = {
@@ -718,7 +707,7 @@ type ChatSessionState = {
   terminalSessionId?: string;
   terminalTabs?: TerminalTab[];
   activeTerminalTabId?: string;
-  workspaceTab?: "canvas" | "plan" | "terminal" | "files" | "browser" | "desktops" | "monitor" | "team" | "memory";
+  workspaceTab?: "canvas" | "plan" | "terminal" | "files" | "browser" | "desktops" | "monitor" | "team" | "memory" | "notes";
   activeWorkspaceId?: string | null;
   workspaceOpen?: boolean;
   workspaceWidth?: number;
@@ -760,7 +749,8 @@ function normalizeWorkspaceTab(value: unknown): NonNullable<ChatSessionState["wo
     value === "desktops" ||
     value === "monitor" ||
     value === "team" ||
-    value === "memory"
+    value === "memory" ||
+    value === "notes"
     ? value
     : value === "canvas"
       ? "canvas"
@@ -794,15 +784,7 @@ function normalizeTerminalTabs(session: ChatSessionState, defaultCwd: string): T
   }];
 }
 
-type WorkspaceItem = {
-  id: string;
-  type: "canvas" | "plan";
-  name: string;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
-  version?: number;
-};
+type WorkspaceItem = import("@/lib/store").WorkspaceItem;
 
 type ReferenceKind = "file" | "canvas" | "plan" | "note" | "issue" | "browser" | "memory" | "chat" | "terminal";
 
@@ -811,6 +793,7 @@ type ReferenceItem = {
   id: string;
   label: string;
   source?: "explicit" | "pinned";
+  target?: string;
   detail?: string;
   chatId?: string;
   isCurrentChat?: boolean;
@@ -1066,34 +1049,6 @@ const deriveAssistantView = createMessageDerivationCache<Msg>();
 const deriveMessageSources = createMessageDerivationCache<Msg>();
 const deriveMessageTokens = createMessageDerivationCache<Msg>();
 
-function extractMessageSources(message: Msg): SourceLink[] {
-  const sources = new Map<string, SourceLink>();
-  const add = (url: string, label?: string) => {
-    const cleanUrl = url.replace(/[),.;!?]+$/g, "");
-    if (!/^https?:\/\//i.test(cleanUrl) || sources.has(cleanUrl)) return;
-    let fallbackLabel = cleanUrl;
-    try {
-      fallbackLabel = new URL(cleanUrl).hostname.replace(/^www\./i, "");
-    } catch {
-      // Keep the full URL when it cannot be parsed.
-    }
-    sources.set(cleanUrl, { label: label?.trim() || fallbackLabel, url: cleanUrl });
-  };
-  const addFromSourceBlock = (text: string) => {
-    for (const match of text.matchAll(/\[([^\]]{1,200})\]\((https?:\/\/[^)\s]+)\)/gi)) {
-      add(match[2], match[1]);
-    }
-    for (const match of text.matchAll(/https?:\/\/[^\s<>"'`)\]]+/gi)) {
-      add(match[0]);
-    }
-  };
-
-  for (const match of message.content.matchAll(/```sources\s*([\s\S]*?)```/gi)) {
-    addFromSourceBlock(match[1]);
-  }
-  return [...sources.values()].slice(0, 12);
-}
-
 function stripInlineThinkingBlocks(content: string) {
   return content
     .replace(/<thinking\s*>[\s\S]*?(?:<\/thinking\s*>|$)/gi, "")
@@ -1109,35 +1064,6 @@ function stripAssistantControlBlocks(content: string) {
     .replace(/```(?:plan|canvas)(?:\s+[^\n]*)?\s*[\s\S]*?```/gi, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-function MessageSources({ sources }: { sources: SourceLink[] }) {
-  return (
-    <details className="group mt-3 text-muted-foreground">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium marker:hidden [&::-webkit-details-marker]:hidden hover:text-foreground">
-        <Link2 className="size-3.5 shrink-0" />
-        <span>Sources</span>
-        <span className="text-[10px] opacity-70">({sources.length})</span>
-        <ChevronDown className="ml-auto size-3.5 opacity-60 transition-transform group-open:rotate-180" />
-      </summary>
-      <ol className="mt-1.5 space-y-1 pl-5">
-        {sources.map((source, index) => (
-          <li key={source.url} className="flex min-w-0 items-start gap-2 text-xs">
-            <span className="mt-0.5 shrink-0 opacity-60">{index + 1}.</span>
-            <a
-              href={source.url}
-              target="_blank"
-              rel="noreferrer"
-              className="min-w-0 truncate underline decoration-border underline-offset-2 hover:text-foreground"
-              title={source.url}
-            >
-              {source.label}
-            </a>
-          </li>
-        ))}
-      </ol>
-    </details>
-  );
 }
 
 function modelDisplayName(model: ModelInfo) {
@@ -1227,23 +1153,7 @@ function fitBrowserFrame(
   };
 }
 function BrowserTabIcon({ tab }: { tab: BrowserTab }) {
-  return (
-    <span className="relative size-3.5 shrink-0" aria-hidden="true">
-      <Globe2 className="absolute inset-0 size-3.5 text-muted-foreground" />
-      {tab.favicon ? (
-        // Remote favicons may be data URLs; Next Image optimization is not applicable.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={tab.favicon}
-          alt=""
-          className="relative size-3.5 rounded-sm object-contain"
-          onError={(event) => {
-            event.currentTarget.style.display = "none";
-          }}
-        />
-      ) : null}
-    </span>
-  );
+  return <WebsiteIcon src={tab.favicon} />;
 }
 type DiffLine = {
   text: string;
@@ -1575,8 +1485,7 @@ function mapApiMessages(
       ? m.content.replace(/^⚠\s*/, "").trim() || "Agent run failed."
       : "";
     const visibleTools = (m.tools || []).filter((tool) => !isLegacyCodexNoiseTool(tool));
-    const persistedParts = (m.parts as MsgPart[] | undefined)
-      ?.filter((part) => part.type !== "tool" || !isLegacyCodexNoiseTool(part));
+    const persistedParts = m.parts as MsgPart[] | undefined;
     const base = {
       id: m.id,
       role: m.role,
@@ -1601,13 +1510,16 @@ function mapApiMessages(
     };
     return {
       ...base,
-      parts: reconcileMessageParts({
+      ...reconcileChatMessageWindow({
         parts: base.parts,
         content: base.content,
         thinking: base.thinking,
         thinkingDone: base.thinkingDone,
         tools: base.tools,
-      }),
+        eventOffset: base.eventOffset,
+        eventsUrl: base.eventsUrl,
+        contentUrl: base.contentUrl,
+      }, part => part.type !== "tool" || !isLegacyCodexNoiseTool(part)),
     };
   });
 }
@@ -1719,6 +1631,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const projectedTranscript = useMemo(() => projectChatTranscript(projectQuestionTranscript(messages)), [messages]);
+  const researchTrackByTool = useMemo(() => researchTracks(messages), [messages]);
   const [expandedUserMessages, setExpandedUserMessages] = useState<Set<string>>(new Set());
   const [fullyExpandedUserMessages, setFullyExpandedUserMessages] = useState<Set<string>>(new Set());
   const [replyModifierHeld, setReplyModifierHeld] = useState(false);
@@ -1814,6 +1727,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [subagentModelParams, setSubagentModelParams] = useState<ModelParamSelection[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const workspaceCreatePendingRef = useRef(false);
   const workspaceLinkRequestRef = useRef(0);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const lastWorkspaceDismissedAtRef = useRef<number | null>(null);
@@ -2036,7 +1951,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const referenceSearchInputRef = useRef<HTMLInputElement>(null);
   const referenceSearchQuery = referenceMenu?.search ?? referenceMenu?.query ?? "";
   const referenceCategoriesVisible = Boolean(referenceMenu && !referenceMenu.kind && !referenceSearchQuery.trim());
-  const { results: referenceResults, loading: referenceLoading, error: referenceError, retry: retryReferenceSearch } = useReferenceSearch<ReferenceItem>({
+  const { results: referenceResults, loading: referenceLoading, indexing: referenceIndexing, notice: referenceNotice, error: referenceError, retry: retryReferenceSearch } = useReferenceSearch<ReferenceItem>({
     enabled: Boolean(referenceMenu && !referenceCategoriesVisible),
     chatId: activeChatId, kind: referenceMenu?.kind, query: referenceSearchQuery,
   });
@@ -2255,9 +2170,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [deletingChat, setDeletingChat] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareData, setShareData] = useState<ChatIndexEntry["share"] | null>(null);
-  const [sharePassword, setSharePassword] = useState("");
-  const [showSharePasswordForm, setShowSharePasswordForm] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState("");
   const [sharePanelTab, setSharePanelTab] = useState<"link" | "content">("link");
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -2304,6 +2218,15 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const draftInputLoadedRef = useRef(false);
   const notifiedPlanRef = useRef<Set<string>>(new Set());
   const swipeRef = useRef<{ x: number; y: number; ignored: boolean } | null>(null);
+  const chatModelSettingsRef = useRef<ReturnType<typeof createChatModelSettingsQueue> | null>(null);
+  if (!chatModelSettingsRef.current) chatModelSettingsRef.current = createChatModelSettingsQueue(async (chatId, selection, signal) => {
+    const response = await fetch(`/api/chats/${chatId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(selection), signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Could not save chat model settings.");
+    return { modelId: data.chat?.modelId, modelParams: data.chat?.modelParams };
+  });
   const modelSelectionRequestRef = useRef<{
     version: number;
     chatId: string | null;
@@ -3009,15 +2932,24 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       swipeRef.current = null;
       return;
     }
-    const target = event.target as HTMLElement;
+    const target = event.target instanceof Element ? event.target : null;
     const selection = window.getSelection();
     const hasSelectedText = Boolean(selection && !selection.isCollapsed && selection.toString().trim());
     const ignored = Boolean(
       hasSelectedText ||
-        target.closest("input, textarea, button, a, select, [contenteditable='true'], [data-swipe-ignore]"),
+        ignoresNavigationSwipe(target, event.currentTarget),
     );
     const touch = event.touches[0];
     swipeRef.current = { x: touch.clientX, y: touch.clientY, ignored };
+  }
+
+  function handleTouchMove(event: React.TouchEvent<HTMLDivElement>) {
+    const start = swipeRef.current;
+    if (!start) return;
+    if (event.touches.length !== 1) { start.ignored = true; return; }
+    const touch = event.touches[0];
+    const dx = Math.abs(touch.clientX - start.x), dy = Math.abs(touch.clientY - start.y);
+    if (dy > 12 && dy > dx) start.ignored = true;
   }
 
   function handleTouchEnd(event: React.TouchEvent<HTMLDivElement>) {
@@ -3372,18 +3304,22 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         quality: "70",
         realtime: browserRealtime ? "1" : "0",
         fps: String(browserFps),
+        frameAck: "1",
         width: String(browserDefaultViewport.width),
         height: String(browserDefaultViewport.height),
       });
       const socket = new WebSocket(`${protocol}//${window.location.host}/api/browser/stream?${query}`);
       browserSocketRef.current = socket;
       socket.binaryType = "blob";
+      let frameSequence: number | undefined;
       socket.onmessage = (event) => {
         if (disposed || browserSocketRef.current !== socket) return;
         if (typeof event.data === "string") {
           try {
-            const message = JSON.parse(event.data) as { type?: string; url?: string; tabId?: string; activeTabId?: string; title?: string; viewport?: { width: number; height: number }; tabs?: BrowserTab[]; message?: string };
-            if (message.type === "meta") {
+            const message = JSON.parse(event.data) as { type?: string; sequence?: number; url?: string; tabId?: string; activeTabId?: string; title?: string; viewport?: { width: number; height: number }; tabs?: BrowserTab[]; message?: string };
+            if (message.type === "frame") {
+              frameSequence = Number.isSafeInteger(message.sequence) && message.sequence! > 0 ? message.sequence : undefined;
+            } else if (message.type === "meta") {
               const url = message.url === "about:blank" ? "" : (message.url || "");
               if (url !== browserUrlRef.current) {
                 browserUrlRef.current = url;
@@ -3431,7 +3367,15 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           return;
         }
         const blob = event.data instanceof Blob ? event.data : new Blob([event.data], { type: "image/jpeg" });
-        presenter.push(blob);
+        const sequence = frameSequence;
+        frameSequence = undefined;
+        presenter.push(blob, sequence === undefined ? undefined : () => {
+          // TCP delivery does not mean the page has decoded/displayed the image.
+          // Release exactly this frame only once the presenter is done with it.
+          if (!disposed && browserSocketRef.current === socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "frame_ack", sequence }));
+          }
+        });
       };
       socket.onclose = () => {
         if (browserSocketRef.current === socket) browserSocketRef.current = null;
@@ -3950,13 +3894,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }, [authed, models, setInput]);
 
   useEffect(() => {
-    if (!activeChatId || !modelId || projectModel) return;
-    if (Object.prototype.hasOwnProperty.call(modelParamsByModel, modelId)) {
-      setModelParams(modelParamsByModel[modelId] || []);
-    }
-  }, [activeChatId, modelId, modelParamsByModel, projectModelSignature]);
-
-  useEffect(() => {
     if (!authed || activeChatId || !draftInputLoadedRef.current) return;
     draftInputRef.current = input;
     const timer = window.setTimeout(() => {
@@ -3969,19 +3906,43 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     return () => window.clearTimeout(timer);
   }, [activeChatId, authed, input]);
 
+  function applyChatModelSelection(chatId: string, selection: ChatModelSettingsSelection) {
+    const snapshot = chatCacheRef.current.get(chatId);
+    if (snapshot) {
+      const next = { ...snapshot, modelId: selection.modelId, modelParams: selection.modelParams.map(param => ({ ...param })) };
+      chatCacheRef.current.set(chatId, next);
+      if (!next.incognito) void writeClientChatSnapshot(chatCacheScope, chatId, next);
+    }
+    if (activeChatIdRef.current !== chatId) return;
+    stateRef.current.modelId = selection.modelId;
+    stateRef.current.modelParams = selection.modelParams;
+    setModelId(selection.modelId);
+    setModelParams(selection.modelParams);
+  }
+
+  async function saveChatModelSelection(chatId: string, next: ChatModelSettingsSelection, baseline: ChatModelSettingsSelection) {
+    const saving = chatModelSettingsRef.current!.save(chatId, next, baseline);
+    applyChatModelSelection(chatId, next);
+    setAgentId(undefined);
+    const result = await saving;
+    if (!result.current) return;
+    applyChatModelSelection(chatId, result.selection);
+    if (result.error) toast.error(result.error.message);
+  }
+
   function applyModelParams(next: ModelParamSelection[]) {
-    if (projectModel) return;
+    if (projectModel || loadingChatId) return;
+    const chatId = activeChatIdRef.current;
+    if (chatId) {
+      const current = stateRef.current;
+      void saveChatModelSelection(chatId, { modelId: current.modelId, modelParams: next }, { modelId: current.modelId, modelParams: current.modelParams });
+      return;
+    }
     setModelParams(next);
+    stateRef.current.modelParams = next;
     if (modelId) persistModelParamsByModel({ ...modelParamsByModel, [modelId]: next });
     localStorage.setItem(PARAMS_STORAGE_KEY, JSON.stringify(next));
     setAgentId(undefined);
-    if (activeChatId) {
-      void fetch(`/api/chats/${activeChatId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modelParams: next }),
-      });
-    }
   }
 
   function toggleFavoriteModel(modelKey: string) {
@@ -4142,7 +4103,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     setActiveChatIncognito(Boolean(snap.incognito));
     setIncognito(Boolean(snap.incognito));
     setAgentId(snap.agentId);
-    setModelId(snap.modelId);
+    const savedSelection = chatModelSettingsRef.current!.resolve(id, { modelId: snap.modelId, modelParams: snap.modelParams ?? [] });
+    stateRef.current.modelId = savedSelection.modelId;
+    stateRef.current.modelParams = savedSelection.modelParams;
+    setModelId(savedSelection.modelId);
     const savedModeId = session.modeId || "agent";
     setModeId(savedModeId);
     if (typeof window !== "undefined") localStorage.setItem(MODE_STORAGE_KEY, savedModeId);
@@ -4150,11 +4114,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     setRuntimeMode(savedRuntimeMode);
     if (typeof window !== "undefined") localStorage.setItem(RUNTIME_MODE_STORAGE_KEY, savedRuntimeMode);
     setPendingApproval(snap.pendingApproval ?? null);
-    setModelParams(
-      Object.prototype.hasOwnProperty.call(modelParamsByModel, snap.modelId)
-        ? modelParamsByModel[snap.modelId] || []
-        : snap.modelParams ?? [],
-    );
+    setModelParams(savedSelection.modelParams);
     setWorkspaces(snap.workspaces ?? []);
     setActiveWorkspaceId(
       session.activeWorkspaceId && snap.workspaces?.some((item) => item.id === session.activeWorkspaceId)
@@ -4243,7 +4203,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     setQuestionError(null);
     setQuestionFieldErrors({});
     setPaneKey((k) => k + 1);
-  }, [acceptServerSnapshot, clearUnread, modelParamsByModel, setBusySynced, setInput, workspaceDefaultCwd]);
+  }, [acceptServerSnapshot, clearUnread, setBusySynced, setInput, workspaceDefaultCwd]);
 
   const openDraft = useCallback(
     (opts?: { skipNav?: boolean; projectId?: string | null }) => {
@@ -4356,10 +4316,12 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const prefetchChat = useCallback(async (id: string) => {
     if (!id || activeChatIdRef.current === id || chatCacheRef.current.has(id) || chatPrefetchInFlightRef.current.has(id)) return;
     chatPrefetchInFlightRef.current.add(id);
+    const modelReadRevision = chatModelSettingsRef.current!.revision(id);
     try {
       const diskCached = await readClientChatSnapshot<ChatSnapshot>(chatCacheScope, id);
       if (diskCached?.messages?.length) {
-        chatCacheRef.current.set(id, diskCached);
+        const selection = chatModelSettingsRef.current!.resolve(id, { modelId: diskCached.modelId, modelParams: diskCached.modelParams ?? [] }, modelReadRevision);
+        chatCacheRef.current.set(id, { ...diskCached, ...selection });
         return;
       }
       const res = await fetchReadWithRetry(`/api/chats/${id}?messageLimit=${CHAT_MESSAGE_LOAD_LIMIT}&messageOffset=0`, { cache: "no-store" });
@@ -4373,8 +4335,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         updatedAt: data.chat.updatedAt,
         activityRevision: data.chat.activityRevision,
         agentId: data.chat.agentId,
-        modelId: mid,
-        modelParams: Array.isArray(data.chat.modelParams) ? data.chat.modelParams : [],
+        ...chatModelSettingsRef.current!.resolve(id, { modelId: mid, modelParams: Array.isArray(data.chat.modelParams) ? data.chat.modelParams : [] }, modelReadRevision),
         removedQueuedMessageIds: data.chat.removedQueuedMessageIds,
         queuedMessages: Array.isArray(data.chat.queuedMessages) ? data.chat.queuedMessages : [],
         workspaces: workspacesFromChat(data.chat),
@@ -4431,6 +4392,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       const controller = new AbortController();
       chatLoadAbortRef.current = controller;
       const requestId = ++chatLoadRequestRef.current;
+      const modelReadRevision = chatModelSettingsRef.current!.revision(id);
       if (!alreadyActive && activeChatIncognito && previousChatId) {
         await fetch("/api/browser", {
           method: "POST",
@@ -4458,8 +4420,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           activeChatIdRef.current === id &&
           chatLoadRequestRef.current === requestId
         ) {
-          cached = diskCached;
-          chatCacheRef.current.set(id, diskCached);
+          const selection = chatModelSettingsRef.current!.resolve(id, { modelId: diskCached.modelId, modelParams: diskCached.modelParams ?? [] }, modelReadRevision);
+          cached = { ...diskCached, ...selection };
+          chatCacheRef.current.set(id, cached);
         }
       }
       if (activeChatIdRef.current !== id || chatLoadRequestRef.current !== requestId) return false;
@@ -4544,10 +4507,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               updatedAt: data.chat.updatedAt,
         activityRevision: data.chat.activityRevision,
               agentId: data.chat.agentId,
-              modelId: mid,
-              modelParams: Array.isArray(data.chat.modelParams)
-                ? data.chat.modelParams
-                : cached.modelParams,
+              ...chatModelSettingsRef.current!.resolve(id, { modelId: mid, modelParams: Array.isArray(data.chat.modelParams) ? data.chat.modelParams : [] }, modelReadRevision),
               removedQueuedMessageIds: data.chat.removedQueuedMessageIds,
               queuedMessages: Array.isArray(data.chat.queuedMessages)
                 ? data.chat.queuedMessages
@@ -4575,11 +4535,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             setAgentId(next.agentId);
             if (!runtimeRef.current.has(id)) {
               setModelId(next.modelId);
-              setModelParams(
-                Object.prototype.hasOwnProperty.call(modelParamsByModel, next.modelId)
-                  ? modelParamsByModel[next.modelId] || []
-                  : next.modelParams,
-              );
+              setModelParams(next.modelParams);
             }
             // A soft revalidation can finish while the foreground SSE stream
             // is still applying deltas. Keep that live state instead of
@@ -4684,10 +4640,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         updatedAt: data.chat.updatedAt,
         activityRevision: data.chat.activityRevision,
         agentId: data.chat.agentId,
-        modelId: mid,
-        modelParams: Array.isArray(data.chat.modelParams)
-          ? data.chat.modelParams
-          : [],
+        ...chatModelSettingsRef.current!.resolve(id, { modelId: mid, modelParams: Array.isArray(data.chat.modelParams) ? data.chat.modelParams : [] }, modelReadRevision),
         removedQueuedMessageIds: data.chat.removedQueuedMessageIds,
         queuedMessages: Array.isArray(data.chat.queuedMessages)
           ? data.chat.queuedMessages
@@ -4718,7 +4671,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         }
       }
     },
-    [acceptServerSnapshot, activeChatIncognito, applySnapshot, chatCacheScope, clearUnread, modelParamsByModel, navigateChat, persistActiveSnapshot, setBusySynced, setInput, workspaceDefaultCwd],
+    [acceptServerSnapshot, activeChatIncognito, applySnapshot, chatCacheScope, clearUnread, navigateChat, persistActiveSnapshot, setBusySynced, setInput, workspaceDefaultCwd],
   );
 
   // Prefetch on explicit sidebar hover/focus only. Startup prefetches compete
@@ -4903,8 +4856,16 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }
 
   async function selectModel(nextId: string) {
-    if (projectModel) return;
+    if (projectModel || loadingChatId) return;
     if (!nextId || nextId === modelId) return;
+    const selectedChatId = activeChatIdRef.current;
+    if (selectedChatId) {
+      const current = stateRef.current;
+      await saveChatModelSelection(selectedChatId,
+        { modelId: nextId, modelParams: modelForSelection(models, nextId)?.defaultParams ?? [] },
+        { modelId: current.modelId, modelParams: current.modelParams });
+      return;
+    }
     const chatId = activeChatIdRef.current;
     const chatVersion = chatLoadRequestRef.current;
     const previous = modelSelectionRequestRef.current;
@@ -5075,6 +5036,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       // on the sending device too; mergeMessages preserves in-flight tokens.
       if (document.visibilityState === "hidden" || chatRefreshInFlightRef.current.has(chatId)) return;
       chatRefreshInFlightRef.current.add(chatId);
+      const modelReadRevision = chatModelSettingsRef.current!.revision(chatId);
       try {
         const previousEtag=chatRefreshEtagRef.current.get(chatId);
         const res = await fetchReadWithRetry(
@@ -5093,12 +5055,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         if (!acceptServerSnapshot(chatId, data.chat.updatedAt, !activityChanged && !metadataChanged)) return;
         const liveRun = runtimeRef.current.has(chatId);
         if (data.chat.modelId && !liveRun) {
-          setModelId(data.chat.modelId);
-          setModelParams(
-            Object.prototype.hasOwnProperty.call(modelParamsByModel, data.chat.modelId)
-              ? modelParamsByModel[data.chat.modelId] || []
-              : data.chat.modelParams ?? [],
-          );
+          const selection = chatModelSettingsRef.current!.resolve(chatId, { modelId: data.chat.modelId, modelParams: data.chat.modelParams ?? [] }, modelReadRevision);
+          stateRef.current.modelId = selection.modelId;
+          stateRef.current.modelParams = selection.modelParams;
+          setModelId(selection.modelId);
+          setModelParams(selection.modelParams);
         }
         if (data.chat.activityRevision !== undefined) renderedActivityRef.current.set(chatId, data.chat.activityRevision);
         setChatTitle(data.chat.title);
@@ -5163,7 +5124,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       } finally {
         chatRefreshInFlightRef.current.delete(chatId);
       }
-  }, [acceptServerSnapshot, modelParamsByModel, setBusySynced]);
+  }, [acceptServerSnapshot, setBusySynced]);
 
   useEffect(() => {
     if (!authed) return;
@@ -5345,6 +5306,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           .find((item) => item.id === attachmentId || item.name === reference.label);
         if (attachment) {
           setActiveAttachment({ attachment, chatId: targetChatId });
+        } else if(reference.target==="server" && reference.path?.startsWith("/")) {
+          window.dispatchEvent(new CustomEvent("ai-chat:open-file",{detail:{path:reference.path}}));
+        } else {
+          setWorkspaceTab("files");setWorkspaceOpen(true);
         }
         return;
       }
@@ -6077,6 +6042,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       return;
     }
     await fetch("/api/auth", { method: "DELETE" });
+    chatModelSettingsRef.current?.dispose();
+    chatModelSettingsRef.current = null;
     window.dispatchEvent(new Event("metis:auth-changed"));
     setAccountView(null);
     setMobileNavOpen(false);
@@ -6268,22 +6235,18 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   async function openShareDialog() {
     if (!activeChatId) return;
+    setShareData(null);
+    setShareError("");
+    setSharePanelTab("link");
+    setShareOpen(true);
     setShareBusy(true);
     try {
-      const res = await fetch(`/api/chats/${activeChatId}/share`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: true }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { share?: ChatIndexEntry["share"]; error?: string };
-      if (!res.ok || !data.share) throw new Error(data.error || "Unable to create share link");
-      setShareData(data.share);
-      setShowSharePasswordForm(false);
-      setSharePanelTab("link");
-      setShareOpen(true);
-      void loadChats();
+      const res = await fetch(`/api/chats/${activeChatId}/share`, { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as { share?: ChatIndexEntry["share"] | null; error?: string };
+      if (!res.ok) throw new Error(data.error || "Unable to load sharing settings");
+      setShareData(data.share || null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to create share link");
+      setShareError(error instanceof Error ? error.message : "Unable to load sharing settings");
     } finally {
       setShareBusy(false);
     }
@@ -6294,8 +6257,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     password?: string | null;
     content?: NonNullable<ChatIndexEntry["share"]>["content"];
   }) {
-    if (!activeChatId) return;
+    if (!activeChatId) return false;
     setShareBusy(true);
+    setShareError("");
     try {
       const res = await fetch(`/api/chats/${activeChatId}/share`, {
         method: "PATCH",
@@ -6305,11 +6269,13 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       const data = (await res.json().catch(() => ({}))) as { share?: ChatIndexEntry["share"]; error?: string };
       if (!res.ok || !data.share) throw new Error(data.error || "Unable to update share");
       setShareData(data.share);
-      setSharePassword("");
-      setShowSharePasswordForm(false);
       void loadChats();
+      return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update share");
+      const message = error instanceof Error ? error.message : "Unable to update share";
+      setShareError(message);
+      toast.error(message);
+      return false;
     } finally {
       setShareBusy(false);
     }
@@ -6672,7 +6638,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     addPendingFiles(imageFiles);
   }
 
-  async function submitQuestionAnswers(result: QuestionAnswers) {
+  async function submitQuestionAnswers(result: QuestionAnswers | { cancelled: true }) {
     if (!pendingQuestion || answeringQuestion) return;
     const submittingQuestion = pendingQuestion;
     const submittingChatId = activeChatIdRef.current;
@@ -6682,7 +6648,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     try {
       const res = await fetch("/api/chat/answer", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId: submittingQuestion.questionId, values: result.values, version: submittingQuestion.version }),
+        body: JSON.stringify({ questionId: submittingQuestion.questionId, ...("cancelled" in result ? { cancelled: true } : { values: result.values }), version: submittingQuestion.version }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; fieldErrors?: Record<string, string>; summary?: string; message?: Chat["messages"][number] };
       if (!res.ok) {
@@ -6727,25 +6693,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }
 
   async function cancelPendingQuestion() {
-    if (!activeChatId || answeringQuestion) return;
-    setAnsweringQuestion(true);
-    try {
-      const response = await fetch("/api/chat/skip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chatId: activeChatId }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Could not cancel the question.");
-      window.dispatchEvent(new Event("metis:notifications-changed"));
-      pendingQuestionIdRef.current = null;
-      setPendingQuestion(null);
-      setBusySynced(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not cancel the question.");
-    } finally {
-      setAnsweringQuestion(false);
-    }
+    await submitQuestionAnswers({ cancelled: true });
   }
 
   async function dismissInterruptedRun() {
@@ -6807,7 +6755,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }
   applyServerQueuedMessagesRef.current = applyServerQueuedMessages;
 
-  function persistQueuedFollowUps(chatId: string | null, items: QueuedMessage[]) {
+  function persistQueuedFollowUps(chatId: string | null, items: QueuedMessage[], keepalive = false) {
     if (!chatId || activeChatIdRef.current !== chatId ||
       stateRef.current.chatId !== chatId || stateRef.current.queueChatId !== chatId || stateRef.current.loadingChatId) return;
     const consumed = new Set<string>(stateRef.current.messages
@@ -6817,29 +6765,21 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     const payload = items.filter((item) => !consumed.has(item.id) && !removed.has(item.id));
     // Queue removals use DELETE or dispatch; an empty autosave has no work.
     if (!payload.length) return;
-    void fetch(`/api/chats/${chatId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        queuedMessages: payload.map(({ id, text, referenceText, references, storedAttachments, uploadIds }) => ({
-          id,
-          text,
-          ...(referenceText ? { referenceText } : {}),
-          ...(references?.length ? { references } : {}),
-          ...(storedAttachments?.length ? { attachments: storedAttachments } : {}),
-          ...(uploadIds?.length ? { uploadIds } : {}),
-        })),
-      }),
-      keepalive: true,
-    }).then((response) => {
-      if (!response.ok) throw new Error("Could not save queued messages. Keep this chat open and try again.");
-    }).catch((error) => {
+    void saveQueuedFollowUps(chatId, payload.map(({ id, text, referenceText, references, storedAttachments, uploadIds }) => ({
+      id,
+      text,
+      ...(referenceText ? { referenceText } : {}),
+      ...(references?.length ? { references } : {}),
+      ...(storedAttachments?.length ? { attachments: storedAttachments } : {}),
+      ...(uploadIds?.length ? { uploadIds } : {}),
+    })), { request: fetch, keepalive }).catch((error) => {
       toast.error(error instanceof Error ? error.message : "Could not save queued messages.");
     });
   }
 
   function queueCurrentMessage(text: string, files: PendingFile[]) {
-    if (activeChatIdRef.current !== activeChatId || loadingChatId || queuedState.chatId !== activeChatId) return;
+    if (activeChatIdRef.current !== activeChatId || loadingChatId || queuedState.chatId !== activeChatId ||
+      stateRef.current.chatId !== activeChatId || stateRef.current.queueChatId !== activeChatId || stateRef.current.loadingChatId) return;
     const uploadIds: string[] = [];
     for (const pending of files) {
       const uploaded = pending.uploadTaskId ? getCompletedUploadResult(pending.uploadTaskId) : undefined;
@@ -6849,9 +6789,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       }
       uploadIds.push(uploaded.id);
     }
-    if (!files.length && !restoredAttachments.length && text && queuedMessages.some((item) => item.text === text && !item.files.length && !item.storedAttachments?.length && !item.uploadIds?.length)) return;
-    setQueuedMessages((current) => {
-      const next = [
+    const current = stateRef.current.queuedMessages.filter((item) => !activeChatId || !removedIdsFor(activeChatId).has(item.id));
+    if (!files.length && !restoredAttachments.length && text && current.some((item) => item.text === text && !item.files.length && !item.storedAttachments?.length && !item.uploadIds?.length)) return;
+    const next = [
       ...current,
       {
         id: `q-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -6863,9 +6803,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         ...(restoredAttachments.length ? { storedAttachments: [...restoredAttachments] } : {}),
       },
     ];
-      persistQueuedFollowUps(activeChatId, next);
-      return next;
-    });
+    // Network handoff and the lifecycle snapshot must happen in this event,
+    // before React schedules a render or the browser freezes a hidden tab.
+    stateRef.current.queuedMessages = next;
+    setQueuedMessages(next);
+    persistQueuedFollowUps(activeChatId, next);
     setInputGuarded("", "queued");
     setComposerSyncNonce((current) => current + 1);
     setReferenceText("");
@@ -8090,6 +8032,19 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             typeof payload.agentId === "string"
           ) {
             if (activeChatIdRef.current === chatId) setAgentId(payload.agentId);
+          } else if (event === "run-event") {
+            const control = parseRunControlEvent(payload);
+            if (control) {
+              // A resumed model/wait starts a new assistant message, just like a retry.
+              retryAssistantPending = true;
+              textBatcher.flush();
+              setMessages(current => current.map(message => {
+                if (message.id !== asstId) return message;
+                const parts = [...(message.parts ?? partsFromFlat(message))];
+                if (!parts.some(part => (part.type === "model-switch" || part.type === "provider-wait") && part.id === control.id)) parts.push(control);
+                return { ...message, ...withSyncedFlat(parts, { streaming: false, thinkingDone: true }) };
+              }));
+            }
           } else if (event === "status") {
             if (payload.status === "retrying_provider" && typeof payload.id === "string"
               && typeof payload.attempt === "number" && typeof payload.maxRetries === "number"
@@ -8109,7 +8064,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               }));
             }
             const rawStatus = typeof payload.status === "string" ? payload.status : "";
-            const statusLabel = rawStatus === "retrying_provider" ? ""
+            const statusLabel = ["retrying_provider", "waiting_memory", "queued"].includes(rawStatus) ? ""
               : rawStatus === "waiting_provider_limit" ? "Waiting for provider reset"
               : rawStatus.toLowerCase() === "running" ? "Agent running" : rawStatus;
             const label = [statusLabel, typeof payload.message === "string" ? payload.message : ""]
@@ -8257,18 +8212,30 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           body: JSON.stringify({ draftInput: stateRef.current.input }),
         });
       }
-      persistQueuedFollowUps(activeChatId, queuedMessages);
+      const current = stateRef.current;
+      persistQueuedFollowUps(current.chatId, current.queuedMessages, true);
     };
-    const onHide = () => {
+    const retryQueue = () => {
+      const current = stateRef.current;
+      persistQueuedFollowUps(current.chatId, current.queuedMessages);
+    };
+    const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") flush();
+      else retryQueue();
     };
     window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pageshow", retryQueue);
+    window.addEventListener("online", retryQueue);
+    window.addEventListener("focus", retryQueue);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("pagehide", flush);
-      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pageshow", retryQueue);
+      window.removeEventListener("online", retryQueue);
+      window.removeEventListener("focus", retryQueue);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [activeChatId, queuedMessages, persistActiveSnapshot]);
+  }, [persistActiveSnapshot]);
 
   const normalizedModelSearch = modelSearch.trim().toLowerCase();
   const availableProviders = modelAccountGroups(models, configuredModelProviders);
@@ -8674,6 +8641,42 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     setComposerSyncNonce((current) => current + 1);
   }
 
+  async function createWorkspace(type: "canvas" | "plan", sourceUrl?: string) {
+    if (workspaceCreatePendingRef.current) return;
+    workspaceCreatePendingRef.current = true;
+    setCreatingWorkspace(true);
+    const startingChatId = activeChatIdRef.current;
+    try {
+      const chatId = startingChatId || await ensureChatId();
+      if (!chatId) throw new Error("Could not create a chat.");
+      if (activeChatIdRef.current !== chatId) return;
+      const response = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, type, ...(sourceUrl ? { sourceUrl } : { requestId: createClientId() }) }),
+      });
+      const body = await response.json() as { workspace?: WorkspaceItem; error?: string };
+      if (!response.ok || !body.workspace) throw new Error(body.error || "Could not create workspace.");
+      if (activeChatIdRef.current !== chatId) {
+        // The saved document remains in its source chat when navigation wins the race.
+        chatCacheRef.current.delete(chatId);
+        return;
+      }
+      const workspace = body.workspace;
+      const next = mergeWorkspaceItems(stateRef.current.workspaces, workspace);
+      stateRef.current.workspaces = next;
+      setWorkspaces(next);
+      setActiveWorkspaceId(workspace.id);
+      setWorkspaceTab(type);
+      setWorkspaceMounted(true);
+      setWorkspaceOpen(true);
+      setActiveAttachment(null);
+    } finally {
+      workspaceCreatePendingRef.current = false;
+      setCreatingWorkspace(false);
+    }
+  }
+
   async function saveWorkspaceDraft(chatId: string, workspaceId: string) {
     if (activeChatIdRef.current !== chatId) return;
     const workspace = stateRef.current.workspaces.find((item) => item.id === workspaceId);
@@ -8823,33 +8826,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }
   }
 
-  function referenceLabel(kind: ReferenceKind) {
-    return {
-      file: "Files",
-      canvas: "Canvases",
-      plan: "Plans",
-      note: "Notes",
-      issue: "Issues",
-      browser: "Browser",
-      memory: "Memories",
-      chat: "Chats",
-      terminal: "Terminals",
-    }[kind];
-  }
 
-  function referenceIcon(kind: ReferenceKind): LucideIcon {
-    return {
-      file: FileIcon,
-      canvas: Palette,
-      plan: ClipboardList,
-      note: StickyNote,
-      issue: ClipboardList,
-      browser: PanelRight,
-      memory: Brain,
-      chat: MessageSquare,
-      terminal: Terminal,
-    }[kind];
-  }
 
   const queuedList = queuedMessages.length > 0 ? (
     <div className="space-y-1.5 px-1">
@@ -9204,94 +9181,16 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         ) : null}
         {referenceMenu ? (
           <div id="composer-reference-popover" className="absolute bottom-full left-2 right-2 z-40 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-popover p-1.5 text-sm shadow-xl animate-in fade-in-0 slide-in-from-bottom-2 duration-200">
-            <div className="sticky top-0 z-10 -mx-1.5 -mt-1.5 mb-1 flex items-center gap-1 border-b border-border/50 bg-popover px-2 py-1.5">
-              {!referenceCategoriesVisible ? <button type="button" aria-label="All categories" title="All categories"
-                className="flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
-                onClick={() => selectReferenceCategory(null)}><ArrowLeft className="size-4" /></button> : <Search className="mx-2 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-              <input ref={referenceSearchInputRef} type="search" role="combobox" aria-expanded={true}
-                aria-label={referenceMenu.kind ? `Search ${referenceLabel(referenceMenu.kind).toLowerCase()}` : "Search context"}
-                placeholder={referenceMenu.kind ? `Search ${referenceLabel(referenceMenu.kind).toLowerCase()}…` : "Search context…"}
-                value={referenceSearchQuery} aria-autocomplete="list" aria-controls="composer-reference-list"
-                aria-activedescendant={`composer-reference-option-${referenceIndex}`}
-                className="h-9 min-w-0 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground"
-                onKeyDown={event => { if (handleReferenceKeyDown(event)) event.stopPropagation(); else if (event.key === "Enter" && !composerIsComposing(event.nativeEvent)) event.preventDefault(); }}
-                onChange={event => { const search = event.target.value; setReferenceIndex(0); setReferenceMenu(current => current ? { ...current, search } : current); }}
-              />
-              {referenceMenu.kind ? <span className="pr-1 text-[11px] text-muted-foreground">{referenceLabel(referenceMenu.kind)}</span> : null}
-            </div>
-            <div id="composer-reference-list" role="listbox" aria-label="Context references" aria-busy={referenceLoading}>
-            {researchActionVisible ? <ResearchModeOption index={0} selected={referenceIndex === 0} onHighlight={() => setReferenceIndex(0)} onSelect={selectResearchMode} /> : null}
-            {referenceCategoriesVisible ? (
-              <div className="flex flex-col gap-0.5">
-                {REFERENCE_KINDS.map((kind, index) => (
-                  <button
-                    key={kind}
-                    id={`composer-reference-option-${index + referenceActionOffset}`}
-                    role="option"
-                    aria-selected={referenceIndex === index + referenceActionOffset}
-                    onMouseEnter={() => setReferenceIndex(index + referenceActionOffset)}
-                    type="button"
-                    aria-label={referenceLabel(kind)}
-                    title={referenceLabel(kind)}
-                    className={cn("flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-muted-foreground hover:bg-muted hover:text-foreground", referenceIndex === index + referenceActionOffset && "bg-muted text-foreground")}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => selectReferenceCategory(kind)}
-                  >
-                    {(() => {
-                      const Icon = referenceIcon(kind);
-                      return (
-                        <>
-                          <Icon className="size-4" />
-                          <span className="text-xs">{referenceLabel(kind)}</span>
-                        </>
-                      );
-                    })()}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <>
-                {referenceLoading ? <p role="status" className="px-2.5 py-4 text-center text-xs text-muted-foreground">Searching…</p>
-                  : referenceError ? <div role="alert" className="px-2.5 py-3 text-xs"><p>{referenceError}</p><button type="button" className="mt-2 underline underline-offset-2" onClick={retryReferenceSearch}>Try again</button></div>
-                  : referenceResults.length > 0 ? (
-                  referenceResults.map((reference, index) => (
-                    <button
-                      key={`${reference.kind}-${reference.id}`}
-                      type="button"
-                      className={cn(
-                        "flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left",
-                        index + referenceActionOffset === referenceIndex ? "bg-muted" : "hover:bg-muted/60",
-                      )}
-                      onMouseDown={(event) => event.preventDefault()}
-                      id={`composer-reference-option-${index + referenceActionOffset}`}
-                      role="option"
-                      aria-selected={referenceIndex === index + referenceActionOffset}
-                      onMouseEnter={() => setReferenceIndex(index + referenceActionOffset)}
-                      onClick={() => selectReference(reference)}
-                    >
-                      {(() => {
-                        const Icon = referenceIcon(reference.kind);
-                        return <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
-                      })()}
-                      <span className="min-w-0">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span className="min-w-0 truncate text-xs text-foreground">{reference.label}</span>
-                          {reference.isCurrentChat ? (
-                            <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
-                              In this chat
-                            </Badge>
-                          ) : null}
-                        </span>
-                        {reference.detail ? <span className="block truncate text-[11px] text-muted-foreground">{reference.detail}</span> : null}
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  researchActionVisible ? null : <p role="status" className="px-2.5 py-4 text-center text-xs text-muted-foreground">{referenceSearchQuery ? "No matching references." : `No ${referenceLabel(referenceMenu.kind || "file").toLowerCase()} available.`}</p>
-                )}
-              </>
-            )}
-            </div>
+            <ReferencePicker id="composer-reference-list" optionIdPrefix="composer-reference" inputRef={referenceSearchInputRef}
+              kind={referenceMenu.kind} query={referenceSearchQuery} results={referenceResults}
+              loading={referenceLoading} indexing={referenceIndexing} notice={referenceNotice} error={referenceError} retry={retryReferenceSearch}
+              index={referenceIndex} onIndex={setReferenceIndex} onCategory={selectReferenceCategory}
+              onQuery={search=>{setReferenceIndex(0);setReferenceMenu(current=>current?{...current,search}:current);}}
+              onSelect={reference=>void selectReference(reference)}
+              onKeyDown={event=>{if(handleReferenceKeyDown(event))event.stopPropagation();else if(event.key==="Enter"&&!composerIsComposing(event.nativeEvent))event.preventDefault();}}
+              prefixCount={referenceActionOffset}
+              prefix={researchActionVisible?<ResearchModeOption index={0} selected={referenceIndex===0} onHighlight={()=>setReferenceIndex(0)} onSelect={selectResearchMode}/>:undefined}
+            />
           </div>
         ) : null}
         <input
@@ -9369,18 +9268,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               <X className="size-4" />
             </Button>
           ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" aria-label="Add" className="size-11 shrink-0 self-end rounded-full sm:size-9">
-                  <Plus className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" collisionPadding={8} className="w-[min(15rem,calc(100vw-1rem))] rounded-xl">
-                <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
-                  <Paperclip className="size-4" />
-                  <span>Files</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => {
+            <ComposerAddMenu onFiles={() => fileInputRef.current?.click()} onContext={() => {
                   const current = composerLiveText(textareaRef.current ? composerPlainText(textareaRef.current, "Message Metis…") : "", input);
                   const prefix = current && !/\s$/.test(current) ? `${current} ` : current;
                   const next = `${prefix}@`;
@@ -9389,12 +9277,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   setReferenceMenu({ query: "", kind: null, start: prefix.length, end: next.length });
                   referenceAutocompleteDismissedRef.current = null;
                   window.requestAnimationFrame(() => textareaRef.current?.focus());
-                }}>
-                  <AtSign className="size-4" />
-                  <span>Context</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                }} />
           )}
           <div className="composer-input-area relative min-w-0 flex-1">
           <RichComposerInput
@@ -10293,9 +10176,12 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   return (
     <InternalLinkPreviewChat.Provider value={activeChatId}>
+    <FileWorkspaceContext.Provider value={incognito ? null : { chatId: activeChatId, open: createWorkspace }}>
     <div
       className="metis-shell flex h-dvh overflow-hidden bg-background"
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchCancel={() => { swipeRef.current = null; }}
       onTouchEnd={handleTouchEnd}
     >
       <UploadTray />
@@ -10434,6 +10320,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             mobileNavOpen ? "visible translate-x-0" : "invisible -translate-x-full",
           )}
           onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchCancel={() => { swipeRef.current = null; }}
           onTouchEnd={handleTouchEnd}
         >
           {sidebar(true)}
@@ -10731,8 +10619,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                       ],
                     )}
                   >
-                    <MessageHistoryControl<Msg> url={m.eventsUrl} label={`Load earlier activity (${m.eventOffset || 0})`} onLoad={older => {if(activeChatIdRef.current!==activeChatId)return;setMessages(current=>current.map(message=>message.id!==m.id?message:{...message,eventsUrl:older.eventsUrl,eventOffset:older.eventOffset,tools:[...(older.tools || []),...(message.tools || [])],parts:[...(older.parts || []),...(message.parts || [])]}));}}/>
-                    <MessageHistoryControl<Partial<Msg>> url={m.contentUrl} label="Read full message" onLoad={full => {if(activeChatIdRef.current!==activeChatId)return;setMessages(current=>current.map(message=>message.id!==m.id?message:{...message,content:full.content ?? message.content,thinking:full.thinking ?? message.thinking,parts:full.parts,tools:full.tools ?? message.tools,eventsUrl:undefined,eventOffset:0,contentUrl:undefined}));}}/>
+                    <MessageHistoryControl<Msg> url={m.eventsUrl} label={`Load earlier activity (${m.eventOffset || 0})`} onLoad={older => {if(activeChatIdRef.current!==activeChatId)return;setMessages(current=>current.map(message=>message.id!==(m.transcriptSourceId || m.id)?message:{...message,eventsUrl:older.eventsUrl,eventOffset:older.eventOffset,tools:[...(older.tools || []),...(message.tools || [])],parts:[...(older.parts || []),...(message.parts || [])]}));}}/>
+                    <MessageHistoryControl<Partial<Msg>> url={m.contentUrl} label="Read full message" onLoad={full => {if(activeChatIdRef.current!==activeChatId)return;setMessages(current=>current.map(message=>message.id!==(m.transcriptSourceId || m.id)?message:{...message,content:full.content ?? message.content,thinking:full.thinking ?? message.thinking,parts:full.parts,tools:full.tools ?? message.tools,eventsUrl:undefined,eventOffset:0,contentUrl:undefined}));}}/>
                     {m.role === "user" ? (
                       <div className="flex flex-col items-end gap-1">
                         {m.references?.length ? (
@@ -10913,8 +10801,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                           return (
                             <>
                         {viewBlocks.map((block, bi, blocks) => {
-                          if (block.type === "provider-retry") {
-                            return <ProviderRetryEvent key={block.id} event={block} />;
+                          if (block.type === "provider-retry" || block.type === "model-switch" || block.type === "provider-wait") {
+                            return <RunEventDivider key={block.id} event={block}
+                              modelLabel={id => modelForSelection(models, id)?.displayName || parseModelKey(id).modelId || id} />;
                           }
                           if (block.type === "compaction") {
                             const running = block.status !== "completed" && block.status !== "error";
@@ -10954,10 +10843,16 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                             );
                           }
                           if (block.type === "tools") {
+                            const trackers = block.tools.flatMap(tool => {
+                              const progress = researchTrackByTool.get(researchTrackKey(m.transcriptSourceId || m.id, tool.id));
+                              return progress ? [{ toolId: tool.id, progress }] : [];
+                            });
+                            const remainingTools = block.tools.filter(tool => !researchTrackByTool.has(researchTrackKey(m.transcriptSourceId || m.id, tool.id)));
                             return (
-                              <ToolCallGroup
-                                key={`tools-${block.tools[0]?.id ?? bi}`}
-                                tools={block.tools}
+                              <div key={`tools-${block.tools[0]?.id ?? bi}`}>
+                              {trackers.map(({toolId, progress}) => <ResearchProgressCard key={toolId} progress={progress} running={activeChatIsRunning && Boolean(latestAssistantMessage?.tools?.some(tool => researchProgressFromTool(tool)?.runId === progress.runId))} />)}
+                              {remainingTools.length ? <ToolCallGroup
+                                tools={remainingTools}
                                 messageId={m.id}
                                 toolBirths={liveMessageMotion.toolBirths}
  thinking={block.thinking ? [{ text: block.thinking.content, done: block.thinking.done, durationMs: block.thinking.durationMs }] : undefined}
@@ -11032,7 +10927,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                                 buildDisabled={busy || reverting}
                                 hostnames={remoteHostnames}
                                 workspaces={workspaces}
-                              />
+                              /> : null}
+                              </div>
                             );
                           }
                           const displayContent = imageBlocks[bi]?.content || "";
@@ -11215,7 +11111,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                     role="status"
                     aria-label="Agent running"
                   >
-                    <AgentActivity activityKey={`${activeChatId}:${latestAssistantMessage?.content.length}:${latestAssistantMessage?.thinking?.length}:${latestAssistantMessage?.parts?.length}`} label={liveStatus || undefined} tool={latestAssistantPreparingTool}/>
+                    <AgentActivity chatId={activeChatId} activityKey={`${activeChatId}:${latestAssistantMessage?.content.length}:${latestAssistantMessage?.thinking?.length}:${latestAssistantMessage?.parts?.length}`} label={liveStatus || undefined} tool={latestAssistantPreparingTool}/>
                   </div>
                 ) : null}
                 {pendingApproval ? (
@@ -11304,7 +11200,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                       role="status"
                       aria-label="Agent running"
                     >
-                      <AgentActivity activityKey={`${activeChatId}:${latestAssistantMessage?.content.length}:${latestAssistantMessage?.thinking?.length}:${latestAssistantMessage?.parts?.length}`} label={liveStatus || undefined} tool={latestAssistantPreparingTool}/>
+                      <AgentActivity chatId={activeChatId} activityKey={`${activeChatId}:${latestAssistantMessage?.content.length}:${latestAssistantMessage?.thinking?.length}:${latestAssistantMessage?.parts?.length}`} label={liveStatus || undefined} tool={latestAssistantPreparingTool}/>
                     </div>
                   ) : null}
                   {runningSubagents.length > 0 ? (
@@ -11379,7 +11275,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           className={cn(
             "workspace-surface relative flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-l border-border/55 bg-background",
             !workspaceFullscreen && "max-md:absolute max-md:inset-0 max-md:z-30 max-md:!w-full",
-            !workspaceFullscreen && (workspaceTab === "browser" || workspaceTab === "desktops" || workspaceTab === "team" || workspaceTab === "memory") && "max-xl:absolute max-xl:inset-0 max-xl:z-40 max-xl:!w-full max-xl:border-l-0",
+            !workspaceFullscreen && (workspaceTab === "browser" || workspaceTab === "desktops" || workspaceTab === "team" || workspaceTab === "memory" || workspaceTab === "notes") && "max-xl:absolute max-xl:inset-0 max-xl:z-40 max-xl:!w-full max-xl:border-l-0",
             workspaceFullscreen && "fixed inset-[1%] z-50 !w-auto rounded-lg border border-border/70 shadow-xl",
             workspaceOpen ? "workspace-panel-enter" : "workspace-panel-exit",
           )}
@@ -11402,7 +11298,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           )}
           <div className="flex shrink-0 items-center gap-1 border-b border-border/30 px-2 py-1.5">
             <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-              {(["team", "canvas", "plan", "memory", "files", "terminal", "browser", "desktops", "monitor"] as const)
+              {(["team", "canvas", "plan", "notes", "memory", "files", "terminal", "browser", "desktops", "monitor"] as const)
                 .filter((tab) => (tab !== "browser" || browserEnabled) && (tab !== "team" || isAgentChat))
                 .map((tab) => (
                 <Button
@@ -11428,7 +11324,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   )}
                   aria-label={tab === "team" ? "Agent overview" : tab === "plan" ? "Plans" : tab === "canvas" ? "Canvas" : tab === "memory" ? "Memory" : tab[0].toUpperCase() + tab.slice(1)}
                 >
-                  {tab === "team" ? <Users className="size-4 shrink-0" /> : tab === "memory" ? <Brain className="size-4 shrink-0" /> : tab === "canvas" ? <Palette className="size-4 shrink-0" /> : tab === "plan" ? <ClipboardList className="size-4 shrink-0" /> : tab === "files" ? <FileCode2 className="size-4 shrink-0" /> : tab === "terminal" ? <Terminal className="size-4 shrink-0" /> : tab === "browser" ? <Globe2 className="size-4 shrink-0" /> : tab === "desktops" ? <Monitor className="size-4 shrink-0" /> : tab === "monitor" ? <Activity className="size-4 shrink-0" /> : <CalendarClock className="size-4 shrink-0" />}
+                  {tab === "notes" ? <NotebookPen className="size-4 shrink-0" /> : tab === "team" ? <Users className="size-4 shrink-0" /> : tab === "memory" ? <Brain className="size-4 shrink-0" /> : tab === "canvas" ? <Palette className="size-4 shrink-0" /> : tab === "plan" ? <ClipboardList className="size-4 shrink-0" /> : tab === "files" ? <FileCode2 className="size-4 shrink-0" /> : tab === "terminal" ? <Terminal className="size-4 shrink-0" /> : tab === "browser" ? <Globe2 className="size-4 shrink-0" /> : tab === "desktops" ? <Monitor className="size-4 shrink-0" /> : tab === "monitor" ? <Activity className="size-4 shrink-0" /> : <CalendarClock className="size-4 shrink-0" />}
                   <span className={cn(
                     "overflow-hidden whitespace-nowrap text-xs transition-[max-width,opacity,transform] duration-300",
                     workspaceTab === tab
@@ -11440,11 +11336,18 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                 </Button>
               ))}
             </div>
+            {(workspaceTab === "canvas" || workspaceTab === "plan") && <Button
+              type="button" size="icon-sm" variant="ghost" className="size-9 shrink-0"
+              disabled={creatingWorkspace || incognito || loadingChatId !== null}
+              aria-label={workspaceTab === "canvas" ? "Create canvas" : "Create plan"}
+              title={workspaceTab === "canvas" ? "Create canvas" : "Create plan"}
+              onClick={() => void createWorkspace(workspaceTab as "canvas" | "plan").catch(error => toast.error(error instanceof Error ? error.message : "Could not create workspace."))}
+            >{creatingWorkspace ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}</Button>}
             <Button
               type="button"
               size="icon-sm"
               variant="ghost"
-              className="size-8 shrink-0"
+              className="hidden size-8 shrink-0 md:inline-flex"
               aria-label={workspaceFullscreen ? "Exit workspace fullscreen" : "Open workspace fullscreen"}
               title={workspaceFullscreen ? "Exit workspace fullscreen" : "Open workspace fullscreen"}
               onClick={() => setWorkspaceFullscreen((current) => !current)}
@@ -11466,10 +11369,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               <X className="size-4" />
             </Button>
           </div>
-          <div className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-hidden", workspaceTab === "team" ? "p-0" : "p-2.5", (workspaceTab === "browser" || workspaceTab === "desktops") && "max-sm:p-1.5")}>
+          <div className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-hidden", (workspaceTab === "team" || workspaceTab === "notes") ? "p-0" : "p-2.5", (workspaceTab === "browser" || workspaceTab === "desktops") && "max-sm:p-1.5")}>
+            <WorkspaceNotesPanel key={activeChatId || "draft"} active={workspaceOpen && workspaceTab === "notes" && loadingChatId === null} projectId={activeChatId ? chats.find(chat => chat.id === activeChatId)?.projectId ?? null : draftProjectId ?? null} />
             {loadingChatId !== null && loadingChatId === activeChatId ? (
               <WorkspaceLoadingSkeleton />
-            ) : workspaceTab === "memory" ? (
+            ) : workspaceTab === "notes" ? null : workspaceTab === "memory" ? (
               activeChatId ? <WorkspaceMemoryPanel key={activeChatId} chatId={activeChatId} label={isAgentChat ? "Agent Memory" : "Chat Memory"}/> : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Open a chat to view its memories.</div>
             ) : workspaceTab === "team" ? (
               isAgentChat && activeProjectId && activeChatId ? <ProjectTeamWorkspace key={activeProjectId} projectId={activeProjectId} chatId={activeChatId} onOpenChat={(chatId) => { void loadChat(chatId).then(() => { if (activeChatIdRef.current === chatId) { setWorkspaceTab("team"); setWorkspaceMounted(true); setWorkspaceOpen(true); } }); }} /> : <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Open an agent chat to view its team.</div>
@@ -11669,7 +11573,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                               }}
                             >
                               <span className="w-9 shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                                {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                {new Date(entry.ts).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" })}
                               </span>
                               <span className="min-w-0 flex-1 truncate text-xs">{entry.title || entry.url}</span>
                             </DropdownMenuItem>
@@ -11804,9 +11708,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   </p>
                   <p className="text-xs leading-relaxed text-muted-foreground">
                     {workspaceTab === "plan"
-                      ? "Plans created in chat appear here automatically."
+                      ? "Create a plan with + or open a text file here."
                       : workspaceTab === "canvas"
-                        ? "Canvas output appears here as soon as the agent creates it."
+                        ? "Create a canvas with + or open a text file here."
                         : "Choose another workspace tab."}
                   </p>
                 </div>
@@ -11964,10 +11868,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   </div>
                   <EditableMarkdown
                     key={activeWorkspace.id}
-                    workspace={{ id: activeWorkspace.id, chatId: activeChatId! }}
+                    workspace={{ id: activeWorkspace.id, chatId: activeChatId!, type: activeWorkspace.type, idempotencyKey: activeWorkspace.idempotencyKey }}
                     value={activeWorkspace.content}
                     interactiveTasks
-                    maxLength={100_000}
+                    maxLength={workspaceContentMaxLength(activeWorkspace)}
                     onChange={(content) => updateWorkspaceDraft(activeWorkspace.id, { content })}
                     aria-label="Plan content"
                     placeholder="Write the plan…"
@@ -12045,10 +11949,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   </div>
                   <EditableMarkdown
                     key={activeWorkspace.id}
-                    workspace={{ id: activeWorkspace.id, chatId: activeChatId! }}
+                    workspace={{ id: activeWorkspace.id, chatId: activeChatId!, type: activeWorkspace.type, idempotencyKey: activeWorkspace.idempotencyKey }}
                     value={activeWorkspace.content}
                     interactiveTasks
-                    maxLength={100_000}
+                    maxLength={workspaceContentMaxLength(activeWorkspace)}
                     onChange={(content) => updateWorkspaceDraft(activeWorkspace.id, { content })}
                     aria-label="Canvas content"
                     placeholder="Write notes, requirements, or a working draft…"
@@ -12214,93 +12118,24 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   })}
                 </div>
               ) : (
-                <>
-              {!shareData.active ? (
-                <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
-                  This link is inactive. Sharing this chat again will reactivate it.
-                </p>
-              ) : null}
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={`${window.location.origin}/share?id=${encodeURIComponent(shareData.id)}`}
-                  onFocus={(event) => event.currentTarget.select()}
-                  aria-label="Share link"
-                  className="min-w-0"
+                <ShareLinkControls
+                  url={`${window.location.origin}/share?id=${encodeURIComponent(shareData.id)}`}
+                  active={shareData.active}
+                  passwordProtected={shareData.passwordProtected}
+                  busy={shareBusy}
+                  onUpdate={updateShare}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Copy share link"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(`${window.location.origin}/share?id=${encodeURIComponent(shareData.id)}`);
-                    toast.success("Share link copied");
-                  }}
-                >
-                  <Copy className="size-4" />
-                </Button>
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 p-3">
-                <div>
-                  <p className="flex items-center gap-2 text-sm font-medium">
-                    <LockKeyhole className="size-4" />
-                    Password protection
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {shareData.passwordProtected ? "Visitors must enter a password." : "Anyone with the link can view it."}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={shareData.passwordProtected ? "default" : "outline"}
-                  disabled={shareBusy}
-                  onClick={() => {
-                    if (shareData.passwordProtected) void updateShare({ password: null });
-                    else {
-                      setSharePassword("");
-                      setShowSharePasswordForm(true);
-                    }
-                  }}
-                >
-                  {shareData.passwordProtected ? "Remove" : "Set password"}
-                </Button>
-              </div>
-              {!shareData.passwordProtected && showSharePasswordForm ? (
-                <div className="flex gap-2">
-                  <Input
-                    type="password"
-                    value={sharePassword}
-                    onChange={(event) => setSharePassword(event.target.value)}
-                    placeholder="New password"
-                    autoComplete="new-password"
-                    aria-label="New share password"
-                  />
-                  <Button
-                    type="button"
-                    disabled={shareBusy || !sharePassword.trim()}
-                    onClick={() => void updateShare({ password: sharePassword })}
-                  >
-                    Lock
-                  </Button>
-                </div>
-              ) : null}
-              {shareData.active ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="w-full"
-                  disabled={shareBusy}
-                  onClick={() => void updateShare({ active: false })}
-                >
-                  Deactivate link
-                </Button>
-              ) : null}
-                </>
               )}
             </div>
+          ) : shareBusy ? (
+            <p role="status" className="flex items-center gap-2 py-5 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading sharing settings…</p>
+          ) : !shareError ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">Create a read-only link to share this chat.</p>
+              <Button className="w-full" onClick={() => void updateShare({ active: true })}>Create share link</Button>
+            </div>
           ) : null}
+          {shareError ? <div role="alert" className="space-y-2 text-sm text-destructive"><p>{shareError}</p>{!shareData ? <Button variant="outline" size="sm" disabled={shareBusy} onClick={() => void openShareDialog()}>Retry</Button> : null}</div> : null}
         </DialogContent>
       </Dialog>
 
@@ -12510,6 +12345,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         </DialogContent>
       </Dialog>
     </div>
+    </FileWorkspaceContext.Provider>
     </InternalLinkPreviewChat.Provider>
   );
 }

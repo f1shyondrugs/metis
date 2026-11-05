@@ -7,33 +7,39 @@ import { config } from "@/lib/config";
 import { listNotes } from "@/lib/shared-context";
 import { noteDisplayTitle } from "@/lib/notes-tree";
 import { referenceMatches, type ReferenceKind } from "@/lib/reference-search";
-import { indexedReferenceFiles,indexedChatMetadata } from "./reference-file-index";
+import { indexedReferenceFiles,indexedChatMetadata,initializeReferenceIndex } from "./reference-file-index";
 import { getDatabase } from "./sqlite";
 import type { ReferenceResult } from "./reference-search";
 import { canAccessChat } from "@/lib/project-access";
 
-export async function collectReferences(input: {ownerId:string; query:string; kind?:ReferenceKind|null; currentChatId:string}, cancelled:()=>boolean, schedule:(chatId:string,title:string)=>void=()=>{}) {
+/** Initialize through the same module graph used by collection; avoid duplicate TS module loads. */
+export function initializeReferenceSearch(){initializeReferenceIndex(getDatabase());}
+
+export async function collectReferences(input: {ownerId:string; query:string; kind?:ReferenceKind|null; kinds?:readonly ReferenceKind[]; currentChatId:string}, cancelled:()=>boolean, schedule:(chatId:string,title:string,part?:"metadata"|"files")=>void=()=>{}) {
   const {ownerId,query,kind,currentChatId}=input;
+  const includes=(value:ReferenceKind)=>(!kind || value===kind)&&(!input.kinds || input.kinds.includes(value));
+  const perKindLimit=kind ? 80 : 8;
   const check=()=>{if(cancelled()) throw Object.assign(new Error("Search cancelled"),{name:"AbortError"});};
   const results: ReferenceResult[] = [];
   let indexing=false;
   const seen = new Set<string>();
 
   const push = (item: ReferenceResult) => {
-    if ((!kind || item.kind === kind) && referenceMatches(query, item.label, item.detail, item.path, item.content)) {
+    if (includes(item.kind) && referenceMatches(query, item.label, item.detail, item.path, item.content)) {
       const key = item.kind === "file" ? [item.kind,item.chatId,item.path].join(":") : [item.kind,item.id,item.chatId || ""].join(":");
       if(seen.has(key))return;
-      if(results.length>=80) {
-        if(!item.isCurrentChat)return;
-        const index=results.findLastIndex(result=>!result.isCurrentChat);
-        if(index<0)return;
+      if(results.filter(result=>result.kind===item.kind).length>=perKindLimit) {
+        const score=(candidate:ReferenceResult)=>Number(Boolean(candidate.isCurrentChat))*2+Number(referenceMatches(query,candidate.label));
+        let index=-1;
+        for(let i=0;i<results.length;i++)if(results[i].kind===item.kind && (index<0 || score(results[i])<score(results[index])))index=i;
+        if(index<0 || score(item)<=score(results[index]))return;
         results.splice(index,1);
       }
       seen.add(key); results.push(item);
     }
   };
 
-  const chatEntries = kind === "note" || kind === "memory" || kind === "issue" ? [] : listChatsForUser(ownerId);
+  const chatEntries = (["file","chat","canvas","plan","browser","terminal"] as const).some(includes) ? listChatsForUser(ownerId) : [];
   chatEntries.sort((a,b)=>Number(b.id===currentChatId)-Number(a.id===currentChatId));
   for (const entry of chatEntries) {
     check();
@@ -105,12 +111,16 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
       });
     }
 
-    if (kind && kind !== "file") continue;
-    indexing=indexedReferenceFiles(getDatabase(), chat.id, chat.title || "Untitled chat", query, item=>push({...item,isCurrentChat:chat.id===currentChatId}), ()=>results.length>=80, schedule)||indexing;
+    if (!includes("file")) continue;
+    const fileScore=(item:ReferenceResult)=>Number(Boolean(item.isCurrentChat))*2+Number(referenceMatches(query,item.label));
+    const bestRemaining=Number(entry.id===currentChatId)*2+1;
+    const fileResults=results.filter(item=>item.kind==="file");
+    if(fileResults.length>=perKindLimit && fileResults.every(item=>fileScore(item)>=bestRemaining))continue;
+    indexing=indexedReferenceFiles(getDatabase(), chat.id, chat.title || "Untitled chat", query, item=>push({...item,isCurrentChat:chat.id===currentChatId}), ()=>false, schedule,perKindLimit)||indexing;
   }
 
   check();
-  if (!kind || kind === "memory") {
+  if (includes("memory")) {
     for (const memory of listMemories(ownerId)) {
       push({
         kind: "memory",
@@ -122,26 +132,37 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
     }
   }
 
-  if (!kind || kind === "note" || kind === "memory") {
-    for (const note of listNotes({ ownerId })) {
+  if (includes("note") || includes("memory")) {
+    const notes=listNotes({ownerId});
+    const accessible=new Map(notes.filter(note=>!note.chatId || canAccessChat(note.chatId,ownerId)).map(note=>[note.id,note]));
+    const projects=new Map(listProjects(ownerId).map(project=>[project.id,project.name]));
+    for (const note of accessible.values()) {
+      const ancestors:string[]=[],visited=new Set([note.id]);
+      let parent=note.parentId ? accessible.get(note.parentId) : undefined;
+      while(parent && !visited.has(parent.id) && ancestors.length<32){
+        visited.add(parent.id);ancestors.unshift(noteDisplayTitle(parent.title)||"Untitled note");
+        parent=parent.parentId ? accessible.get(parent.parentId) : undefined;
+      }
+      const context=note.projectId ? projects.get(note.projectId)||"Project" : note.chatId ? "Chat" : "No Project";
       if (note.chatId && !canAccessChat(note.chatId, ownerId)) continue;
       push({
         kind: note.kind === "learned_fact" ? "memory" : "note",
         id: note.id,
         label: noteDisplayTitle(note.title) || note.content.slice(0, 80) || "Untitled note",
-        detail: note.projectId ? "Project context" : note.chatId ? "Chat context" : note.scope === "workspace" ? "Workspace context" : "Global context",
+        detail: [context,...ancestors,ancestors.length ? "Subfile" : ""].filter(Boolean).join(" / "),
+        ...(note.parentId ? {parentId:note.parentId} : {}),
         ...(note.chatId ? { chatId: note.chatId, isCurrentChat: note.chatId === currentChatId } : {}),
         content: note.content.slice(0, 6_000),
       });
     }
   }
 
-  if ((!kind || kind === "issue") && featureFlags(getGlobalModelSettings(ownerId)).notes) {
+  if (includes("issue") && featureFlags(getGlobalModelSettings(ownerId)).notes) {
     const projects = new Map(listProjects(ownerId).map(project => [project.id, project.name]));
     for (const issue of listAccessibleIssues(ownerId)) push(issueReference(issue, issue.projectId ? projects.get(issue.projectId) : undefined));
   }
 
   check();
   // Membership can change while extraction yields; never return revoked chat data.
-  return {results:results.filter(item=>!item.chatId || canAccessChat(item.chatId,ownerId)).sort((a,b)=>Number(Boolean(b.isCurrentChat))-Number(Boolean(a.isCurrentChat))),indexing};
+  return {results:results.filter(item=>!item.chatId || canAccessChat(item.chatId,ownerId)).sort((a,b)=>Number(Boolean(b.isCurrentChat))-Number(Boolean(a.isCurrentChat)) || Number(referenceMatches(query,b.label))-Number(referenceMatches(query,a.label))),indexing};
 }

@@ -97,7 +97,7 @@ export function NotificationsPanel({ onOpenProject, onOpenChat, onNotificationsC
             <div className="min-w-0 flex-1">
               <h2 className="break-words text-sm font-medium">{item.title}</h2>
               <p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">{item.body}</p>
-              <time dateTime={item.createdAt} className="mt-2 block text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</time>
+              <time dateTime={item.createdAt} className="mt-2 block text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString("en")}</time>
               <div className="mt-3 flex flex-wrap gap-2" aria-live="polite">
                 {item.kind === "project_invite" && item.invitationStatus === "pending" && item.invitationId ? <>
                   <Button size="sm" disabled={busy !== null} onClick={() => void respond(item, "accept")}>Accept invitation</Button>

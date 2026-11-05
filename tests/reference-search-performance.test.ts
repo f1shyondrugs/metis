@@ -21,6 +21,14 @@ test("large legacy files stay searchable without parsing histories on the reques
  const raw=JSON.stringify(chat);
  db.prepare("INSERT INTO chats VALUES(?,?,?,?,?)").run(chat.id,"owner",raw,stamp,stamp);
  db.prepare("INSERT INTO chat_list(id,owner_id,title,created_at,updated_at,incognito,archived) VALUES(?,?,?,?,?,0,0)").run(chat.id,"owner",chat.title,stamp,stamp);
+ const {initializeReferenceIndex,referenceVersion}=await import("../lib/reference-file-index");
+ initializeReferenceIndex(db);
+ const version=referenceVersion(db,"large"),versionStart=performance.now();
+ for(let i=0;i<100;i++)assert.equal(referenceVersion(db,"large"),version);
+ assert.ok(performance.now()-versionStart<150,"version reads must not load the 16MiB transcript");
+ db.prepare("UPDATE chats SET updated_at=? WHERE id='large'").run(stamp+"-changed");
+ assert.notEqual(referenceVersion(db,"large"),version);
+ db.prepare("UPDATE chats SET updated_at=? WHERE id='large'").run(stamp);
  const query=(kind?:"file"|"plan",query="")=>({ownerId:"owner",currentChatId:"large",kind,query});
  let ticks=0,maxGap=0,previous=performance.now();
  const timer=setInterval(()=>{ticks++;const now=performance.now();maxGap=Math.max(maxGap,now-previous);previous=now;},5);
@@ -59,4 +67,33 @@ test("large legacy files stay searchable without parsing histories on the reques
   assert.deepEqual((await searchReferences(query("file"))).results,[]);
   assert.equal((db.prepare("SELECT count(*) AS n FROM chat_reference_files").get() as {n:number}).n,0);
  }finally{clearInterval(timer);}
+});
+test("broad searches materialize bounded file candidates while retaining late Unicode title matches",async()=>{
+ const {getDatabase}=await import("../lib/sqlite"),{collectReferences}=await import("../lib/reference-search-engine");
+ const index=await import("../lib/reference-file-index"),{normalizeReferenceText}=await import("../lib/reference-search");
+ const db=getDatabase(),stamp=new Date().toISOString(),chatId="bounded-files",owner="bounded-owner";
+ db.prepare("INSERT OR IGNORE INTO users VALUES(?,?,?,?,0)").run(owner,owner,"unused",stamp);
+ const raw=JSON.stringify({id:chatId,ownerId:owner,title:"Bounded files",messages:[],createdAt:stamp,updatedAt:stamp});
+ db.prepare("INSERT INTO chats VALUES(?,?,?,?,?)").run(chatId,owner,raw,stamp,stamp);
+ db.prepare("INSERT INTO chat_list(id,owner_id,title,created_at,updated_at,incognito,archived) VALUES(?,?,?,?,?,0,0)").run(chatId,owner,"Bounded files",stamp,stamp);
+ index.initializeReferenceIndex(db);
+ const insert=db.prepare("INSERT INTO chat_reference_files(chat_id,position,data,normalized) VALUES(?,?,?,?)");
+ db.exec("BEGIN IMMEDIATE");
+ try{
+  for(let i=0;i<1000;i++){
+   const item={kind:"file",id:chatId+":"+i,chatId,label:i===999?"Néedle plan.md":"body-"+i+".md",path:"/fixture/"+i,content:"Needle body ".repeat(500)};
+   insert.run(chatId,i,JSON.stringify(item),normalizeReferenceText(item.label+" "+item.content));
+  }
+  db.prepare("INSERT INTO chat_reference_state VALUES(?,?)").run(chatId,index.referenceVersion(db,chatId)!);
+  db.exec("COMMIT");
+ }catch(error){db.exec("ROLLBACK");throw error;}
+ const candidates:unknown[]=[];
+ index.indexedReferenceFiles(db,chatId,"Bounded files","needle",item=>candidates.push(item),()=>false,()=>{},8);
+ assert.equal(candidates.length,8);
+ assert.equal((candidates[0] as {label:string}).label,"Néedle plan.md");
+ const all=await collectReferences({ownerId:owner,currentChatId:chatId,query:"needle"},()=>false);
+ assert.equal(all.results.filter(item=>item.kind==="file").length,8);
+ const files=await collectReferences({ownerId:owner,currentChatId:chatId,query:"needle",kind:"file"},()=>false);
+ assert.equal(files.results.length,80);
+ assert.equal((db.prepare("SELECT data FROM chats WHERE id=?").get(chatId) as {data:string}).data,raw);
 });

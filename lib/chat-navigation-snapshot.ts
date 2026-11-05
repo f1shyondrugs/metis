@@ -20,8 +20,10 @@ export function chatNavigationSnapshot<T>(value:T,chatId:string):T {
    };
   };
   const parts=message.parts || message.tools?.map(tool=>({type:"tool" as const,...tool})) || [];
-  const start=Math.max(0,parts.length-EVENTS),offset=(message.eventOffset || 0)+start;
+  const start=Math.max(0,parts.length-EVENTS);
   const selected=parts.slice(start).map(part=>part.type==="tool"?compact(part):"content" in part?{...part,content:part.content.slice(0,16384)}:part);
+  const firstIndex=(selected[0] as {transcriptIndex?:number}|undefined)?.transcriptIndex;
+  const offset=Number.isSafeInteger(firstIndex) && firstIndex!>=0 ? firstIndex! : (message.eventOffset || 0)+start;
   const selectedIds=new Set(selected.flatMap(part=>part.type==="tool"?[part.id]:[]));
   const detail=`/api/chats/${encodeURIComponent(chatId)}/message?messageId=${encodeURIComponent(message.id)}`;
   return {...message,content:message.content.slice(0,16384),thinking:message.thinking?.slice(0,4096),

@@ -1,14 +1,16 @@
+import { isResearchReportCanvas, RESEARCH_REPORT_MAX_BYTES } from "./workspace-limits";
+
 export type MarkdownAttachmentTarget =
   | { kind: "note"; id: string }
-  | { kind: "workspace"; id: string; chatId: string };
+  | { kind: "workspace"; id: string; chatId: string; contentLimit?: number };
 
-export function markdownAttachmentTarget(noteId?: string, workspace?: { id: string; chatId: string }): MarkdownAttachmentTarget | null {
-  if (workspace) return { kind: "workspace", id: workspace.id, chatId: workspace.chatId };
+export function markdownAttachmentTarget(noteId?: string, workspace?: { id: string; chatId: string; type?: string; idempotencyKey?: string }): MarkdownAttachmentTarget | null {
+  if (workspace) return { kind: "workspace", id: workspace.id, chatId: workspace.chatId, ...(isResearchReportCanvas(workspace) ? { contentLimit: RESEARCH_REPORT_MAX_BYTES } : {}) };
   return noteId ? { kind: "note", id: noteId } : null;
 }
 
 export function markdownAttachmentLimit(target: MarkdownAttachmentTarget | null, maxLength?: number) {
-  const domainLimit = target?.kind === "note" ? 50_000 : target?.kind === "workspace" ? 100_000 : Number.POSITIVE_INFINITY;
+  const domainLimit = target?.kind === "note" ? 50_000 : target?.kind === "workspace" ? Math.min(RESEARCH_REPORT_MAX_BYTES, target.contentLimit ?? 100_000) : Number.POSITIVE_INFINITY;
   return maxLength === undefined ? (Number.isFinite(domainLimit) ? domainLimit : 100_000) : Math.min(domainLimit, Math.max(0, maxLength));
 }
 
