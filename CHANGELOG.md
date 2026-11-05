@@ -4,6 +4,25 @@ All notable Metis AI releases are documented here. Release tags and GitHub
 releases are created locally with `pnpm release`; GitHub Actions does not
 publish releases.
 
+## v1.0.24 — 2026-11-03
+
+- Deliver files created by the agent without converting the complete file to Base64, removing the JavaScript string-size barrier even when Attachments is set to Unlimited.
+- Copy files asynchronously, enforce the account's saved file-size limit before and after storage, and preserve download streaming and range requests.
+- Recheck cancellation and the active run before registering a copied file; remove copies that could not be delivered.
+- Verify 630 MiB and files larger than 1 GiB with a bounded JavaScript heap, protected downloads, independent stored copies and finite account limits.
+
+## v1.0.23 — 2026-11-02
+
+- Transfer background file uploads in 512 KiB requests so large files pass reverse proxies with a 1 MiB request limit.
+- Share the request-size budget between file and voice uploads. Keep the server's existing chunk acceptance limit for older clients.
+- Preserve progress, retries and resuming from the server-confirmed offset; verify the complete file remains byte-for-byte identical after an interrupted upload.
+
+## v1.0.22 — 2026-11-02
+
+- Transfer voice recordings in 512 KiB chunks through the existing authenticated upload API, avoiding HTTP 413 responses from reverse proxies for large recordings.
+- Transcribe the complete reassembled recording while preserving the existing 250 MiB limit, audio validation, account isolation and provider segmentation.
+- Remove temporary uploads after transcription or upload failures and retain the recording for retry.
+
 ## v1.0.21 — 2026-10-28
 
 - Distribute native installers only for Linux, macOS and Windows. Remove the container installer, image build/publishing pipeline and installation instructions.
