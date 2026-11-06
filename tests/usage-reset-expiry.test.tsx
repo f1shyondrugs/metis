@@ -68,6 +68,8 @@ test("usage percentage renders the correct warning dot and shortcut exposes its 
     const shortcut = renderToStaticMarkup(<UsageResetsShortcut provider={live} onClick={() => {}} />);
     assert.match(shortcut, /Usage Resets \(3\)/);
     assert.match(shortcut, /Next reset credit expires/);
+    assert.match(shortcut, new RegExp("text-" + color + "-400"));
+    assert.match(shortcut, new RegExp("hover:text-" + color + "-300"));
     for (const hidden of [{ ...live, status: "stale" as const }, { ...live, extra: { resetCredits: 0 } }, provider(10 * day)]) {
       assert.doesNotMatch(renderToStaticMarkup(<PlanUsageGauge provider={hidden} />), /data-reset-expiry/);
     }
