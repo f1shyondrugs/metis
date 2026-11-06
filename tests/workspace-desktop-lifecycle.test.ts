@@ -223,6 +223,24 @@ test("changing monitors aborts the old capture and a late old-monitor frame cann
   assert.equal(h.urls.size, 1);
   h.unmount(); assert.equal(h.urls.size, 0);
 });
+test("simultaneous monitor previews isolate capture failures and clean up independently", async () => {
+  const left = harness(), primary = harness();
+  left.state.monitorId = "left"; primary.state.monitorId = "primary";
+  await Promise.all([left.settle(), primary.settle()]);
+  assert.equal(left.state.frame?.sourceKey, JSON.stringify([device.id, "left"]));
+  assert.equal(primary.state.frame?.sourceKey, JSON.stringify([device.id, "primary"]));
+  const pending = left.deferCapture(), request = left.fire(1000);
+  pending.resolve(frameResponse("wrong-monitor")); await request; await left.settle();
+  assert.match(left.state.frameError, /different monitor/);
+  await primary.fire(1000); await primary.settle();
+  assert.ok(primary.state.frame); assert.equal(primary.errors.length, 0);
+  assert.equal(primary.urls.size, 1);
+  left.unmount(); assert.equal(primary.timerCount(1000), 1);
+  primary.unmount();
+  for (const preview of [left, primary]) {
+    assert.equal(preview.urls.size, 0); assert.equal(preview.timers.size, 0); assert.equal(preview.listenerCount(), 0);
+  }
+});
 test("a frame claiming a different monitor stops the preview and releases its image", async () => {
   const h = harness(); h.state.monitorId = "left"; await h.settle();
   const pending = h.deferCapture(), request = h.fire(1000);

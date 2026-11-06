@@ -3,7 +3,7 @@ import test from "node:test";
 import {readFileSync} from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
-import {chooseDesktopMonitor,desktopMonitorLabel,type DesktopMonitor} from "../lib/remote-desktop-view";
+import {chooseDesktopMonitor,desktopMonitorLabel,desktopMonitorLayout,type DesktopMonitor} from "../lib/remote-desktop-view";
 const source=readFileSync("components/use-desktop-monitors.ts","utf8");
 const js=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
 const primary:DesktopMonitor={id:"p",name:"Main display",x:0,y:0,width:2560,height:1440,primary:true};
@@ -86,6 +86,31 @@ test("monitor enumeration failure is visible and cannot start a guessed capture"
   h.render({retry:1});await h.settle();
   assert.match(h.view.error,/access disabled/);assert.equal(h.view.monitorId,null);
  }finally{h.unmount()}
+});
+test("all displays preserve negative coordinates, offsets and mixed orientations",()=>{
+ const portrait={...left,x:-1080,y:-400,width:1080,height:1920};
+ const layout=desktopMonitorLayout([portrait,primary])!;
+ assert.equal(layout.mode,"arrangement");
+ assert.equal(layout.width,3640);assert.equal(layout.height,1920);
+ assert.deepEqual(layout.tiles.map(({left,top,width,height})=>({left,top,width,height})),[
+  {left:0,top:0,width:1080,height:1920},{left:1080,top:400,width:2560,height:1440}
+ ]);
+ assert.equal(desktopMonitorLayout([primary,left])?.mode,"arrangement","Touching edges do not overlap");
+ assert.equal(desktopMonitorLayout([]),null);
+});
+test("all displays fall back to a complete grid when positions overlap or are missing",()=>{
+ for(const monitors of [
+  [primary,{...left,x:0,y:0},{...left,id:"third",x:0,y:0}],
+  [primary,{...left,x:NaN}]
+ ]){
+  const layout=desktopMonitorLayout(monitors)!;
+  assert.equal(layout.mode,"grid");
+  assert.equal(layout.tiles.length,monitors.length);
+  assert.deepEqual(layout.tiles.map(tile=>tile.monitor.id),monitors.map(monitor=>monitor.id));
+  for(const tile of layout.tiles){
+   assert.ok(tile.left>=0&&tile.top>=0&&tile.left+tile.width<=layout.width&&tile.top+tile.height<=layout.height);
+  }
+ }
 });
 test("monitor labels expose identity, resolution and primary status",()=>{
  assert.equal(desktopMonitorLabel(primary),"Main display · 2560 × 1440 · Primary");
