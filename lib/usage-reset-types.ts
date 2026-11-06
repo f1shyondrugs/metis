@@ -45,6 +45,12 @@ export function resetCreditUsable(credit: UsageResetCredit, now = Date.now()) {
   return credit.status === "available" && credit.resetType === "codexRateLimits" &&
     (credit.expiresAt == null || Date.parse(credit.expiresAt) > now);
 }
+export function nextResetCreditExpiry(snapshot: ReturnType<typeof parseResetCredits>, now = Date.now()): string | null {
+  if (!snapshot || snapshot.availableCount < 1) return null;
+  const expirations = snapshot.credits.filter(credit => resetCreditUsable(credit, now) && credit.expiresAt)
+    .map(credit => Date.parse(credit.expiresAt!)).filter(Number.isFinite);
+  return expirations.length ? new Date(Math.min(...expirations)).toISOString() : null;
+}
 export function resetOutcomeLabel(status: string) {
   return ({ reset: "Reset used", alreadyRedeemed: "Reset already completed", nothingToReset: "No eligible limit to reset",
     noCredit: "No reset available", pending: "In progress", unknown: "Result not confirmed", failed: "Not applied" } as Record<string, string>)[status] || "Result unavailable";

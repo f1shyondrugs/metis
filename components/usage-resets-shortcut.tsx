@@ -4,14 +4,28 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { UsageResetsPanel } from "@/components/usage-resets-panel";
-import type { UsageProvider } from "@/lib/usage-display";
+import { usageResetExpiry, type UsageProvider } from "@/lib/usage-display";
+
+export function usageResetExpiryLabel(expiry: ReturnType<typeof usageResetExpiry>) {
+  return expiry ? "Next reset credit expires " + new Date(expiry.expiresAt).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" }) : "";
+}
+
+export function UsageResetExpiryDot({ expiry }: { expiry: ReturnType<typeof usageResetExpiry> }) {
+  if (!expiry?.warning) return null;
+  const label = usageResetExpiryLabel(expiry);
+  return <span role="img" aria-label={label} title={label} data-reset-expiry={expiry.warning}
+    className={"inline-block size-1.5 shrink-0 rounded-full " + (expiry.warning === "critical" ? "bg-red-400" : "bg-yellow-400")} />;
+}
 
 export function UsageResetsShortcut({ provider, onClick }: { provider?: UsageProvider | null; onClick: () => void }) {
   const value = provider?.status === "live" ? provider.extra?.resetCredits : null;
   const count = typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value.toLocaleString("en") : "—";
-  return <button type="button" className="inline-flex min-h-7 items-center whitespace-nowrap rounded-md text-[11px] font-normal tabular-nums text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={onClick}>
+  const expiry = usageResetExpiry(provider);
+  return <div><button type="button" className="inline-flex min-h-7 items-center whitespace-nowrap rounded-md text-[11px] font-normal tabular-nums text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={onClick}>
     Usage Resets ({count})
-  </button>;
+  </button>
+    {expiry ? <p className="pb-1 text-[10px] leading-snug text-muted-foreground">{usageResetExpiryLabel(expiry)}</p> : null}
+  </div>;
 }
 
 export function UsageResetsEntry() {

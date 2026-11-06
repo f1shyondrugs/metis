@@ -15,7 +15,7 @@ import {
 import { requestCodexAccount } from "@/lib/providers/codex-account";
 import type { UsageProvider, UsageSnapshot, UsageWindow } from "@/lib/usage-display";
 import { parseCursorUsageBody } from "@/lib/usage-display";
-import { parseResetCredits } from "@/lib/usage-reset-types";
+import { nextResetCreditExpiry, parseResetCredits } from "@/lib/usage-reset-types";
 import { isHostAdmin } from "@/lib/user-access";
 
 export type { UsageProvider, UsageSnapshot, UsageWindow };
@@ -157,14 +157,16 @@ async function fetchCodexUsage(ownerId?: string): Promise<UsageProvider> {
     ...(connection?.id ? { connectionId: connection.id } : {}) };
   if (!ownerId || !connection) return { ...base, status: "no_auth", error: "no authenticated Codex account connection" };
   try {
-    const { result: response } = await requestCodexAccount(ownerId, connection.id, { method: "account/rateLimits/read", params: { excludeResetCreditDetails: true } });
+    const { result: response } = await requestCodexAccount(ownerId, connection.id, { method: "account/rateLimits/read", params: { excludeResetCreditDetails: false } });
     const result = response.rateLimits as Record<string, unknown> | undefined;
     if (!result) return { ...base, status: "unsupported", error: "No rate limits were returned." };
     const planType = typeof result.planType === "string" ? result.planType : undefined;
+    const resetCredits = parseResetCredits(response.rateLimitResetCredits);
     return { ...base, planLabel: planType ? planType.charAt(0).toUpperCase() + planType.slice(1) : undefined,
       windows: [normalizeCodexWindow(result.primary as CodexWindow), normalizeCodexWindow(result.secondary as CodexWindow),
         normalizeCodexWindow(result.weekly as CodexWindow), normalizeCodexWindow(result.fiveHour as CodexWindow)].filter((w): w is UsageWindow => w !== null),
-      extra: { resetCredits: parseResetCredits(response.rateLimitResetCredits)?.availableCount ?? null,
+      extra: { resetCredits: resetCredits?.availableCount ?? null,
+        resetCreditsExpiresAt: nextResetCreditExpiry(resetCredits),
         spendControlReached: result.spendControlReached === true ? "yes" : "no",
         rateLimitReachedType: typeof result.rateLimitReachedType === "string" ? result.rateLimitReachedType : null,
         credits: typeof result.credits === "number" ? result.credits : null, resetsAt: typeof result.resetAt === "string" ? result.resetAt : null } };

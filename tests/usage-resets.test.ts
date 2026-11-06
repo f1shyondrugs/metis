@@ -74,7 +74,10 @@ test("reset availability, confirmations, owner boundaries, replay protection and
   assert.equal(catalog.providers.find(p => p.key === "ollama")!.status, "not_exposed");
   const { getPlanUsage } = await import("../lib/plan-usage");
   const quota = await getPlanUsage(true, owner.id);
-  assert.equal(quota.providers.find(p => p.key === "codex")?.extra?.resetCredits, 1, "the footer receives the authoritative count without credit details");
+  assert.equal(quota.providers.find(p => p.key === "codex")?.extra?.resetCredits, 1, "the footer receives the authoritative count");
+  const expiry = quota.providers.find(p => p.key === "codex")?.extra?.resetCreditsExpiresAt;
+  assert.equal(typeof expiry, "string");
+  assert.ok(Date.parse(String(expiry)) > Date.now(), "quota polling includes a real future credit expiry");
   assert.equal(current().calls.length, 0, "quota polling must not redeem credits");
   const read = await service.getUsageResets(owner.id, connection.id);
   assert.equal(read.availableCount, 1);
@@ -89,6 +92,7 @@ test("reset availability, confirmations, owner boundaries, replay protection and
   const result = await service.consumeUsageReset(owner.id, connection.id, review.id, review.token, true);
   assert.equal(result.outcome, "reset");
   assert.equal((await getPlanUsage(true, owner.id)).providers.find(p => p.key === "codex")?.extra?.resetCredits, 0, "refresh updates the footer after consumption");
+  assert.equal((await getPlanUsage(false, owner.id)).providers.find(p => p.key === "codex")?.extra?.resetCreditsExpiresAt, null);
   assert.equal(current().calls.length, 1);
   assert.equal(current().calls[0].id, "credit-account-one");
   await assert.rejects(service.consumeUsageReset(owner.id, connection.id, review.id, review.token, true), /already used/);

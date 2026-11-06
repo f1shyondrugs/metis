@@ -5,10 +5,11 @@ import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { UsageResetsEntry } from "@/components/usage-resets-shortcut";
-import { UsageResetsDialog, UsageResetsShortcut } from "@/components/usage-resets-shortcut";
+import { UsageResetsDialog, UsageResetsShortcut, UsageResetExpiryDot, usageResetExpiryLabel } from "@/components/usage-resets-shortcut";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   formatResetAt,
+  usageResetExpiry,
   lowQuotaAlerts,
   matchUsageProvider,
   percentLeft,
@@ -201,6 +202,7 @@ export function PlanUsageGauge({ provider, providerName, className }: { provider
   const left = primary ? percentLeft(primary.usedPercent) : null;
   const displayName = provider?.name || providerName || "Selected provider";
   const stale = provider?.status === "stale";
+  const expiry = usageResetExpiry(provider);
   return (
     <>
     <TooltipProvider>
@@ -209,7 +211,7 @@ export function PlanUsageGauge({ provider, providerName, className }: { provider
           <button
             type="button"
             className={cn(
-              "inline-flex h-7 shrink-0 items-center justify-center rounded-md px-1 text-[10px] font-normal tabular-nums tracking-[-0.015em] outline-none transition-[color,opacity] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/70",
+              "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-[10px] font-normal tabular-nums tracking-[-0.015em] outline-none transition-[color,opacity] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/70",
               left === null
                 ? "text-muted-foreground/35"
                 : left <= 10
@@ -219,10 +221,11 @@ export function PlanUsageGauge({ provider, providerName, className }: { provider
               className,
             )}
             ref={usageTriggerRef}
-            aria-label={left !== null ? `${displayName} usage: ${left.toFixed(0)}% left${stale ? ", stale" : ""}` : `${displayName} usage unavailable`}
+            aria-label={(left !== null ? `${displayName} usage: ${left.toFixed(0)}% left${stale ? ", stale" : ""}` : `${displayName} usage unavailable`) + (expiry?.warning ? ". " + usageResetExpiryLabel(expiry) : "")}
             onClick={() => setTooltipOpen((open) => !open)}
           >
             {left !== null ? `${left.toFixed(0)}%` : "—"}
+            <UsageResetExpiryDot expiry={expiry} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="end" sideOffset={8} collisionPadding={8} arrowClassName="!bg-popover !fill-popover" className="w-64 max-w-[calc(100vw-1rem)] rounded-xl border border-border/60 bg-popover p-3 pb-1.5 text-popover-foreground shadow-xl">
