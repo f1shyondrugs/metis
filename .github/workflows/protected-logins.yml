@@ -43,6 +43,8 @@ jobs:
       - name: Install frozen application dependencies and browser binaries
         run: |
           pnpm install --frozen-lockfile
+          pnpm rebuild node-pty
+          node -e "require('node-pty')"
           pnpm exec playwright install --with-deps chromium
       - name: Lint contributed files
         run: |
