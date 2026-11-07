@@ -51,6 +51,8 @@ jobs:
           git diff --name-only origin/master...HEAD -- '*.ts' '*.tsx' '*.mjs' | xargs -r pnpm exec eslint
       - name: Typecheck
         run: pnpm typecheck
+      - name: Verify stream lifecycle with simulated captures
+        run: pnpm exec tsx --test tests/browser-stream-lifecycle.test.ts
       - name: Verify actual Linux namespace and console boundaries
         run: |
           python3 tests/native-runtime-launcher.test.py
