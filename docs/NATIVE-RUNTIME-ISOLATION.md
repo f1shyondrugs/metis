@@ -3,8 +3,11 @@
 With the operator setting `METIS_NATIVE_ISOLATION=1`, native Codex, Claude,
 Cursor, ACP and Antigravity execution crosses a positive-list Bubblewrap boundary.
 The default is off so existing installations and upgrades retain their usable
-workspaces and provider sessions. Protected credential use is unavailable in
-that default mode. Enabling isolation requires the full deployment below; a
+workspaces and provider sessions. Operators who keep root execution can configure
+credential services with `METIS_PROTECTED_LOGIN_MODE=trusted-root`; see
+[Protected logins](PROTECTED-LOGINS.md). Credential services require either that
+explicit trusted mode or native isolation. Enabling isolation requires the full
+deployment below; a
 failed isolated launch never falls back to legacy execution. Cursor's SDK runs in a separate stdio host,
 including its local executor; wrapping only a Cursor CLI would leave that
 executor inside the worker.
