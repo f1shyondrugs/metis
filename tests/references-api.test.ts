@@ -98,6 +98,25 @@ test("search includes standalone notes, canonical edited paths, independent word
  assert.ok(files.results.some((r:{label:string})=>r.label==="instructions.txt"));
  assert.ok(!(await (await get("note")).json()).results.some((r:{label:string})=>r.label==="Remembered context"));
 });
+test("a chat with many matching messages appears once in filtered and global reference searches", async () => {
+ const [auth, db] = modules;
+ const user = auth.createUser("refs-dedup", "test-password");
+ const session = auth.authenticateUser("refs-dedup", "test-password")!.token;
+ const first = db.createChat("Korlei", undefined, user.id);
+ first.messages = Array.from({length: 100}, (_, n) => ({
+   id: "match-" + n, role: "user" as const, content: "Korlei message " + n, createdAt: first.createdAt,
+ }));
+ db.saveChat(first);
+ const second = db.createChat("Korlei", undefined, user.id);
+ for (const kind of [undefined, "chat"]) {
+   const results = (await (await get(kind, "korlei", session, first.id)).json()).results;
+   const chats = results.filter((item: {kind: string}) => item.kind === "chat");
+   assert.equal(chats.length, 2);
+   assert.deepEqual(new Set(chats.map((item: {chatId: string}) => item.chatId)), new Set([first.id, second.id]));
+   assert.ok(chats.every((item: {id: string; chatId: string}) => item.id === item.chatId));
+ }
+});
+
 test("auth, invalid categories and cross-account content stay protected",async()=>{
  assert.equal((await get("note","","")).status,401);
  assert.equal((await get("unknown")).status,400);

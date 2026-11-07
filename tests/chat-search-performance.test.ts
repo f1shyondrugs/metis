@@ -140,6 +140,53 @@ test("80 MB of legacy tools indexes under the unchanged 192 MiB worker limit wit
     assert.equal(createHash("sha256").update(current.data).digest("hex"),createHash("sha256").update(raw).digest("hex"));
     console.log(JSON.stringify({heapFixtureBytes:Buffer.byteLength(raw),searchMs:performance.now()-start,workerOldGenerationMiB:192}));
 });
+test("chat-grouped UI searches fill distinct conversation slots and retain tool message search", async () => {
+    const [, store, {searchOffThread}, api] = await modules;
+    const first = store.createChat("Korlei qz", undefined, "owner");
+    const second = store.createChat("Another conversation", undefined, "owner");
+    const sameTitle = store.createChat("Korlei qz", undefined, "owner");
+    const foreign = store.createChat("Korlei qz", undefined, "stranger");
+    first.pinned = true;
+    for (const chat of [first, second, sameTitle, foreign]) {
+        chat.messages = Array.from({length: chat.id === first.id || chat.id === second.id ? 100 : 1}, (_, n) => ({
+            id: chat.id + "-message-" + n, role: "user" as const, content: "Korlei qz " + n, createdAt: stamp,
+        }));
+        store.saveChat(chat);
+    }
+    // Prepare the index using the unchanged message search.
+    assert.ok((await store.searchChatsForUser("Korlei", "owner")).length > 3);
+    for (const query of ["Korlei", "qz"]) {
+        for (const limit of [2, 30]) {
+            const response = await api.GET(new Request("http://fixture/api/chats/search?" + new URLSearchParams({
+                q: query, related: "1", group: "chat", limit: String(limit),
+            }), {headers: {cookie: "ai_chat_auth=owner-token"}}));
+            assert.equal(response.status, 200);
+            const results = (await response.json()).results as Array<{chatId: string; messageId?: string; snippet: string}>;
+            assert.equal(results.length, Math.min(limit, 3), "Limit counts conversations for " + query);
+            assert.equal(new Set(results.map(item => item.chatId)).size, results.length);
+            assert.ok(!results.some(item => item.chatId === foreign.id));
+            if (limit === 30) {
+                assert.deepEqual(new Set(results.map(item => item.chatId)), new Set([first.id, second.id, sameTitle.id]));
+                const bodyMatch = results.find(item => item.chatId === second.id)!;
+                assert.equal(bodyMatch.messageId, second.id + "-message-0");
+                assert.match(bodyMatch.snippet, /Korlei qz/);
+            }
+        }
+        const grouped = await searchOffThread(query, "owner", 30, false, undefined, true, true);
+        assert.equal(grouped.results.length, 3, "Worker also groups without related results");
+    }
+});
+
+test("palette groups older message-level responses by chat ID without merging equal titles", () => {
+    const results = boundedSearchResults({results: [
+        {chatId: "first", chatTitle: "Korlei", messageId: "best", snippet: "First matching message"},
+        ...Array.from({length: 29}, (_, n) => ({chatId: "first", chatTitle: "Korlei", messageId: String(n)})),
+        {chatId: "second", chatTitle: "Korlei", messageId: "other", snippet: "Other conversation"},
+    ]}).results;
+    assert.deepEqual(results.map(item => item.chatId), ["first", "second"]);
+    assert.equal(results[0].messageId, "best");
+});
+
 test("malformed or oversized responses cannot expand the palette DOM without bounds", () => {
     const text = "a".repeat(50000), data = boundedSearchResults({
         results: Array.from({ length: 200 }, (_, i) => ({ chatId: "c" + i, chatTitle: text, snippet: text, matchedKeywords: Array(50).fill(text) })),

@@ -35,7 +35,7 @@ const globalPool = globalThis as typeof globalThis & {
 };
 const pool: Pool = globalPool[key] ??= { serial: 0, tasks: new Map() };
 const abortError = () => Object.assign(new Error("Search cancelled"), { name: "AbortError" });
-export function searchOffThread(query: string, ownerId?: string, limit = 30, related = false, signal?: AbortSignal, includeNotes = true): Promise<SearchPayload> {
+export function searchOffThread(query: string, ownerId?: string, limit = 30, related = false, signal?: AbortSignal, includeNotes = true, uniqueChats = false): Promise<SearchPayload> {
     if (signal?.aborted)
         return Promise.reject(abortError());
     if (!query.trim())
@@ -94,6 +94,6 @@ export function searchOffThread(query: string, ownerId?: string, limit = 30, rel
         const cleanup = () => { clearTimeout(timeout); signal?.removeEventListener("abort", cancel); };
         pool.tasks.set(id, { resolve, reject, cleanup });
         signal?.addEventListener("abort", cancel, { once: true });
-        worker.postMessage({ id, query: query.trim().slice(0, 200), ownerId, limit: Math.min(50, Math.max(1, limit)), related, includeNotes });
+        worker.postMessage({ id, query: query.trim().slice(0, 200), ownerId, limit: Math.min(50, Math.max(1, limit)), related, includeNotes, uniqueChats });
     });
 }

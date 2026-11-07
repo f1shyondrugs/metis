@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createReferenceLookup, referenceMatches } from "../lib/reference-search";
+import { createReferenceLookup, referenceMatches, uniqueChatReferences, type ReferenceResult } from "../lib/reference-search";
+
+test("chat references collapse message hits by chat identity without merging same-title chats or other kinds", () => {
+  const hits: ReferenceResult[] = [
+    { kind: "chat", id: "message-1", chatId: "chat-1", label: "Korlei", detail: "Best matching message" },
+    ...Array.from({ length: 100 }, (_, n) => ({
+      kind: "chat" as const, id: "message-" + (n + 2), chatId: "chat-1", label: "Korlei",
+    })),
+    { kind: "chat", id: "chat-1", label: "Korlei" },
+    { kind: "chat", id: "chat-2", chatId: "chat-2", label: "Korlei" },
+    { kind: "note", id: "note-1", chatId: "chat-1", label: "Korlei" },
+    { kind: "canvas", id: "canvas-1", chatId: "chat-1", label: "Korlei" },
+  ];
+  const results = uniqueChatReferences(hits);
+  assert.deepEqual(results, [{ ...hits[0], id: "chat-1" }, ...hits.slice(-3)]);
+  assert.equal(results[0].detail, hits[0].detail, "Retain ranking and the matching snippet");
+  assert.equal(results[0].id, results[0].chatId, "Selection references the whole conversation");
+  assert.equal(hits.length, 105, "Do not mutate a cached response");
+});
 
 test("reference search matches words independently, accents, Unicode and German spelling", () => {
   assert.equal(referenceMatches("marz strasse", "Straße", "MÄRZ"), true);

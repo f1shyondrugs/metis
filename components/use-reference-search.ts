@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { createReferenceLookup, type ReferenceKind, type ReferenceSearchState } from "@/lib/reference-search";
+import { createReferenceLookup, uniqueChatReferences, type ReferenceResult, type ReferenceKind, type ReferenceSearchState } from "@/lib/reference-search";
 
-export function useReferenceSearch<T>({ enabled, chatId, kind, kinds, query }: {
+export function useReferenceSearch<T extends ReferenceResult>({ enabled, chatId, kind, kinds, query }: {
   enabled: boolean; chatId?: string | null; kind?: ReferenceKind | null; kinds?:readonly ReferenceKind[]; query: string;
 }) {
   const lookup = useMemo(() => createReferenceLookup<T>(), []);
@@ -16,8 +16,9 @@ export function useReferenceSearch<T>({ enabled, chatId, kind, kinds, query }: {
     return () => { window.clearTimeout(timer); lookup.cancel(); };
   }, [enabled, chatId, kind, kindsKey, query, key, lookup]);
   const current = enabled && state?.key === key ? state : null;
+  const results = useMemo(() => uniqueChatReferences(current?.results || []), [current?.results]);
   return {
-    results: current?.results || [],
+    results,
     loading: enabled && (!current || current.status === "loading"),
     indexing: Boolean(current?.indexing),
     notice: current?.notice,
