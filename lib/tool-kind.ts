@@ -121,7 +121,7 @@ export function formatAutomationSchedule(schedule: unknown) {
   if (value.kind === "once" && typeof value.at === "string") {
     const stamp = Date.parse(value.at);
     if (Number.isFinite(stamp)) {
-      return `Once · ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(stamp))}`;
+      return `Once · ${new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(stamp))}`;
     }
     return `Once · ${value.at}`;
   }

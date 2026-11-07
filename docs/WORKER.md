@@ -42,7 +42,7 @@ do not receive synthetic review prompts.
 `reconcileSubagentParent` appends the lifecycle-review message with
 `appendMessageInTransaction` inside the enqueue transaction. `transaction()`
 nests with SAVEPOINT so a nested writer cannot fatal-exit the worker.
-## Provider reset waits and transient retries
+## Model switches, provider waits and error retries
 
 Settings → Agent → Settings keeps provider reset waits enabled by default. When
 an exhausted provider window includes a real future reset time, the same job is
@@ -50,13 +50,31 @@ queued until that time and releases its worker slot. Its saved provider session
 and checkpoint are retained. Stop cancels the waiting job. An unknown reset time
 never becomes an assumed five-hour wait.
 
-Automatic retries for transient provider errors are a separate setting, disabled
-by default. When enabled, a run gets at most three additional provider attempts;
-its retry count persists, and its worker lease and runtime budget remain in
-force. Each retry starts after the failed attempt finishes cleanup and appears
-as a collapsible chat event with the provider error details. No user message is
-inserted. Usage limits, billing/authentication failures, tool failures and unknown
-errors do not use this retry policy.
+Automatic retries for run errors are a separate setting, disabled by default.
+When enabled, any failed run attempt, including unknown SDK errors and interrupted
+Codex reconnects, gets at most three additional attempts. The count persists;
+cleanup, the worker lease, runtime budget and Stop remain effective. A known
+future provider reset takes the durable wait path first. SDK reconnect notices
+can recover in their original stream; an EOF without turn.completed is an error.
+
+Model switches use the latest accepted selection even when cancellation throws
+or the old stream finishes before its polling watcher runs. The next attempt
+uses the selected model and saved task/checkpoint. Switching a model during a
+provider wait releases the previous selection's reset wait.
+
+Switches, retries and provider waits appear in the transcript as matching
+collapsible dividers. Their details preserve the previous/new model identities,
+error or actual reset timestamp. No synthetic user message is inserted.
+
+## RAM waiting and manual continuation
+
+When RAM admission pauses a queued job, its chat shows **High RAM usage, waiting…**.
+**Continue anyways** skips RAM admission for that one queued run. The request is
+authenticated and bound to the run owner and job ID. It does not bypass worker
+concurrency, leases, per-chat exclusivity, provider reset waits, or systemd memory
+limits. The acknowledgement is consumed when the worker claims the run; follow-up
+runs and subsequent attempts require a new choice if they wait for RAM again.
+The ordinary queue resumes automatically when memory becomes available.
 
 ## Resource limits
 

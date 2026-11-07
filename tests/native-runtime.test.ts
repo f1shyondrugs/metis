@@ -10,7 +10,7 @@ test("native process cannot read another owner, app state, parent proc or leaked
  for(const dir of [data,workspace,other])mkdirSync(dir);
  const secret=path.join(data,"chat.sqlite"),foreign=path.join(other,"secret"),receipts=path.join(root,"shared-receipts");mkdirSync(receipts);writeFileSync(secret,"APP-SECRET");writeFileSync(foreign,"BOB-SECRET");
  process.env.AI_CHAT_FILE_SNAPSHOT_DIR=receipts;
- Object.assign(process.env,{AI_CHAT_ROOT:process.cwd(),CHAT_DATA_DIR:data,CHAT_DB_PATH:path.join(data,"test.sqlite"),AI_CHAT_MCP_STATE_DIR:path.join(data,"mcp-state"),AGENT_CWD:workspace});
+ Object.assign(process.env,{METIS_NATIVE_ISOLATION:"1",AI_CHAT_ROOT:process.cwd(),CHAT_DATA_DIR:data,CHAT_DB_PATH:path.join(data,"test.sqlite"),AI_CHAT_MCP_STATE_DIR:path.join(data,"mcp-state"),AGENT_CWD:workspace});
  try{
   const {createNativeRuntimeScope,nativeSandboxLaunch,assertNativeMcpServers}=await import("../lib/providers/native-sandbox");
   const scope=createNativeRuntimeScope("alice",workspace);

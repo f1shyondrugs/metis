@@ -201,6 +201,7 @@ export const PROVIDERS: ProviderDefinition[] = [
   },
   {
     key: "codex",
+    usageResets: { adapter: "codex", authTypes: ["oauth", "account"], documentationUrl: "https://learn.chatgpt.com/docs/app-server" },
     apiPricing: { providers: ["openai"], inputIncludesCache: true },
     name: "OpenAI Codex",
     description: "Codex agent through the official Codex SDK and CLI runtime.",

@@ -229,6 +229,22 @@ export function getDatabase(): DatabaseSync {
     );
     CREATE INDEX IF NOT EXISTS provider_oauth_flows_owner
       ON provider_oauth_flows(owner_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS model_chains (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      data TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS model_chains_owner ON model_chains(owner_id, created_at);
+    CREATE TABLE IF NOT EXISTS chat_model_chains (
+      chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      chain_id TEXT NOT NULL REFERENCES model_chains(id) ON DELETE CASCADE,
+      PRIMARY KEY(chat_id, owner_id)
+    );
     CREATE TABLE IF NOT EXISTS account_profiles (
       owner_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       data TEXT NOT NULL,
@@ -245,6 +261,14 @@ export function getDatabase(): DatabaseSync {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS profile_avatars_owner ON profile_avatars(owner_id);
+    CREATE TABLE IF NOT EXISTS profile_banners (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      mime_type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS profile_banners_owner ON profile_banners(owner_id);
     CREATE TABLE IF NOT EXISTS account_usage (
       owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       message_id TEXT NOT NULL,
@@ -457,6 +481,23 @@ export function getDatabase(): DatabaseSync {
       ON notes(json_extract(data, '$.parentId'));
     CREATE INDEX IF NOT EXISTS notes_hierarchy_project
       ON notes(json_extract(data, '$.projectId'), archived, json_extract(data, '$.sortKey'));
+    CREATE TABLE IF NOT EXISTS note_shares (
+      note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      creator_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      root_project_id TEXT,
+      root_owner_id TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE TRIGGER IF NOT EXISTS note_shares_invalidate_root
+      AFTER UPDATE ON notes
+      WHEN NEW.archived != 0
+        OR json_extract(NEW.data, '$.kind') = 'learned_fact'
+        OR json_extract(NEW.data, '$.projectId') IS NOT json_extract(OLD.data, '$.projectId')
+        OR NEW.owner_id IS NOT OLD.owner_id
+      BEGIN
+        DELETE FROM note_shares WHERE note_id = NEW.id;
+      END;
     CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     owner_id TEXT REFERENCES users(id) ON DELETE CASCADE,
@@ -665,6 +706,9 @@ export function getDatabase(): DatabaseSync {
       ON browser_history(owner_id, chat_id, ts DESC);
   `);
   for (const statement of [
+    "ALTER TABLE note_shares ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE note_shares ADD COLUMN password_hash TEXT",
+    "ALTER TABLE note_shares ADD COLUMN access_key TEXT",
     "ALTER TABLE account_usage ADD COLUMN context_window INTEGER",
     "ALTER TABLE account_usage ADD COLUMN reasoning_effort TEXT",
     "ALTER TABLE account_usage ADD COLUMN speed_mode TEXT",

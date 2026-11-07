@@ -5,11 +5,13 @@ import { Check, Mic, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { openSelectedMicrophone } from "@/lib/local-microphone";
 import { transcribeRecording } from "@/lib/voice-upload";
+import { connectRealtimeVoice, type RealtimeVoiceSession } from "@/lib/voice-realtime";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type VoiceInputProps = {
   chatId?: string | null;
-  onTranscript: (text: string) => void;
+  onTranscript: (text: string) => void | ((finalText: string) => void);
+  onPreviewChange?: (text: string) => void;
   onRecordingChange?: (recording: boolean) => void;
   onStateChange?: (state: VoiceState) => void;
   onWaveformLevelChange?: (level: number) => void;
@@ -46,6 +48,7 @@ function formatDuration(seconds: number) {
 export function VoiceInput({
   chatId,
   onTranscript,
+  onPreviewChange,
   onRecordingChange,
   onStateChange,
   onWaveformLevelChange,
@@ -77,7 +80,14 @@ export function VoiceInput({
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const livePreviewRef = useRef("");
   const discardingRef = useRef(false);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const realtimeSessionRef = useRef<RealtimeVoiceSession | null>(null);
+  const realtimeStartRef = useRef<AbortController | null>(null);
+  const pendingRealtimeRef = useRef<{
+    session: RealtimeVoiceSession; controller: AbortController;
+    inserted: boolean; finalize?: (text: string) => void;
+  } | null>(null);
+  const transcriptCallbackRef = useRef(onTranscript);
+  transcriptCallbackRef.current = onTranscript;
   const startedAtRef = useRef(0);
   const lastStopSignalRef = useRef(stopSignal);
   const lastCancelSignalRef = useRef(cancelSignal);
@@ -87,16 +97,18 @@ export function VoiceInput({
   useEffect(() => {
     onStateChange?.(state);
   }, [onStateChange, state]);
+  useEffect(() => { onPreviewChange?.(livePreview); }, [livePreview, onPreviewChange]);
   const commitTranscript = useCallback((text: string) => {
     const transcript = text.trim();
-    if (transcript) onTranscript(transcript);
+    const finalize = transcript ? transcriptCallbackRef.current(transcript) : undefined;
     setLivePreview("");
     livePreviewRef.current = "";
     setLevel(0);
     onWaveformLevelChange?.(0);
     setRecording(false);
     setState("idle");
-  }, [onTranscript, onWaveformLevelChange, setRecording]);
+    return finalize;
+  }, [onWaveformLevelChange, setRecording]);
   useEffect(() => {
     if (typeof maxDurationSeconds === "number") {
       setMaxDuration(Math.max(1, Math.min(3600, Math.floor(maxDurationSeconds))));
@@ -111,7 +123,7 @@ export function VoiceInput({
       .catch(() => undefined);
   }, [maxDurationSeconds]);
 
-  const cleanup = useCallback(() => {
+  const cleanupCapture = useCallback(() => {
     if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
     animationFrameRef.current = null;
     void audioContextRef.current?.close();
@@ -121,6 +133,16 @@ export function VoiceInput({
     streamRef.current = null;
     recorderRef.current = null;
   }, []);
+  const cleanup = useCallback(() => {
+    realtimeStartRef.current?.abort();
+    realtimeStartRef.current = null;
+    realtimeSessionRef.current?.close();
+    realtimeSessionRef.current = null;
+    pendingRealtimeRef.current?.controller.abort();
+    pendingRealtimeRef.current?.session.close();
+    pendingRealtimeRef.current = null;
+    cleanupCapture();
+  }, [cleanupCapture]);
 
   const startVisualizer = useCallback((stream: MediaStream) => {
     const AudioContextClass = window.AudioContext;
@@ -154,16 +176,42 @@ export function VoiceInput({
   }, [onWaveformLevelChange]);
 
   const stop = useCallback(() => {
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-      cleanup();
-      if (livePreviewRef.current) commitTranscript(livePreviewRef.current);
-      else {
-        setState("error");
-        setError("No speech was detected.");
+    const session = realtimeSessionRef.current;
+    if (session && realtimeStartRef.current) {
+      const pending = {
+        session, controller: realtimeStartRef.current,
+        inserted: false, finalize: undefined as ((text: string) => void) | undefined,
+      };
+      pendingRealtimeRef.current = pending;
+      realtimeSessionRef.current = null;
+      realtimeStartRef.current = null;
+      const finalText = session.finish();
+      cleanupCapture();
+      const preview = livePreviewRef.current.trim();
+      if (preview) {
+        pending.inserted = true;
+        pending.finalize = commitTranscript(preview) || undefined;
+      } else {
+        setState("transcribing");
         setRecording(false);
       }
+      void finalText.then((text) => {
+        if (pendingRealtimeRef.current !== pending) return;
+        pendingRealtimeRef.current = null;
+        if (pending.inserted) pending.finalize?.(text);
+        else if (text) commitTranscript(text);
+        else {
+          setState("error");
+          setError("No speech was detected.");
+        }
+      }).catch((cause) => {
+        if (pendingRealtimeRef.current !== pending) return;
+        pendingRealtimeRef.current = null;
+        // Preserve the usable streamed draft if finalization fails.
+        if (pending.inserted) return;
+        setState("error");
+        setError(cause instanceof Error ? cause.message : "Realtime transcription failed.");
+      });
       return;
     }
     if (speechRecognitionRef.current) {
@@ -174,7 +222,7 @@ export function VoiceInput({
     if (!recorder || recorder.state === "inactive") return;
     setRecording(false);
     recorder.stop();
-  }, [cleanup, commitTranscript, setRecording]);
+  }, [cleanupCapture, commitTranscript, setRecording]);
 
   useEffect(() => {
     if (lastStopSignalRef.current === stopSignal) return;
@@ -216,6 +264,9 @@ export function VoiceInput({
   }, [chatId, connectionId, endpoint, modelId, commitTranscript, provider, realtime, setRecording]);
 
   const start = async () => {
+    pendingRealtimeRef.current?.controller.abort();
+    pendingRealtimeRef.current?.session.close();
+    pendingRealtimeRef.current = null;
     if (provider === "browser") {
       const speechWindow = window as Window & {
         SpeechRecognition?: new () => SpeechRecognitionLike;
@@ -289,60 +340,60 @@ export function VoiceInput({
       }
       setState("permission");
       setError("");
+      setLastRecording(null);
+      setLivePreview("");
+      livePreviewRef.current = "";
+      const controller = new AbortController();
+      realtimeStartRef.current = controller;
       try {
-        const tokenResponse = await fetch("/api/voice/realtime", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ modelId, connectionId }),
-        });
-        const tokenBody = await tokenResponse.json().catch(() => ({}));
-        const token = tokenBody.client_secret?.value;
-        if (!tokenResponse.ok || typeof token !== "string") throw new Error(tokenBody.error || "Could not start realtime voice.");
         const stream = await openSelectedMicrophone();
+        if (controller.signal.aborted) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         streamRef.current = stream;
         startVisualizer(stream);
-        const peer = new RTCPeerConnection();
-        peerConnectionRef.current = peer;
-        for (const track of stream.getTracks()) peer.addTrack(track, stream);
-        const channel = peer.createDataChannel("oai-events");
-        channel.onmessage = (event) => {
-          try {
-            const payload = JSON.parse(event.data) as { type?: string; delta?: string; transcript?: string };
-            if (payload.type?.includes("transcription.delta") || payload.type === "response.audio_transcript.delta") {
-              livePreviewRef.current += payload.delta || "";
-              setLivePreview(livePreviewRef.current);
-            } else if (payload.type?.includes("transcription.completed") && payload.transcript) {
-              livePreviewRef.current = payload.transcript;
-              setLivePreview(payload.transcript);
+        const session = await connectRealtimeVoice({
+          stream, modelId, connectionId, signal: controller.signal,
+          onPreview: (text) => {
+            const pending = pendingRealtimeRef.current;
+            if (pending?.controller === controller) {
+              if (!pending.inserted && text.trim()) {
+                pending.inserted = true;
+                pending.finalize = commitTranscript(text) || undefined;
+              }
+              return;
             }
-          } catch {
-            // Ignore non-JSON realtime events.
-          }
-        };
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        const sdpResponse = await fetch(`https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(modelId)}`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/sdp" },
-          body: offer.sdp,
+            if (realtimeStartRef.current !== controller) return;
+            livePreviewRef.current = text;
+            setLivePreview(text);
+          },
+          onError: (cause) => {
+            if (realtimeStartRef.current !== controller) return;
+            cleanup();
+            setRecording(false);
+            setLevel(0);
+            onWaveformLevelChange?.(0);
+            setState("error");
+            setError(cause.message);
+          },
         });
-        if (!sdpResponse.ok) throw new Error("Could not connect to the realtime voice service.");
-        await peer.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
-        livePreviewRef.current = "";
-        setLivePreview("");
+        if (controller.signal.aborted) { session.close(); return; }
+        realtimeSessionRef.current = session;
         startedAtRef.current = Date.now();
         setElapsed(0);
         setState("recording");
         setRecording(true);
       } catch (cause) {
-        peerConnectionRef.current?.close();
-        peerConnectionRef.current = null;
+        if (realtimeStartRef.current !== controller) return;
         cleanup();
+        setRecording(false);
         setState("error");
         setError(cause instanceof Error ? cause.message : "Realtime voice failed.");
       }
       return;
     }
+
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setState("error");
       setError("This browser does not support microphone recording.");
@@ -418,13 +469,13 @@ export function VoiceInput({
   useEffect(() => () => {
     discardingRef.current = true;
     speechRecognitionRef.current?.stop();
-    peerConnectionRef.current?.close();
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
     cleanup();
     setRecording(false);
     onStateChange?.("idle");
     onWaveformLevelChange?.(0);
-  }, [cleanup, onStateChange, onWaveformLevelChange, setRecording]);
+    onPreviewChange?.("");
+  }, [cleanup, onStateChange, onWaveformLevelChange, onPreviewChange, setRecording]);
 
   if (!enabled) return null;
 
@@ -456,7 +507,7 @@ export function VoiceInput({
         )
       ) : null}
       {state === "recording" ? <span className="mr-2 text-[10px] tabular-nums text-red-400">{formatDuration(elapsed)}</span> : null}
-      {provider === "browser" && livePreview ? <span className="max-w-48 truncate text-[11px] italic text-muted-foreground" title={livePreview}>{livePreview}</span> : null}
+      {!onPreviewChange && (provider === "browser" || (provider === "openai" && realtime)) && livePreview ? <span className="max-w-48 truncate text-[11px] italic text-muted-foreground" title={livePreview}>{livePreview}</span> : null}
       {state === "ready" ? (
         <>
           <Button type="button" size="icon-xs" variant="secondary" onClick={() => {

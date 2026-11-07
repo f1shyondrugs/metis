@@ -4,6 +4,7 @@ import * as React from "react"
 import { Avatar as AvatarPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { imageFramingStyle, parseImageFraming } from "@/lib/image-framing"
 
 function Avatar({
   className,
@@ -26,19 +27,23 @@ function Avatar({
 }
 
 function AvatarImage({
-  className,
+  className, src, style, onLoad,
   ...props
 }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
-  return (
-    <AvatarPrimitive.Image
-      data-slot="avatar-image"
-      className={cn(
-        "aspect-square size-full rounded-full object-cover",
-        className
-      )}
-      {...props}
-    />
-  )
+  const parsed = typeof src === "string" ? parseImageFraming(src) : null
+  const [dimensions, setDimensions] = React.useState({ source: "", aspect: 1 })
+  const image = <AvatarPrimitive.Image
+    {...props}
+    src={parsed?.source ?? src}
+    data-slot="avatar-image"
+    className={cn("aspect-square size-full rounded-full object-cover", className)}
+    style={{ ...style, ...(parsed?.framing ? imageFramingStyle(parsed.framing, true, dimensions.source === parsed.source ? dimensions.aspect : 1) : {}) }}
+    onLoad={event => {
+      setDimensions({ source: parsed?.source || "", aspect: event.currentTarget.naturalWidth / event.currentTarget.naturalHeight })
+      onLoad?.(event)
+    }}
+  />
+  return parsed?.framing ? <span className="absolute inset-0 overflow-hidden rounded-full has-[img]:bg-muted">{image}</span> : image
 }
 
 function AvatarFallback({

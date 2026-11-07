@@ -4,6 +4,9 @@ import runpy
 import subprocess
 import time
 
+if os.environ.get("METIS_NATIVE_ISOLATION") != "1":
+    raise SystemExit("Protected logins require an explicitly enabled isolation deployment")
+
 root = Path(__file__).resolve().parents[2]
 engine = subprocess.Popen(["/srv/metis/toolchain/bin/node", "--import", "tsx", str(root / "services/browser-login/server.ts")], cwd=root)
 try:

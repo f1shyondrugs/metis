@@ -34,7 +34,7 @@ export function BrowserFrameIndicator({ updatedAtRef }: { updatedAtRef: RefObjec
         </TooltipTrigger>
         <TooltipContent side="top" align="start">
           {updatedAt === null ? "No browser image received yet" : (
-            <>Last image update: <time dateTime={new Date(updatedAt).toISOString()}>{new Date(updatedAt).toLocaleString()}</time></>
+            <>Last image update: <time dateTime={new Date(updatedAt).toISOString()}>{new Date(updatedAt).toLocaleString("en")}</time></>
           )}
         </TooltipContent>
       </Tooltip>

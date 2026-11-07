@@ -3,9 +3,10 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
+import { createChatModelSettingsQueue } from "../lib/chat-model-settings";
 import { readClientChatSnapshot, writeClientChatSnapshot } from "../lib/client-chat-cache";
 import { mergeQueuedFollowUps } from "../lib/composer-send";
-import { removeQueuedFollowUp } from "../lib/queue-client";
+import { removeQueuedFollowUp, saveQueuedFollowUps } from "../lib/queue-client";
 
 const source = ts.createSourceFile("app-shell.tsx", readFileSync("components/app-shell.tsx", "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const callbacks: string[] = [];
@@ -46,7 +47,7 @@ function fixture() {
     removedQueueIdsRef: { current: removed }, queuedSendRef: { current: new Set() },
     stateRef: { current: { chatId: "old", queueChatId: "old", messages: [], loadingChatId: null } },
     removedIdsFor: (id: string) => { if (!removed.has(id)) removed.set(id, new Set()); return removed.get(id); },
-    mergeQueuedFollowUps, removeQueuedFollowUp: (options: Parameters<typeof removeQueuedFollowUp>[0]) => removeQueuedFollowUp({ ...options, request: c.fetch }), toast: { error: (message: string) => { throw new Error(message); } },
+    mergeQueuedFollowUps, saveQueuedFollowUps, removeQueuedFollowUp: (options: Parameters<typeof removeQueuedFollowUp>[0]) => removeQueuedFollowUp({ ...options, request: c.fetch }), toast: { error: (message: string) => { throw new Error(message); } },
     deleteClientChatSnapshot: async () => {},
     acceptServerSnapshot: () => true, clearUnread: () => {},
     normalizeBrowserContext: () => ({ tabs: [], activeTabId: "" }), normalizeRuntimeMode: () => "agent",
@@ -54,6 +55,7 @@ function fixture() {
     normalizeTerminalTabs: () => [{ id: "terminal", cwd: "/workspace" }], normalizeWorkDirectory: () => "/workspace",
     restoreQuestionDraft: () => ({ answers: [], custom: [], customActive: [] }), modelParamsByModel: {}, workspaceDefaultCwd: "/workspace",
     chatCacheRef: { current: new Map() }, chatCacheScope: "account",
+    chatModelSettingsRef: { current: createChatModelSettingsQueue(async (_chatId, selection) => selection) },
     readClientChatSnapshot: async () => null, writeClientChatSnapshot: async () => {},
     fetchReadWithRetry: () => new Promise(() => {}), CHAT_MESSAGE_LOAD_LIMIT: 30,
     isMobileChatViewport: () => false, navigateChat: () => {}, persistActiveSnapshot: () => {},

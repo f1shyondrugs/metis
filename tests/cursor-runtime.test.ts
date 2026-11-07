@@ -8,8 +8,8 @@ import {mkdtempSync,mkdirSync,rmSync} from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const directory=mkdtempSync(path.join(os.tmpdir(),"metis-cursor-proxy-")),workspace=path.join(directory,"workspace");mkdirSync(workspace);
-Object.assign(process.env,{AI_CHAT_ROOT:process.cwd(),CHAT_DATA_DIR:path.join(directory,"data"),AI_CHAT_MCP_STATE_DIR:path.join(directory,"mcp-state"),AGENT_CWD:workspace});
+const directory=mkdtempSync(path.join(os.tmpdir(),"metis-cursor-proxy-")),workspace=path.join(directory,"workspace");mkdirSync(workspace);mkdirSync(path.join(directory,"host-home"));
+Object.assign(process.env,{HOME:path.join(directory,"host-home"),METIS_NATIVE_ISOLATION:"1",AI_CHAT_ROOT:process.cwd(),CHAT_DATA_DIR:path.join(directory,"data"),AI_CHAT_MCP_STATE_DIR:path.join(directory,"mcp-state"),AGENT_CWD:workspace});
 after(()=>{mock.restoreAll();syncBuiltinESMExports();rmSync(directory,{recursive:true,force:true});});
 function fixture(handle:(value:any,reply:(value:any)=>void)=>void){
  const child=new EventEmitter() as any;child.stdout=new PassThrough();child.stderr=new PassThrough();child.killed=false;

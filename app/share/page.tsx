@@ -1,10 +1,17 @@
 "use client";
 
-import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AudioLines, ChevronDown, ClipboardList, FileText, Image as ImageIcon, Link2, LockKeyhole, LogIn, MessageSquareShare, Palette, Video } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { FileEmbed } from "@/components/file-embed";
+import type { PublicMarkdownShare } from "@/lib/public-markdown";
 import { Markdown } from "@/components/markdown";
+import { PublicMarkdownContext } from "@/components/public-markdown-context";
+import { SharedPreviewDialog } from "@/components/shared-preview-dialog";
+import { WorkspaceExportMenu } from "@/components/workspace-export-menu";
+import { useShareInitialScroll } from "@/components/use-share-initial-scroll";
+import { sharedChatWorkspaces, sharedWorkspaceFromTool, type SharedWorkspace } from "@/lib/shared-workspace";
+import { toast } from "sonner";
 import { ToolCallGroup, type ToolCallData } from "@/components/tool-call-chip";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -76,25 +83,13 @@ function stripSourceBlocks(content: string) {
   return content.replace(/```sources\s*[\s\S]*?```/gi, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-type SharedWorkspace = {
-  id: string;
-  type: "canvas" | "plan";
-  name: string;
-  content: string;
-};
-
 type SharedChat = {
+  assets?: Record<string,string>;
   title: string;
   messages: SharedMessage[];
   workspaces?: SharedWorkspace[];
+  canvas?: string;
 };
-
-function workspaceFromTool(tool: SharedTool, workspaces: SharedWorkspace[] = []) {
-  const link = [tool.path, tool.input, tool.result, tool.detail].find((value) => typeof value === "string" && value.includes("workspace://"));
-  const match = link?.match(/workspace:\/\/(plan|canvas)\/([^)\s"'`]+)/);
-  if (match) return workspaces.find((workspace) => workspace.id === match[2]) || null;
-  return null;
-}
 
 function attachmentIcon(mimeType: string) {
   if (mimeType.startsWith("image/")) return <ImageIcon className="size-5 text-muted-foreground" />;
@@ -114,38 +109,7 @@ function SharedAttachmentCard({
   password?: string;
   onOpen: (attachment: SharedAttachment, url: string) => void;
 }) {
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let objectUrl: string | null = null;
-    if (!attachment.storedName) return;
-    if(!password) { setUrl(`/api/share/attachment?id=${encodeURIComponent(shareId)}&name=${encodeURIComponent(attachment.storedName)}`); return; }
-    const request = password
-      ? fetch("/api/share/attachment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: shareId, name: attachment.storedName, password }),
-        })
-      : fetch(`/api/share/attachment?id=${encodeURIComponent(shareId)}&name=${encodeURIComponent(attachment.storedName)}`);
-    void request
-      .then((response) => {
-        if (!response.ok) throw new Error("Attachment unavailable");
-        return response.blob();
-      })
-      .then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setUrl(null);
-      });
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [attachment.storedName, password, shareId]);
+  const url = attachment.storedName ? `/api/share/attachment?id=${encodeURIComponent(shareId)}&name=${encodeURIComponent(attachment.storedName)}` : null;
 
   return (
     <div className="flex w-52 shrink-0 items-center gap-2 rounded-xl border border-border/40 bg-background/40 p-2 text-left text-xs">
@@ -178,7 +142,11 @@ function SharedMessageView({
   password,
   onOpenAttachment,
   onOpenWorkspace,
+  publicShare,
+  workspaces,
 }: {
+  workspaces: SharedWorkspace[];
+  publicShare: PublicMarkdownShare;
   message: SharedMessage;
   shareId: string;
   password?: string;
@@ -236,11 +204,13 @@ function SharedMessageView({
             <ToolCallGroup
               thinking={message.thinking ? [{ text: message.thinking, done: true }] : []}
               tools={tools}
+              workspaces={workspaces}
               autoExpand={false}
               onOpenWorkspace={onOpenWorkspace}
             />
           ) : null}
-          {message.content ? <Markdown content={stripSourceBlocks(message.content)} /> : null}
+          {message.attachments?.length ? <div className="my-3 flex max-w-full flex-wrap gap-2">{message.attachments.map(attachment => <SharedAttachmentCard key={attachment.id} attachment={attachment} shareId={shareId} onOpen={onOpenAttachment} />)}</div> : null}
+          {message.content ? <Markdown content={stripSourceBlocks(message.content)} publicShare={publicShare} /> : null}
           {message.errorMessage ? (
             <div className="mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {message.errorMessage}
@@ -250,7 +220,7 @@ function SharedMessageView({
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
               {typeof message.runMetadata.outputTokens === "number" ? <span>Output: {message.runMetadata.outputTokens} Tokens</span> : null}
               {message.runMetadata.modelId ? <span>Model: {message.runMetadata.modelId}</span> : null}
-              <span>Completed: {new Date(message.runMetadata.completedAt).toLocaleString()}</span>
+              <span>Completed: {new Date(message.runMetadata.completedAt).toLocaleString("en")}</span>
             </div>
           ) : null}
           {message.suggestions?.length ? (
@@ -306,9 +276,21 @@ function ShareView() {
   const [clonedChatId, setClonedChatId] = useState("");
   const [selectedAttachment, setSelectedAttachment] = useState<{ attachment: SharedAttachment; url: string } | null>(null);
   const [selectedWorkspace, setSelectedWorkspace] = useState<SharedWorkspace | null>(null);
+  const workspaces = useMemo(() => sharedChatWorkspaces(chat), [chat]);
+  const publicShare: PublicMarkdownShare = {
+    noteIds: [], assets: chat?.assets || {}, chatShareId: shareId, workspaces,
+    onOpenWorkspace: (id, type) => {
+      const workspace = workspaces.find(item => item.id === id && item.type === type);
+      if (workspace) setSelectedWorkspace(workspace);
+    },
+  };
+  const { viewportRef, contentRef } = useShareInitialScroll(shareId, Boolean(chat) && !loading && !needsPassword);
 
   const loadShare = useCallback(async (nextPassword?: string) => {
     setLoading(true);
+    setChat(null);
+    setSelectedWorkspace(null);
+    setSelectedAttachment(null);
     setError("");
     try {
       const res = await fetch(`/api/share?id=${encodeURIComponent(shareId)}`, {
@@ -393,8 +375,9 @@ function ShareView() {
   }
 
   return (
-    <main className="min-h-dvh bg-background px-4 py-8 text-foreground sm:px-6">
-      <div className="mx-auto max-w-3xl">
+    <PublicMarkdownContext.Provider value={publicShare}>
+    <main ref={viewportRef} data-share-scroll className="h-dvh overflow-y-auto bg-background px-4 py-8 text-foreground sm:px-6">
+      <div ref={contentRef} className="mx-auto max-w-3xl">
         <header className="mb-8 flex items-center gap-3 border-b border-border/60 pb-5">
           <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <MessageSquareShare className="size-5" />
@@ -431,20 +414,23 @@ function ShareView() {
               <SharedMessageView
                 key={message.id}
                 message={message}
+                publicShare={publicShare}
+                workspaces={workspaces}
                 shareId={shareId}
                 password={password}
                 onOpenAttachment={(attachment, url) => setSelectedAttachment({ attachment, url })}
                 onOpenWorkspace={(tool) => {
-                  const workspace = workspaceFromTool(tool, chat.workspaces);
+                  const workspace = sharedWorkspaceFromTool(tool, workspaces);
                   if (workspace) setSelectedWorkspace(workspace);
+                  else toast.error("This workspace is not included in this share.");
                 }}
               />
             ))}
-            {chat.workspaces?.length ? (
+            {workspaces.length ? (
               <section className="space-y-3 border-t border-border/60 pt-6">
                 <h2 className="text-sm font-medium">Shared plans & canvas</h2>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {chat.workspaces.map((workspace) => (
+                  {workspaces.map((workspace) => (
                     <button
                       key={workspace.id}
                       type="button"
@@ -537,27 +523,17 @@ function ShareView() {
           </form>
         </DialogContent>
       </Dialog>
-      <Dialog open={Boolean(selectedAttachment)} onOpenChange={(open) => !open && setSelectedAttachment(null)}>
-        <DialogContent className="h-[100dvh] max-h-none w-screen max-w-none rounded-none p-4 sm:h-auto sm:max-h-[90vh] sm:max-w-5xl sm:rounded-xl sm:p-6">
-          <DialogHeader>
-            <DialogTitle className="truncate pr-8">{selectedAttachment?.attachment.name || "Attachment"}</DialogTitle>
-          </DialogHeader>
-          <div className="flex min-h-0 max-h-[calc(100dvh-7rem)] items-center justify-center overflow-auto sm:max-h-[78vh]">
-            {selectedAttachment ? <FileEmbed file={{...selectedAttachment.attachment,url:selectedAttachment.url}} className="min-h-64 w-full"/> : null}
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={Boolean(selectedWorkspace)} onOpenChange={(open) => !open && setSelectedWorkspace(null)}>
-        <DialogContent className="h-[100dvh] max-h-none w-screen max-w-none rounded-none p-4 sm:h-auto sm:max-h-[90vh] sm:max-w-5xl sm:rounded-xl sm:p-6">
-          <DialogHeader>
-            <DialogTitle>{selectedWorkspace?.name || "Workspace"}</DialogTitle>
-          </DialogHeader>
-          <div className="min-h-0 max-h-[calc(100dvh-7rem)] overflow-auto rounded-lg bg-muted/40 p-4 text-sm leading-6 sm:max-h-[75vh]">
-            {selectedWorkspace ? <Markdown content={selectedWorkspace.content} /> : null}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {selectedAttachment ? <SharedPreviewDialog key={selectedAttachment.attachment.id} title={selectedAttachment.attachment.name}
+        onClose={() => setSelectedAttachment(null)}>
+        <FileEmbed file={{ ...selectedAttachment.attachment, url: selectedAttachment.url }} className="min-h-64 w-full" />
+      </SharedPreviewDialog> : null}
+      {selectedWorkspace ? <SharedPreviewDialog key={selectedWorkspace.id} title={selectedWorkspace.name}
+        onClose={() => setSelectedWorkspace(null)}
+        actions={<WorkspaceExportMenu shareId={shareId} workspace={selectedWorkspace} />}>
+        <Markdown content={selectedWorkspace.content} publicShare={publicShare} />
+      </SharedPreviewDialog> : null}
     </main>
+    </PublicMarkdownContext.Provider>
   );
 }
 

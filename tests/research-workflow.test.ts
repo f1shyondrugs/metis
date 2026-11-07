@@ -15,16 +15,25 @@ for (const key of ["AI_CHAT_INTERNAL_URL", "AI_CHAT_FILE_URL", "AI_CHAT_JOB_ID",
 test.after(() => rmSync(root, { recursive: true, force: true }));
 const context = { userId: "owner", chatId: "chat", jobId: "run", modeId: "deep-research" };
 const args = { title: "Energievergleich", plan: ["Kosten prüfen", "Primärquellen vergleichen", "Bericht erstellen"], language: "de" };
+const reportCanvas = { canvasId: "report-canvas", workspaceLink: "workspace://canvas/report-canvas", markdown: "[Open report in Canvas](workspace://canvas/report-canvas)" };
 
 test("review form is editable, has no preselected decision and validates through the real form contract", () => {
   const form = normalizeAskUserInput(researchPlanForm(args));
   const questions = normalizeStoredQuestions(form.questions);
+  // Product controls stay English while researcher/user content keeps its original language.
+  assert.deepEqual(researchPlanForm(args), researchPlanForm({ ...args, language: "en" }));
+  assert.equal(form.language, "en");
+  assert.equal(form.title, "Review research plan");
+  assert.equal(form.description, args.title);
+  assert.equal(form.submitLabel, "Submit decision");
+  assert.deepEqual(questions.map(question => question.question), ["Research steps", "Decision", "Sources to actually read", "Report: minimum words"]);
+  assert.deepEqual(questions[1].options?.map(option => option.label), ["Approve and research", "Revise", "Deny"]);
   assert.equal(questions[0].type, "task_list");
   assert.deepEqual(questions[0].default, args.plan);
   assert.equal(questions[1].default, undefined);
   assert.deepEqual(questions[1].options?.map(o => o.value), ["approve", "revise", "deny"]);
   assert.throws(() => normalizeQuestionAnswers(questions, [JSON.stringify(args.plan), ""]));
-  const result = normalizeQuestionAnswers(questions, { plan: ["Nur Hessen untersuchen"], decision: "approve" });
+  const result = normalizeQuestionAnswers(questions, { plan: ["Nur Hessen untersuchen"], decision: "approve", source_target: 200, minimum_words: 4000 });
   assert.deepEqual(result.values.plan, ["Nur Hessen untersuchen"]);
   assert.equal(RESEARCH_WORKFLOW_TOOLS[0].inputSchema["x-metis-waits-for-user"], true);
   assert.throws(() => researchPlanForm({ ...args, plan: ["x".repeat(4001)] }), /4000/);
@@ -33,7 +42,7 @@ test("review form is editable, has no preselected decision and validates through
 test("research waits for submission, preserves user edits and durable approval, and isolates runs", async () => {
   let submit!: (value: unknown) => void;
   const waiting = new Promise(resolve => { submit = resolve; });
-  const workflow = createResearchWorkflow({ stateDir: path.join(root, "approval"), ask: () => waiting, attachReport: async () => ({ markdown: "download" }) });
+  const workflow = createResearchWorkflow({ stateDir: path.join(root, "approval"), ask: () => waiting, attachReport: async () => reportCanvas });
   await assert.rejects(workflow.assertAllowed("web_search", context), /locked/);
   await workflow.assertAllowed("web_search", { ...context, modeId: "agent" });
   const reviewing = workflow.plan(args, context);
@@ -65,10 +74,10 @@ test("deny, revision, missing submission, cancellation and failed attachment nev
   await assert.rejects(cancelled.assertAllowed("web_fetch", context), /locked/);
   let attempt = 0;
   const retry = createResearchWorkflow({ stateDir: path.join(root, randomUUID()), ask: async () => ({ questionId: "q", values: { plan: ["p"], decision: "approve" } }),
-    attachReport: async () => { if (!attempt++) throw new Error("storage failed"); return { markdown: "[Report](/real)" }; } });
+    attachReport: async () => { if (!attempt++) throw new Error("storage failed"); return reportCanvas; } });
   await retry.plan(args, context);
   await assert.rejects(retry.report({ title: "Report", content: "Findings" }, context), /storage failed/);
-  assert.equal((await retry.report({ title: "Report", content: "Findings" }, context)).markdown, "[Report](/real)");
+  assert.equal((await retry.report({ title: "Report", content: "Findings" }, context)).workspaceLink, reportCanvas.workspaceLink);
 });
 
 test("invalid typed plan submissions never unlock a structured review", async () => {
@@ -93,14 +102,14 @@ test("Incognito approval remains in memory and report output is bounded Markdown
   assert.throws(() => researchReportAttachment({ title: "x", content: "ä".repeat(250001) }), /500000/);
 });
 
-test("gateway review -> real typed user answer -> research -> protected report download", async t => {
+test("gateway review -> typed answer -> research -> real report canvas and owner-only export", async t => {
   const { createUser, authenticateUser } = await import("../lib/auth");
   const store = await import("../lib/db-store");
   const jobs = await import("../lib/db-jobs");
   const question = await import("../app/api/internal/mcp-question/route");
   const answer = await import("../app/api/chat/answer/route");
-  const file = await import("../app/api/internal/mcp-file/route");
-  const upload = await import("../app/api/uploads/[chatId]/[name]/route");
+  const workspace = await import("../app/api/internal/mcp-workspace/route");
+  const exportApi = await import("../app/api/workspace-export/route");
   const owner = createUser("research-owner", "test-password"), foreign = createUser("research-foreign", "test-password");
   const cookie = "ai_chat_auth=" + authenticateUser("research-owner", "test-password")!.token;
   const foreignCookie = "ai_chat_auth=" + authenticateUser("research-foreign", "test-password")!.token;
@@ -111,7 +120,7 @@ test("gateway review -> real typed user answer -> research -> protected report d
   store.appendMessage(chat.id, { id: messageId, role: "assistant", content: "" }, owner.id);
   jobs.appendRunEvent(job.id, chat.id, owner.id, "assistantId", { messageId });
   const ctx = { ...context, userId: owner.id, chatId: chat.id, jobId: job.id, workerId: lease.leaseOwner, leaseToken: lease.leaseToken,
-    runtimeMode: "full-access", isHostAdmin: true, modePolicy: JSON.stringify({ allowedCategories: ["read", "browser", "plan"], toolOverrides: { research_report: true } }) };
+    runtimeMode: "full-access", isHostAdmin: true, modePolicy: JSON.stringify({ allowedCategories: ["read", "browser", "plan"], toolOverrides: { research_report: true, create_canvas: false, edit_canvas: false } }) };
   const { dispatchGatewayTool, modeToolCategory } = await import("../lib/mcp-core/gateway-core.mjs");
   let webCalls = 0;
   t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
@@ -120,7 +129,7 @@ test("gateway review -> real typed user answer -> research -> protected report d
       const req = new Request(url, init);
       return init?.method === "POST" ? question.POST(req) : question.GET(req);
     }
-    if (url.endsWith("/api/internal/mcp-file")) return file.POST(new Request(url, init));
+    if (url.endsWith("/api/internal/mcp-workspace")) return workspace.POST(new Request(url, init));
     webCalls++;
     return Response.json({ results: [{ ok: true, title: "Evidence", content: "Verifiable evidence." }] });
   });
@@ -135,7 +144,7 @@ test("gateway review -> real typed user answer -> research -> protected report d
   for (let i = 0; i < 100 && !pending; i++) { await new Promise(resolve => setTimeout(resolve, 10)); pending = store.getChat(chat.id, owner.id)?.pendingQuestion; }
   assert(pending);
   const submit = (session: string) => answer.POST(new Request("http://test/api/chat/answer", { method: "POST", headers: { cookie: session, "content-type": "application/json" },
-    body: JSON.stringify({ questionId: pending!.questionId, values: { plan: ["Only 2026 data", "Check methodology", "Attach the report"], decision: "approve" } }) }));
+    body: JSON.stringify({ questionId: pending!.questionId, values: { plan: ["Only 2026 data", "Check methodology", "Attach the report"], decision: "approve", source_target: 1, minimum_words: 500 } }) }));
   assert.equal((await submit(foreignCookie)).status, 404);
   assert.equal((await submit(cookie)).status, 200);
   const approved = await reviewing;
@@ -144,16 +153,34 @@ test("gateway review -> real typed user answer -> research -> protected report d
   const evidence = await call("research_open", { url: "https://example.org/evidence" });
   assert.notEqual(evidence.isError, true, JSON.stringify(evidence));
   assert(webCalls > 0);
-  const report = await call("research_report", { title: "Recherche 2026", content: "## Befund\nVerifiable evidence. [Beleg](https://example.org/evidence)" });
+  assert.equal((await call("create_canvas", { title: "Not an approved report", content: "No" })).isError, true);
+  const reportContent = "## Befund\n" + "Verifiable evidence. ".repeat(6000) + "[Beleg](https://example.org/evidence)\nREPORT_END";
+  assert.ok(reportContent.length > 100_000);
+  const reportInput = { title: "Recherche 2026", content: reportContent };
+  const report = await call("research_report", reportInput);
   assert.notEqual(report.isError, true, JSON.stringify(report));
   const result = JSON.parse(report.content[0].text);
   assert.equal(result.status, "report_attached");
-  assert.equal(store.getChat(chat.id, owner.id)!.messages[0].attachments?.[0].id, result.attachment.id);
-  const params = { params: Promise.resolve({ chatId: chat.id, name: result.attachment.storedName }) };
-  const download = (session: string) => upload.GET(new Request("http://test" + result.downloadUrl, { headers: { cookie: session } }), params);
+  assert.equal(result.type, "canvas");
+  assert.equal(result.canvasId, result.id);
+  assert.equal(result.workspaceLink, "workspace://canvas/" + result.id);
+  assert.equal(result.markdown, "[Open report in Canvas](" + result.workspaceLink + ")");
+  assert.equal(result.content, undefined, "the full report is read from Canvas, not echoed in tool metadata");
+  assert.equal(result.downloadUrl, undefined);
+  assert.equal(result.attachment, undefined);
+  assert.ok(report.content[0].text.length < 8000);
+  const saved = store.getChat(chat.id, owner.id)!;
+  const canvas = saved.workspaces!.find(item => item.id === result.id)!;
+  assert.equal(canvas.content, reportContent);
+  assert.equal(canvas.idempotencyKey, job.id + ":research_report");
+  assert.equal(saved.messages[0].attachments?.length || 0, 0);
+  const repeated = JSON.parse((await call("research_report", reportInput)).content[0].text);
+  assert.equal(repeated.canvasId, result.id);
+  assert.equal(store.getChat(chat.id, owner.id)!.workspaces!.filter(item => item.id === result.id).length, 1);
+  const download = (session: string) => exportApi.POST(new Request("http://test/api/workspace-export", { method: "POST", headers: { cookie: session, "content-type": "application/json" }, body: JSON.stringify({ chatId: chat.id, workspaceId: canvas.id, name: canvas.name, content: canvas.content, format: "md" }) }));
   assert.equal((await download(foreignCookie)).status, 404);
   const response = await download(cookie);
   assert.equal(response.status, 200);
-  assert.match(await response.text(), /# Recherche 2026\n\n## Befund/);
+  assert.equal(await response.text(), reportContent);
   jobs.updateJob(job.id, { status: "completed" });
 });

@@ -1,9 +1,9 @@
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
-import { getPendingQuestion, resolveQuestion } from "@/lib/db-questions";
+import { getPendingQuestion, resolveQuestion, cancelQuestionAsResponse } from "@/lib/db-questions";
 import { queueUserInputResume, releaseUserInputWait } from "@/lib/db-jobs";
 import { appendMessage, getChat, updateChat } from "@/lib/db-store";
 
-import { normalizeQuestionAnswers, QuestionValidationError } from "@/lib/question-contract";
+import { normalizeQuestionAnswers, questionAnswerDisplay, QuestionValidationError } from "@/lib/question-contract";
 import { questionAnswerAnchor } from "@/lib/question-transcript";
 import { userInputProgress } from "@/lib/user-input-progress";
 import { transaction } from "@/lib/sqlite";
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { questionId?: unknown; answers?: unknown; values?: unknown; version?: unknown };
+  let body: { questionId?: unknown; answers?: unknown; values?: unknown; version?: unknown; cancelled?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -31,12 +31,17 @@ export async function POST(req: Request) {
   const userId = (await getAuthenticatedUserId(req)) ?? undefined;
   const pending = getPendingQuestion(questionId, userId);
   if (!pending) return Response.json({ error: "Question not found" }, { status: 404 });
-  if (!pending.secureBrowserInput && requiresProtectedCredentials(pending)) {
+  if (body.cancelled !== undefined && typeof body.cancelled !== "boolean") return Response.json({ error: "Invalid cancellation" }, { status: 400 });
+  const cancelled = body.cancelled === true;
+  if (pending.status !== "waiting_for_user" && !(cancelled ? pending.cancelled : pending.status === "answered")) {
+    return Response.json({ error: "This form is no longer available. Refresh the chat." }, { status: 409 });
+  }
+  if (!cancelled && !pending.secureBrowserInput && requiresProtectedCredentials(pending)) {
     return Response.json({error:"Enter credentials only in the protected login form. Start the login again.",code:"secure_credentials_required"},{status:409});
   }
   let input = body.values ?? body.answers;
   const secure=pending.secureBrowserInput;
-  if(secure && pending.status!=="answered") {
+  if(!cancelled && secure && pending.status!=="answered") {
     if(!req.headers.get("cookie") || !browserLoginSameOrigin(req))return Response.json({error:"Forbidden"},{status:403});
     try {
       const status=await browserLoginRequest(userId!,pending.chatId,secure.kind==="console"?"console_status":"status",{requestId:secure.requestId},true);
@@ -47,7 +52,7 @@ export async function POST(req: Request) {
     // Never persist client-supplied values for secure input, even if a client
     // accidentally posts a password to this ordinary transcript endpoint.
   }
-  if (pending.status !== "answered") {
+  if (!cancelled && pending.status !== "answered") {
     try { input = normalizeQuestionAnswers(pending.questions, input).values; }
     catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : "Invalid answers", fieldErrors: error instanceof QuestionValidationError ? error.fieldErrors : {} }, { status: 400 });
@@ -57,14 +62,18 @@ export async function POST(req: Request) {
     const firstAnswer = getPendingQuestion(questionId, userId)?.status === "waiting_for_user";
     const beforeChat = getChat(pending.chatId, userId);
     const progress = userInputProgress(beforeChat?.messages ?? []);
-    const resolved = resolveQuestion(questionId, input, userId, version);
+    const resolved = cancelled ? cancelQuestionAsResponse(questionId, userId, version) : resolveQuestion(questionId, input, userId, version);
     if (!resolved) return Response.json({ error: "This form is no longer available. Refresh the chat." }, { status: 409 });
     const answerId = `question-answer-${questionId}`;
     const chat = getChat(resolved.chatId, userId);
     if (resolved.summary && !chat?.messages.some(message => message.id === answerId)) {
       appendMessage(resolved.chatId, {
         id: answerId, role: "user", content: resolved.summary,
-        questionAnswer: { questionId, ...questionAnswerAnchor(chat?.messages ?? [], questionId) },
+        questionAnswer: {
+          questionId,
+          ...questionAnswerAnchor(chat?.messages ?? [], questionId, { cursorFallback: true }),
+          ...(!resolved.cancelled && resolved.values ? { display: questionAnswerDisplay(pending.questions, resolved.values, resolved.summary) } : {}),
+        },
       }, userId);
     }
     const answerMessage = getChat(resolved.chatId, userId)?.messages.find(message => message.id === answerId);
@@ -74,7 +83,7 @@ export async function POST(req: Request) {
         heartbeatAt: resolved.heartbeatAt,
         questionId,
         progress,
-        resumePrompt: `The user answered the pending question with: ${JSON.stringify({ values: resolved.values, answers: resolved.answers, summary: resolved.summary })}`,
+        resumePrompt: resolved.cancelled ? "The user cancelled the pending question (User cancelled). Acknowledge the cancellation. Do not infer answers, approval, or permission; stop work that depends on the cancelled input." : `The user answered the pending question with: ${JSON.stringify({ values: resolved.values, answers: resolved.answers, summary: resolved.summary })}`,
       });
       releaseUserInputWait(resolved.jobId);
     }
@@ -95,6 +104,7 @@ export async function POST(req: Request) {
       runId: resolved.runId,
       version: resolved.version,
       status: resolved.status,
+      cancelled: resolved.cancelled,
       values: resolved.values,
       summary: resolved.summary,
       message: answerMessage,

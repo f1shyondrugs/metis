@@ -10,7 +10,8 @@ test("large text previews stop reading and cancel the download at the preview bu
   assert.equal(cancelled,true);
   assert.ok(reads<=3);
 });
-test("background transfers remain independent of the originating view, expose progress, and remain attachable after dismissal", async () => {
+test("completed rows expire after five seconds, while results stay attachable and pending transfers remain", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const originalFetch=globalThis.fetch, originalXhr=globalThis.XMLHttpRequest;
   const offsets=new Map<string,number>(), sizes=new Map<string,number>();
   let nextId=0;
@@ -47,8 +48,14 @@ test("background transfers remain independent of the originating view, expose pr
     const result=await waitForUpload(id);
     assert.equal(completedIn,"Chat B");
     assert.equal(result.size,10);
-    dismissUpload(id);
+    assert.equal(getUploadSnapshot().some(task=>task.id===id),true);
+    t.mock.timers.tick(4_999);
+    assert.equal(getUploadSnapshot().some(task=>task.id===id),true);
+    const pendingId=startUpload(new File(["still pending"],"pending.bin"),{label:"Chat B"});
+    t.mock.timers.tick(1);
     assert.equal(getUploadSnapshot().some(task=>task.id===id),false);
+    assert.equal(getUploadSnapshot().some(task=>task.id===pendingId),true);
+    dismissUpload(id);
     assert.equal((await waitForUpload(id)).id,result.id);
     assert.equal(getUploadStatus(id), "completed");
   } finally {globalThis.fetch=originalFetch;globalThis.XMLHttpRequest=originalXhr;}

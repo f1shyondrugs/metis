@@ -4,9 +4,10 @@ import path from "node:path";
 import { getChat } from "@/lib/db-store";
 import { getUserAgentCwd } from "@/lib/mcp";
 import { resolveAgentPath } from "@/lib/revert";
-import { chatUploadDir, saveAttachments, saveFileAttachment } from "@/lib/uploads";
+import { chatUploadDir, saveFileAttachment } from "@/lib/uploads";
 import { registerProvidedFile } from "@/lib/provided-files";
-import { researchReportAttachment } from "@/lib/research-report";
+import { researchCanvasArtifact } from "@/lib/mcp-core/research-canvas-artifact.mjs";
+import { POST as writeWorkspace } from "@/app/api/internal/mcp-workspace/route";
 import type { StoredAttachment } from "@/lib/uploads";
 import { bearerTokenMatches } from "@/lib/security";
 
@@ -70,14 +71,30 @@ export async function POST(req: Request) {
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   if (body.researchReport !== undefined) {
-    try {
-      const attachment = saveAttachments(chatId, [researchReportAttachment(body.researchReport)], userId).stored[0];
-      if (!attachment) throw new Error("Could not store research report.");
-      registerProvidedFile(chatId, jobId, userId, attachment);
-      return providedFileResponse(chatId, attachment);
-    } catch (error) {
-      return Response.json({ error: error instanceof Error ? error.message : "Could not attach research report." }, { status: 400 });
+    const report = body.researchReport;
+    if (!report || typeof report !== "object" || Array.isArray(report)) {
+      return Response.json({ error: "A research report title and complete content are required" }, { status: 400 });
     }
+    if (req.signal.aborted) return Response.json({ error: "Report delivery was cancelled" }, { status: 499 });
+    // Active gateways may still send the previous file-shaped report request.
+    // Use the canonical report Canvas writer so auth, leases, limits, Incognito
+    // policy and durable retries remain identical to the current gateway path.
+    const headers = new Headers(req.headers);
+    headers.delete("content-length");
+    const response = await writeWorkspace(new Request(req.url, {
+      method: "POST", headers, signal: req.signal,
+      body: JSON.stringify({ action: "research_report", type: "canvas",
+        title: (report as Record<string, unknown>).title, content: (report as Record<string, unknown>).content }),
+    }));
+    if (!response.ok) return response;
+    try {
+      const artifact = researchCanvasArtifact(await response.json());
+      // Old gateway/workers preserve only downloadUrl in their completed tracker.
+      // Carry the canonical Canvas URI there until that runtime has refreshed;
+      // this is a workspace destination, never a file download or attachment.
+      return Response.json({ ...artifact, downloadUrl: artifact.workspaceLink });
+    }
+    catch { return Response.json({ error: "Research report Canvas could not be confirmed" }, { status: 503 }); }
   }
   const requestedPath = typeof body.path === "string" ? body.path.trim() : "";
   if (!requestedPath) return Response.json({ error: "path is required" }, { status: 400 });

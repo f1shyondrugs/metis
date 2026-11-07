@@ -4,8 +4,12 @@ import { SECURE_CREDENTIAL_INSTRUCTIONS } from "@/lib/mcp-core/credential-questi
 import { projectModelOverride, validateProjectModelSelection } from "@/lib/project-model-server";
 import { payloadRecord, payloadText as asText } from "@/lib/agent-payload";
 import { isProviderUsageLimit } from "@/lib/provider-rate-limit";
+import { initializeJobModelChain, requestModelChainFallback } from "@/lib/model-chain-runtime";
 import { deferProviderLimitedJob } from "@/lib/db-jobs";
 import { isolatedCursor } from "@/lib/providers/cursor-runtime";
+import { commitPendingModelSwitch } from "@/lib/model-switch";
+import { requestTaskContinuation } from "@/lib/task-continuation";
+import { researchContinuationForJob } from "@/lib/research-completion";
 import { requestProviderRetry, runWithProviderRetries } from "@/lib/provider-retry-runner";
 import {
   appendMessage,
@@ -422,7 +426,9 @@ async function resolveAutoModel(job: AgentJob, chat: Chat): Promise<string | nul
 }
 
 export async function runQueuedJob(job: AgentJob) {
-  return runWithProviderRetries(job, runQueuedJobAttempt);
+  const initialized = initializeJobModelChain(job);
+  if (!initialized) return;
+  return runWithProviderRetries(initialized, runQueuedJobAttempt);
 }
 
 async function runQueuedJobAttempt(job: AgentJob) {
@@ -714,9 +720,23 @@ async function runQueuedJobAttempt(job: AgentJob) {
     }
     return workspace;
   };
+  const handoffModelSwitch = () => commitPendingModelSwitch(job.id, requestedModelId, event => {
+    closeRunningTools(tools, "cancelled");
+    for (const part of parts) {
+      if (part.type !== "tool") continue;
+      const tool = tools.find(item => item.id === part.id);
+      if (tool) part.status = tool.status;
+    }
+    for (const tool of tools) emit("tool", {
+      callId: tool.id, name: tool.name, status: tool.status, kind: tool.kind,
+      ...(tool.result ? { result: tool.result } : {}),
+    });
+    parts.push(event);
+    checkpoint(true);
+  }, agent?.agentId);
   try {
     const modelParams = stripRemovedModelParams(
-      job.modelParams?.length ? job.modelParams : chat.modelParams,
+      Array.isArray(job.modelParams) ? job.modelParams : chat.modelParams,
     );
     const model = {
       id: modelReference.modelId,
@@ -974,7 +994,6 @@ async function runQueuedJobAttempt(job: AgentJob) {
     ].filter(Boolean).join("\n\n");
     let receivedTextDelta = false;
     let cancellationRequested = false;
-    let modelSwitchTarget: { modelId: string; modelParams?: Array<{ id: string; value: string }> } | null = null;
     let activeRun: { cancel: () => Promise<unknown> } | null = null;
     let run: Awaited<ReturnType<typeof agent.send>>;
     let sendTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -1265,7 +1284,6 @@ async function runQueuedJobAttempt(job: AgentJob) {
       const currentJob = getJob(job.id);
       const pendingModelId = currentJob?.pendingModelId?.trim();
       if (pendingModelId && pendingModelId !== requestedModelId) {
-        modelSwitchTarget = { modelId: pendingModelId, modelParams: currentJob?.pendingModelParams };
         void activeRun?.cancel().catch(() => undefined);
         return;
       }
@@ -1366,7 +1384,6 @@ async function runQueuedJobAttempt(job: AgentJob) {
         const currentJob = getJob(job.id);
         const pendingModelId = currentJob?.pendingModelId?.trim();
         if (pendingModelId && pendingModelId !== requestedModelId) {
-          modelSwitchTarget = { modelId: pendingModelId, modelParams: currentJob?.pendingModelParams };
           await run.cancel().catch(() => undefined);
           break;
         }
@@ -1418,52 +1435,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
       AGENT_WAIT_TIMEOUT_MS,
       "The agent did not finish within 6 minutes after its stream ended.",
     );
-    if (modelSwitchTarget) {
-      closeRunningTools(tools, "cancelled");
-      checkpoint(true);
-      for (const tool of tools) {
-        emit("tool", {
-          callId: tool.id,
-          name: tool.name,
-          status: tool.status,
-          kind: tool.kind,
-      ...(tool.source ? { source: tool.source } : {}),
-          ...(tool.path ? { path: tool.path } : {}),
-          ...(tool.diff ? { diff: tool.diff } : {}),
-          ...(tool.input ? { input: tool.input } : {}),
-          ...(tool.result ? { result: tool.result } : {}),
-          ...(tool.todos?.length ? { todos: tool.todos } : {}),
-          ...(tool.subagent ? { subagent: tool.subagent } : {}),
-        });
-      }
-      const target = modelSwitchTarget;
-      const switchedAt = new Date().toISOString();
-      const keepCursorSession = parseModelKey(target.modelId).providerKey === "cursor";
-      const nextAgentId = keepCursorSession ? agent.agentId : undefined;
-      updateChat(job.chatId, {
-        modelId: target.modelId,
-        modelParams: target.modelParams || [],
-        agentId: nextAgentId || null,
-        runStatus: "running",
-        runUpdatedAt: switchedAt,
-        queueMessage: null,
-        badge: null,
-      }, job.userId);
-      emit("status", { status: "switching_model", modelId: target.modelId });
-      updateJob(job.id, {
-        status: "switching",
-        error: undefined,
-        agentId: nextAgentId,
-        modelId: target.modelId,
-        modelParams: target.modelParams,
-        pendingModelId: undefined,
-        pendingModelParams: undefined,
-        modelSwitchRequestedAt: undefined,
-        resumePrompt: `The user switched the active model to ${target.modelId}. Continue the in-progress task from the saved agent/chat/tool/browser state. Do not repeat completed tool calls or user-facing work.`,
-        resumeRequestedAt: switchedAt,
-      });
-      return;
-    }
+    if (handoffModelSwitch()) return;
 
     const pausedStatus = getJob(job.id)?.status;
     if (isJobWaitingForUser(pausedStatus)) {
@@ -1529,7 +1501,8 @@ async function runQueuedJobAttempt(job: AgentJob) {
       });
     }
     checkpoint(true);
-    if (result.status === "error" && deferProviderLimitedJob(job.id, result.error)) return;
+    if (result.status === "error" && requestModelChainFallback(job.id, result.error, event => { parts.push(event); checkpoint(true); })) return;
+    if (result.status === "error" && deferProviderLimitedJob(job.id, result.error, event => { parts.push(event); checkpoint(true); })) return;
     if (result.status === "error" && requestProviderRetry(job.id, result.error, event => {
       parts.push(event);
       checkpoint(true);
@@ -1538,8 +1511,21 @@ async function runQueuedJobAttempt(job: AgentJob) {
       ? result.error?.message || "Agent run failed."
       : undefined;
     if (!text && result.result && !resultError) text = String(result.result);
+    if (!resultError) {
+      const research = await researchContinuationForJob(getJob(job.id) || job);
+      if (handoffModelSwitch()) return;
+      if (requestTaskContinuation({
+        jobId: job.id,
+        assistantMessage: { id: assistantMessageId, role: "assistant", content: text, tools, parts },
+        outcome: "success",
+        checkpoint: () => checkpoint(true),
+        agentId: agent.agentId,
+        research,
+      })) return;
+    }
     if (!text && !resultError) {
       resultError = result.error?.message || "Agent returned no textual response.";
+      if (requestProviderRetry(job.id, new Error(resultError), event => { parts.push(event); checkpoint(true); })) return;
     }
     if (text) {
       const chatBlocks = [...text.matchAll(/```chat(?:\s+title=(?:"([^"]+)"|'([^']+)'|([^\s]+)))?\s*\n([\s\S]*?)```/gi)];
@@ -1735,8 +1721,10 @@ async function runQueuedJobAttempt(job: AgentJob) {
       availability: "available",
   });
   } catch (error) {
+    if (handoffModelSwitch()) return;
     checkpoint(true);
-    if (deferProviderLimitedJob(job.id, error)) return;
+    if (requestModelChainFallback(job.id, error, event => { parts.push(event); checkpoint(true); })) return;
+    if (deferProviderLimitedJob(job.id, error, event => { parts.push(event); checkpoint(true); })) return;
     if (requestProviderRetry(job.id, error, event => {
       const interruptedTools = tools.filter(tool => isActiveToolStatus(tool.status));
       closeRunningTools(tools, "error");

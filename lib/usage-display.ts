@@ -17,6 +17,18 @@ export type UsageProvider = {
   error?: string;
 };
 
+/** Only live, available credits with a provider-supplied future expiry can warn. */
+export function usageResetExpiry(provider?: UsageProvider | null, now = Date.now()) {
+  const count = provider?.extra?.resetCredits;
+  const expiresAt = provider?.extra?.resetCreditsExpiresAt;
+  if (provider?.status !== "live" || typeof count !== "number" || !Number.isSafeInteger(count) || count < 1 || typeof expiresAt !== "string") return null;
+  const remaining = Date.parse(expiresAt) - now;
+  if (!Number.isFinite(remaining) || remaining <= 0) return null;
+  const day = 24 * 60 * 60_000;
+  const warning = remaining <= day ? "critical" : remaining <= 3 * day ? "warning" : null;
+  return { expiresAt, warning };
+}
+
 export type UsageSnapshot = {
   providers: UsageProvider[];
   fetchedAt: string;

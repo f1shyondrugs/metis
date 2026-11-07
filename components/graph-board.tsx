@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Fullscreen, Minimize2, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PUBLIC_GRAPH_TEXT, publicGraphDocument } from "@/lib/public-visualization";
 import { pinchDistance, pinchMidpoint } from "@/lib/notes-gestures";
 import {
   defaultGraphWindow,
@@ -148,12 +149,15 @@ function fitBoard(board: JxgBoard, surface: HTMLElement, host: HTMLElement, win:
 export function GraphBoard({
   code,
   language,
+  readOnly = false,
 }: {
   code: string;
   language?: string;
+  readOnly?: boolean;
 }) {
   const reactId = useId().replace(/:/g, "");
-  const [mode, setMode] = useState<Mode>("board");
+  const [requestedMode, setMode] = useState<Mode>("board");
+  const mode = readOnly ? "board" : requestedMode;
   const [fullscreen, setFullscreen] = useState(false);
   const [source, setSource] = useState(code);
   const [draft, setDraft] = useState(code);
@@ -169,13 +173,14 @@ export function GraphBoard({
 
   useEffect(() => {
     try {
-      setGraph(parseGraphDocument(source));
+      const parsed = parseGraphDocument(source);
+      setGraph(readOnly ? publicGraphDocument(parsed) : parsed);
       setError("");
     } catch (cause) {
       setGraph(null);
       setError(cause instanceof Error ? cause.message : "Could not parse graph.");
     }
-  }, [source]);
+  }, [source, readOnly]);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const persist = useCallback((next: GraphDocument) => {
@@ -184,13 +189,13 @@ export function GraphBoard({
     setSource(serialized);
     setDraft(serialized);
     setError("");
-    queueMicrotask(() => {
+    if (!readOnly) queueMicrotask(() => {
       rootRef.current?.dispatchEvent(new CustomEvent("metis:markdown-embed-change", {
         bubbles: true,
         detail: { kind: "graph", source: serialized },
       }));
     });
-  }, []);
+  }, [readOnly]);
 
   const applyDraft = useCallback(() => {
     try {
@@ -205,7 +210,7 @@ export function GraphBoard({
 
   const toolbar = (
     <div className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-md border border-border/50 bg-background/90 p-0.5 text-[11px]">
-      {(["board", "edit", "code"] as const).map((item) => (
+      {(readOnly ? ["board"] as const : ["board", "edit", "code"] as const).map((item) => (
         <button
           key={item}
           type="button"
@@ -245,7 +250,7 @@ export function GraphBoard({
     </div>
   ) : error && !graph ? (
     <div className="px-3 py-8 pr-28 text-sm text-muted-foreground" data-graph-source={source}>
-      {error}. Switch to Code to fix the JSON.
+      {error}{readOnly ? "." : ". Switch to Code to fix the JSON."}
     </div>
   ) : (
     <div className={cn("flex min-h-0 flex-col", fullscreen && "flex-1")}>
@@ -255,6 +260,7 @@ export function GraphBoard({
           spec={board}
           boardId={`${reactId}-${index}`}
           tall={fullscreen}
+          readOnly={readOnly}
           onChange={(nextBoard) => {
             const current = graphRef.current;
             if (!current) return;
@@ -264,7 +270,7 @@ export function GraphBoard({
           }}
         />
       ))}
-      {mode === "edit" && graph ? <GraphEditor document={graph} onChange={persist} /> : null}
+      {!readOnly && mode === "edit" && graph ? <GraphEditor document={graph} onChange={persist} /> : null}
     </div>
   );
 
@@ -303,10 +309,12 @@ function InteractiveBoard({
   boardId,
   tall,
   onChange,
+  readOnly = false,
 }: {
   spec: GraphBoardSpec;
   boardId: string;
   tall?: boolean;
+  readOnly?: boolean;
   onChange: (next: GraphBoardSpec) => void;
 }) {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
@@ -379,7 +387,7 @@ function InteractiveBoard({
     const element = specRef.current.elements[elementIndex];
     if (!board || !entry || !element || element.type !== "function") return "";
     try {
-      const evaluate = compileGraphExpression(fn, Object.keys(sliderValuesRef.current));
+      const evaluate = compileGraphExpression(fn, Object.keys(sliderValuesRef.current), { numericOnly: readOnly });
       evaluate(scopeAt(0));
       entry.evaluate = evaluate;
       entry.object.Y = (x: number) => evaluate(scopeAt(x));
@@ -388,7 +396,7 @@ function InteractiveBoard({
     } catch (cause) {
       return cause instanceof Error ? cause.message : "Invalid function.";
     }
-  }, [scopeAt]);
+  }, [scopeAt, readOnly]);
 
   const graphStructure = structureKey(spec);
 
@@ -431,7 +439,7 @@ function InteractiveBoard({
           created.create("axis", [[0, 0], [0, 1]], axisStyle(axisColor));
         }
         created.suspendUpdate?.();
-        const points: Record<string, JxgObject> = {};
+        const points: Record<string, JxgObject> = readOnly ? Object.create(null) : {};
         const sliderNames = sliderElements(current).map((item) => item.name);
         for (const slider of sliderElements(current)) {
           sliderValuesRef.current[slider.name] = slider.value;
@@ -442,6 +450,7 @@ function InteractiveBoard({
           if (element.type === "point") {
             const point = created.create("point", [element.x, element.y], {
               name: element.name,
+              ...(readOnly ? { label: PUBLIC_GRAPH_TEXT } : {}),
               color: element.color || COLORS[0],
               fixed: Boolean(element.fixed),
               size: 3,
@@ -465,7 +474,7 @@ function InteractiveBoard({
 
         current.elements.forEach((element, elementIndex) => {
           if (element.type === "function") {
-            const evaluate = compileGraphExpression(element.fn, sliderNames);
+            const evaluate = compileGraphExpression(element.fn, sliderNames, { numericOnly: readOnly });
             const curve = created.create("functiongraph", [
               (x: number) => evaluate(scopeAt(x)),
             ], {
@@ -488,12 +497,12 @@ function InteractiveBoard({
             const radius = typeof element.radius === "number"
               ? element.radius
               : (() => {
-                const evaluate = compileGraphExpression(String(element.radius), sliderNames);
+                const evaluate = compileGraphExpression(String(element.radius), sliderNames, { numericOnly: readOnly });
                 return () => evaluate(scopeAt(0));
               })();
             created.create("circle", [center, radius], { strokeColor: element.color || axisColor, highlight: false });
           } else if (element.type === "text") {
-            created.create("text", [element.x, element.y, element.text], { color: axisColor, fontSize: 13, highlight: false });
+            created.create("text", [element.x, element.y, element.text], { color: axisColor, fontSize: 13, highlight: false, ...(readOnly ? PUBLIC_GRAPH_TEXT : {}) });
           }
         });
 
@@ -536,7 +545,7 @@ function InteractiveBoard({
       try { board?.free(); } catch { /* board already gone */ }
       if (boardRef.current === board) boardRef.current = null;
     };
-  }, [boardId, graphStructure, applyWindow, scopeAt, paintSelection]);
+  }, [boardId, graphStructure, applyWindow, scopeAt, paintSelection, readOnly]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -802,7 +811,7 @@ function InteractiveBoard({
               />
             </label>
           ))}
-          <button
+          {!readOnly && <><button
             type="button"
             className="inline-flex h-8 items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
             onClick={() => addElement({ type: "function", fn: "x", color: COLORS[spec.elements.length % COLORS.length] })}
@@ -815,7 +824,7 @@ function InteractiveBoard({
             onClick={() => addElement({ type: "slider", name: nextSliderName(spec.elements), min: -5, max: 5, value: 1, step: 0.05 })}
           >
             <Plus className="size-3" /> Slider
-          </button>
+          </button></>}
         </div>
       </div>
       {!tall ? (

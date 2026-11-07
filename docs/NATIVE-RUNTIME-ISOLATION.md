@@ -1,7 +1,11 @@
 # Native runtime isolation on Linux
 
-Native Codex, Claude, Cursor, ACP and Antigravity execution now crosses a
-positive-list Bubblewrap boundary. Cursor's SDK runs in a separate stdio host,
+With the operator setting `METIS_NATIVE_ISOLATION=1`, native Codex, Claude,
+Cursor, ACP and Antigravity execution crosses a positive-list Bubblewrap boundary.
+The default is off so existing installations and upgrades retain their usable
+workspaces and provider sessions. Protected credential use is unavailable in
+that default mode. Enabling isolation requires the full deployment below; a
+failed isolated launch never falls back to legacy execution. Cursor's SDK runs in a separate stdio host,
 including its local executor; wrapping only a Cursor CLI would leave that
 executor inside the worker.
 

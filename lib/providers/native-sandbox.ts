@@ -1,6 +1,9 @@
 import {AsyncLocalStorage} from "node:async_hooks";
 import {existsSync,realpathSync,statSync} from "node:fs";
 import {randomUUID} from "node:crypto";
+import {mkdtempSync} from "node:fs";
+import os from "node:os";
+import {nativeIsolationEnabled} from "@/lib/native-isolation-policy";
 import path from "node:path";
 import {spawn,type SpawnOptions,type ChildProcessWithoutNullStreams} from "node:child_process";
 import {config} from "@/lib/config";
@@ -21,9 +24,12 @@ export function createNativeRuntimeScope(owner:string,workspace?:string):NativeR
   return {owner,workspace:canonical(workspace??home),state:canonical(state),home:canonical(home)};
 }
 export function withNativeRuntime<T>(owner:string,workspace:string|undefined,run:()=>T):T{
+  if (!nativeIsolationEnabled()) return run();
+  if (process.platform !== "linux") throw Error("Native isolation requires Linux");
   return scopes.run(createNativeRuntimeScope(owner,workspace),run);
 }
 export function nativeTemporaryHome(prefix:string){
+  if (!nativeIsolationEnabled()) return mkdtempSync(path.join(os.tmpdir(), "metis-" + prefix));
   const scope=nativeRuntimeScope();if(!scope)throw Error("Native account scope required");
   const home=path.join(scope.state,"temporary",prefix+randomUUID());ensureSafeDirectory(home);return home;
 }
@@ -38,7 +44,8 @@ function executablePath(command:string,environment:NativeEnv){
   return canonical(candidate);
 }
 export function nativeSandboxLaunch(command:string,args:string[],environment:NativeEnv={},extraWritable:string[]=[],scope=nativeRuntimeScope()){
-  if(process.platform!=="linux")return {command,args,env:providerProcessEnv({...environment,...(scope?{HOME:scope.home,USERPROFILE:scope.home}:{})}),cwd:scope?.workspace};
+  if (!nativeIsolationEnabled()) return {command,args,env:providerProcessEnv(environment),cwd:undefined};
+  if (process.platform !== "linux") throw Error("Native isolation requires Linux");
   if(!scope)throw Error("Native runtime account scope is required");
   const env=providerProcessEnv(environment);
   if(env.METIS_MCP_SESSION_TOKEN){try{const parts=env.METIS_MCP_SESSION_TOKEN.split(".");if(parts[0]!=="metis-v1"||JSON.parse(Buffer.from(parts[1],"base64url").toString()).userId!==scope.owner)throw Error();}catch{throw Error("Native session token belongs to another account");}}
@@ -84,12 +91,13 @@ export function spawnNative(command:string,args:string[],options:SpawnOptions&{e
   return spawn(launch.command,launch.args,{...options,shell:false,env:launch.env,cwd:launch.cwd??options.cwd,stdio:["pipe","pipe","pipe"]}) as ChildProcessWithoutNullStreams;
 }
 export function codexNativeExecutable(command:string,environment:NativeEnv){
-  if(process.platform!=="linux")return {executable:command,env:providerProcessEnv(environment)};
+  if(!nativeIsolationEnabled())return {executable:command,env:providerProcessEnv(environment)};
   const launch=nativeSandboxLaunch(command,[],environment);
   return {executable:canonical(path.join(config.root,"services/native-runtime/codex-entry.py")),env:{...launch.env,METIS_NATIVE_POLICY:launch.args[3],METIS_NATIVE_EXECUTABLE:launch.args[4]}};
 }
 export function assertNativeMcpServers(servers:Record<string,any>,owner=nativeRuntimeScope()?.owner){
-  if(process.platform!=="linux")return;
+  if(!nativeIsolationEnabled())return;
+  if (process.platform !== "linux") throw Error("Native isolation requires Linux");
   const gateway=servers.gateway;
   const bearer=gateway?.headers?.Authorization;
   if(!owner||gateway?.type!=="http"||typeof bearer!=="string"||!bearer.startsWith("Bearer metis-v1."))throw Error("Isolated native agents require the signed HTTP MCP gateway");

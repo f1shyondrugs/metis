@@ -4,6 +4,7 @@ After=network-online.target metis-secure-console.service
 Wants=network-online.target metis-secure-console.service
 
 [Service]
+Environment=METIS_NATIVE_ISOLATION=1
 Type=simple
 User=metis-browser-login
 Group=metis-runtime

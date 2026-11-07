@@ -7,6 +7,7 @@ import { fileDownloadUrl, fileViewKind, type FileEmbedSpec } from "@/lib/file-ty
 import { formatFileBytes } from "@/lib/upload-limits";
 import { readTextFilePreview } from "@/lib/text-file-preview";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { FileWorkspaceActions } from "@/components/file-workspace-actions";
 import { EditableMarkdown } from "@/components/editable-markdown";
 import { isMarkdownFile } from "@/lib/markdown-file";
 
@@ -24,7 +25,7 @@ export function FileEmbed({ file, onChange, onRemove, className = "", resizable 
   const imageViewerRef = useRef<ImageViewerHandle>(null);
   const movedRef = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const officeUrl = kind === "office" ? (file.url.startsWith("/api/share/attachment?") ? file.url + "&preview=1" : file.url.split("?")[0] + "/preview") : file.url;
+  const officeUrl = kind === "office" ? ((file.url.startsWith("/api/share/attachment?") || /^\/api\/shared-notes\/[A-Za-z0-9_-]{43}\/assets\?/.test(file.url)) ? file.url + "&preview=1" : file.url.split("?")[0] + "/preview") : file.url;
   useEffect(() => {
     setError(""); setText(file.text ?? null);
     if (file.text !== undefined || (kind !== "text" && kind !== "office")) return;
@@ -61,6 +62,7 @@ export function FileEmbed({ file, onChange, onRemove, className = "", resizable 
     {!previewOnly && <div className="flex shrink-0 items-center gap-2 border-t border-border/40 bg-background/80 px-2 py-1.5 text-xs">
       <span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}{file.size === undefined ? "" : " · " + formatFileBytes(file.size)}</span>
       {canEdit && !editing && <button type="button" aria-label={"Edit " + file.name} className="flex size-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" onClick={()=>{setDraft(text!);setEditing(true);}}><Pencil className="size-3.5" aria-hidden="true"/></button>}
+      <FileWorkspaceActions file={file} />
       <a href={fileDownloadUrl(file.url)} download={file.name} aria-label={"Download " + file.name} className="flex size-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"><Download className="size-3.5" aria-hidden="true"/></a>
       {kind === "image" && <button type="button" aria-label={"Fullscreen " + file.name} title="Fullscreen"
         className="flex size-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"

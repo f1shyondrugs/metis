@@ -3,7 +3,7 @@ import { AnimatedNumber } from "@/components/animated-number";
 import { ChartBoundary } from "@/components/chart-boundary";
 import { useChartMotion } from "@/components/use-chart-motion";
 import { Fragment, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, Download, Info, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Coins, Download, Hash, Info, RefreshCw, Send } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ProviderLogo } from "@/components/provider-logo";
 import { ModelUsageDetails } from "@/components/account/model-usage-details";
@@ -15,6 +15,7 @@ import { useUsageCostMode } from "./use-usage-cost-mode";
 import { usageCost, usageCostLabel, usageCostReports, type UsageCostMode } from "@/lib/usage-cost-view";
 import { useUsageProviderFilter } from "./use-usage-provider-filter";
 import { UsageProviderFilter } from "./usage-provider-filter";
+import { UsageResetsEntry } from "@/components/usage-resets-shortcut";
 import { UsageModelTooltip } from "./usage-model-tooltip";
 import { usageMetricValue, type UsageMetric } from "@/lib/usage-model-contributions";
 import { usageTokenOptions, usageTokenLabel, usageTokenValue, usageTokenReports, type UsageTokenMetric } from "@/lib/usage-token-split";
@@ -104,6 +105,7 @@ export function UsageDashboard() {
       </label>
       {costMode==="estimated" ? <details className="text-xs text-muted-foreground"><summary className="flex min-h-10 cursor-pointer list-none items-center gap-1.5"><Info className="size-3.5" aria-hidden="true"/> How estimates work <ChevronDown className="size-3"/></summary><p className="mt-2 max-w-2xl leading-relaxed">Recorded input and output tokens × current standard text API prices, with cache discounts when reported. This is an approximate API value, not your invoice or subscription cost. Fast / priority premiums, long-context surcharges, media pricing and non-token fees are excluded. Missing prices or token splits stay unavailable. <a href="https://models.dev" target="_blank" rel="noreferrer" className="underline underline-offset-2">Price source: models.dev</a>{usage?.pricing ? " · Checked "+new Date(usage.pricing.checkedAt).toLocaleDateString("en",{timeZone:"UTC"}):" · Price catalog unavailable."}</p></details>:null}
     </div>
+    <UsageResetsEntry />
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       <label className="flex items-center gap-2 text-xs text-muted-foreground">Token type
         <select aria-label="Token type" value={tokenMetric} onChange={event=>{setTokenMetric(event.target.value as UsageTokenMetric);setMetric("tokens");}} className="h-10 max-w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground">
@@ -117,14 +119,14 @@ export function UsageDashboard() {
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p>:null}
     <section aria-label="Usage overview" aria-busy={loading} className="rounded-xl border border-border/60">
       <div className="flex flex-wrap gap-1 border-b border-border/60 px-4 sm:px-6">
-        {([["costUsd","Cost"],["tokens","Tokens"],["requests","Requests"]] as const).filter(([key])=>showCosts || key!=="costUsd").map(([key,label])=><button key={key} type="button" aria-pressed={activeTab===key} onClick={()=>setMetric(key)}
-          className={"min-h-12 border-b-2 px-4 text-sm transition-colors "+(activeTab===key?"border-primary text-foreground":"border-transparent text-muted-foreground hover:text-foreground")}>{label}</button>)}
+        {([["costUsd","Cost",Coins],["tokens","Tokens",Hash],["requests","Requests",Send]] as const).filter(([key])=>showCosts || key!=="costUsd").map(([key,label,Icon])=><button key={key} type="button" aria-pressed={activeTab===key} onClick={()=>setMetric(key)}
+          className={"inline-flex min-h-12 items-center gap-2 border-b-2 px-3 text-sm transition-colors sm:px-4 "+(activeTab===key?"border-primary text-foreground":"border-transparent text-muted-foreground hover:text-foreground")}><Icon className="size-4 shrink-0" aria-hidden="true"/>{label}</button>)}
       </div>
       <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
         <div><p className="text-xs text-muted-foreground">{metricLabel}</p>
           <p className="mt-3 break-words text-3xl font-medium tracking-tight tabular-nums sm:text-4xl"><AnimatedNumber valueKey={activeMetric==="costUsd"?activeMetric+costMode:activeMetric} value={totals ? usageMetricValue(totals,activeMetric,costMode):undefined} loading={loading} format={activeMetric==="costUsd"?"money":"integer"}/></p>
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{usage?.from} — {usage?.to}<br />Daily totals · UTC</p>
-          {activeMetric==="costUsd" && totals ? <p className="mt-4 text-xs leading-relaxed text-muted-foreground">{reports ? reports.toLocaleString()+" of "+totals.requests.toLocaleString()+" runs "+(costMode==="estimated"?"estimated":"reported")+(reports<totals.requests?" · Partial total":"") : costMode==="estimated"?"No matching prices and complete token splits for these runs.":"Your providers have not reported costs for these runs."}</p>:null}
+          {activeMetric==="costUsd" && totals ? <p className="mt-4 text-xs leading-relaxed text-muted-foreground">{reports ? reports.toLocaleString("en")+" of "+totals.requests.toLocaleString("en")+" runs "+(costMode==="estimated"?"estimated":"reported")+(reports<totals.requests?" · Partial total":"") : costMode==="estimated"?"No matching prices and complete token splits for these runs.":"Your providers have not reported costs for these runs."}</p>:null}
         </div>
         <div className="h-60 min-w-0" aria-label={"Daily "+metricLabel+" chart"}>
           {usage && !error && !loading ? <ChartBoundary resetKey={costMode+providerFilterKey+activeMetric+usage.from+usage.to+refresh} label="usage-overview"><ResponsiveContainer width="100%" height="100%" minWidth={0}>

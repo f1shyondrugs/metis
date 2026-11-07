@@ -1,10 +1,12 @@
 import fs from "node:fs";
+import {requireProtectedLoginIsolation} from "../../lib/native-isolation-policy";
 import http from "node:http";
 import path from "node:path";
 import { SavedBrowserLogins } from "./core";
 import { protectedLoginFailure } from "../../lib/protected-login-errors";
 import { loadOperatorReturnOrigins } from "./operator-return-origins";
 
+requireProtectedLoginIsolation();
 if (!process.getuid || process.getuid() === 0) throw Error("Dedicated non-root identity required");
 const state=process.env.STATE_DIRECTORY || "/var/lib/metis-browser-login";
 const keyPath=path.join(process.env.CREDENTIALS_DIRECTORY || "/run/credentials/metis-browser-login.service","login.key");

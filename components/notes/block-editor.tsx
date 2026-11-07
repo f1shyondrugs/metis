@@ -30,16 +30,20 @@ import { registerFileDrop } from "@/lib/file-drop";
 import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
 import { LinkPreview } from "@/components/link-preview";
 import { useReferenceSearch } from "@/components/use-reference-search";
-import { notesReferenceQuery, notesReferenceHref } from "@/lib/notes-editor-references";
+import { ReferencePicker } from "@/components/reference-picker";
+import { composerReferenceKeyAction } from "@/lib/composer-references";
+import { parseReferenceLink } from "@/lib/reference-link";
+import { notesReferenceQuery, notesReferenceHref, NOTES_REFERENCE_KINDS } from "@/lib/notes-editor-references";
 import type { ReferenceKind, ReferenceResult } from "@/lib/reference-search";
 import { Type, Heading1, Heading2, Heading3, ListOrdered, ListTodo, Quote, Info, Minus, Table2, ImageIcon, Globe, Sigma, Columns2, ListTree, FilePlus2, CircleDot } from "lucide-react";
+import { NotesContextToolbar } from "@/components/notes/context-toolbar";
 import "./block-editor.css";
 
 export type NotesBlockEditorProps = {
   value: string;
   onChange: (markdown: string) => void;
   noteId?: string;
-  workspace?: { chatId: string; id: string };
+  workspace?: { chatId: string; id: string; type?: string; idempotencyKey?: string };
   /** Stable document identity for file buffers and other non-note editors. */
   editorId?: string;
   disabled?: boolean;
@@ -65,7 +69,7 @@ type HoverBlock = { pos: number; top: number };
 type BlockCommand = { id: string; title: string; detail: string; keywords?: string; run: (editor: Editor) => void };
 const paragraph = () => ({ type: "paragraph" });
 const newId = () => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-const safeUrl = (url: string) => /^(https?:\/\/|mailto:|\/(?!\/)|#)/i.test(url) || Boolean(parseInternalLink(url)) || Boolean(parseWorkspaceFileLink(url));
+const safeUrl = (url: string) => /^(https?:\/\/|mailto:|\/(?!\/)|#)/i.test(url) || Boolean(parseInternalLink(url)) || Boolean(parseReferenceLink(url)) || Boolean(parseWorkspaceFileLink(url));
 
 function SourceBlockView({ node, updateAttributes, selected, editor }: NodeViewProps) {
   const [editing, setEditing] = useState(false);
@@ -254,13 +258,20 @@ function NotesBlockEditorInstance({
   const [error, setError] = useState(""), [slash, setSlash] = useState<SlashMenu | null>(null), [menuIndex, setMenuIndex] = useState(0);
   const [hover, setHover] = useState<HoverBlock | null>(null), [blockMenu, setBlockMenu] = useState<MenuPosition | null>(null);
   const [reference, setReference] = useState<SlashMenu | null>(null);
-  const [referenceKind,setReferenceKind] = useState<ReferenceKind>("note");
+  const [referenceKind,setReferenceKind] = useState<ReferenceKind | null>(null);
+  const [referenceSearchText,setReferenceSearchText]=useState<string|undefined>();
+  const referenceSearchInput=useRef<HTMLInputElement>(null),referenceMenuRoot=useRef<HTMLDivElement>(null);
+  const referenceKeyHandler=useRef<(event:{key:string;shiftKey:boolean;repeat:boolean;isComposing?:boolean;nativeEvent?:{isComposing?:boolean};preventDefault:()=>void})=>boolean>(()=>false);
   const [referenceIndex,setReferenceIndex] = useState(0);
   const referenceRef=useRef<SlashMenu | null>(null), referenceIndexRef=useRef(0);
+  const referenceDismissed=useRef("");
   const referenceResultsRef=useRef<ReferenceResult[]>([]);
   const selectReferenceRef=useRef<(item:ReferenceResult)=>void>(()=>{});
-  const referenceSearch=useReferenceSearch<ReferenceResult>({enabled:Boolean(reference)&&!disabled&&!sourceMode,chatId:workspace?.chatId,kind:referenceKind,query:reference?.query || ""});
-  referenceResultsRef.current=referenceSearch.results;
+  const referenceQuery=referenceSearchText ?? reference?.query ?? "";
+  const referenceCategories=Boolean(reference&&!referenceKind&&!referenceQuery.trim());
+  const referenceSearch=useReferenceSearch<ReferenceResult>({enabled:Boolean(reference)&&!referenceCategories&&!disabled&&!sourceMode,chatId:workspace?.chatId,kind:referenceKind,query:referenceQuery});
+  const referenceResults=useMemo(()=>referenceSearch.results.filter(item=>item.kind!=="note" || item.id!==noteId),[referenceSearch.results,noteId]);
+  referenceResultsRef.current=referenceResults;
   const referenceMenuId=useId();
   const [previewAnchor,setPreviewAnchor]=useState<HTMLAnchorElement|null>(null);
   const [selectionMenu, setSelectionMenu] = useState<MenuPosition | null>(null);
@@ -307,19 +318,7 @@ function NotesBlockEditorInstance({
       handleKeyDown: (view, event) => {
         if (settings.current.disabled) return false;
         if (!event.isComposing && referenceRef.current) {
-          const available=referenceResultsRef.current;
-          if(event.key==="ArrowDown" || event.key==="ArrowUp") {
-            event.preventDefault();
-            const next=(referenceIndexRef.current+(event.key==="ArrowDown"?1:-1)+available.length)%Math.max(1,available.length);
-            referenceIndexRef.current=next;setReferenceIndex(next);return true;
-          }
-          if(event.key==="Enter") {
-            event.preventDefault();
-            const item=available[referenceIndexRef.current % Math.max(1,available.length)];
-            if(item)selectReferenceRef.current(item);
-            return true;
-          }
-          if(event.key==="Escape"){event.preventDefault();referenceRef.current=null;setReference(null);return true;}
+          if(referenceKeyHandler.current(event)){event.stopPropagation();return true;}
         }
         if (slashRef.current) {
           const available = commandsRef.current;
@@ -379,6 +378,9 @@ function NotesBlockEditorInstance({
     if (!editor || sourceMode || disabled) { setSelectionMenu(null); return; }
     const update = () => {
       if (editor.isDestroyed || !root.current) return;
+      // ProseMirror emits its blur transaction before the menu input receives focus.
+      // The deferred blur handler owns dismissal during that transition.
+      if(!editor.isFocused && referenceRef.current)return;
       const { from, to, empty, $from } = editor.state.selection;
       const textBefore = $from.parent.textBetween(0, $from.parentOffset, "\n", "\ufffc");
       const match = /^\/([\w -]*)$/.exec(textBefore);
@@ -386,10 +388,15 @@ function NotesBlockEditorInstance({
         const rect = editor.view.coordsAtPos(from), next = { from: from - textBefore.length, to: from, query: match[1].toLowerCase(), top: rect.bottom + 8, left: Math.min(rect.left, window.innerWidth - 310) };
         setSlash(next); slashRef.current = next;
       } else { setSlash(null); slashRef.current = null; }
-      const mention=editor.isFocused && empty && !$from.parent.type.spec.code && !editor.isActive("link") ? notesReferenceQuery(textBefore) : null;
+      const candidate=(editor.isFocused || Boolean(referenceMenuRoot.current?.contains(document.activeElement))) && empty && !$from.parent.type.spec.code && !editor.isActive("link") ? notesReferenceQuery(textBefore) : null;
+      const mention=candidate && referenceDismissed.current!==[from-candidate.length,candidate.query].join(":") ? candidate : null;
+      if(!candidate)referenceDismissed.current="";
       if(mention) {
         const rect=editor.view.coordsAtPos(from);
         const next={from:from-mention.length,to:from,query:mention.query,top:rect.bottom+8,left:Math.max(8,Math.min(rect.left,window.innerWidth-330))};
+        const previous=referenceRef.current;
+        if(!previous||previous.from!==next.from){setReferenceKind(null);setReferenceSearchText(undefined);}
+        else if(previous.query!==next.query)setReferenceSearchText(undefined);
         setReference(next);referenceRef.current=next;
       } else {setReference(null);referenceRef.current=null;}
       if (!empty && !(editor.state.selection instanceof NodeSelection)) {
@@ -397,25 +404,26 @@ function NotesBlockEditorInstance({
         setSelectionMenu({ top: Math.max(8, Math.min(start.top, end.top) - 46), left: Math.max(8, Math.min((start.left + end.left) / 2 - 160, window.innerWidth - 340)) });
       } else setSelectionMenu(null);
     };
-    const blur=()=>{setReference(null);referenceRef.current=null;};
+    let blurFrame=0;
+    const blur=()=>{cancelAnimationFrame(blurFrame);blurFrame=requestAnimationFrame(()=>{if(!referenceMenuRoot.current?.contains(document.activeElement)&&!editor.isFocused){setReference(null);referenceRef.current=null;}});};
     editor.on("transaction", update);editor.on("focus",update);editor.on("blur",blur);update();
-    return () => { editor.off("transaction", update);editor.off("focus",update);editor.off("blur",blur); };
+    return () => {cancelAnimationFrame(blurFrame);editor.off("transaction", update);editor.off("focus",update);editor.off("blur",blur); };
   }, [disabled, editor, sourceMode]);
-  useEffect(()=>{setReferenceIndex(0);referenceIndexRef.current=0;},[reference?.query,referenceKind]);
+  useEffect(()=>{setReferenceIndex(0);referenceIndexRef.current=0;},[referenceQuery,referenceKind]);
   useEffect(()=>{
     const dom=editor?.view.dom;
     if(!dom)return;
     if(reference){
       dom.setAttribute("aria-autocomplete","list");
       dom.setAttribute("aria-controls",referenceMenuId);
-      const selected=referenceSearch.results.length ? referenceMenuId+"-"+referenceIndex : "";
+      const selected=(referenceCategories?NOTES_REFERENCE_KINDS.length:referenceResults.length) ? referenceMenuId+"-option-"+referenceIndex : "";
       if(selected)dom.setAttribute("aria-activedescendant",selected);
       else dom.removeAttribute("aria-activedescendant");
       document.getElementById(selected)?.scrollIntoView({block:"nearest"});
     }else{
       dom.removeAttribute("aria-autocomplete");dom.removeAttribute("aria-controls");dom.removeAttribute("aria-activedescendant");
     }
-  },[editor,reference,referenceMenuId,referenceIndex,referenceSearch.results]);
+  },[editor,reference,referenceMenuId,referenceIndex,referenceResults,referenceCategories]);
   useEffect(()=>{ if(disabled || sourceMode){setReference(null);referenceRef.current=null;setPreviewAnchor(null);} },[disabled,sourceMode]);
   useEffect(()=>{setPreviewAnchor(null);},[draft]);
   useEffect(() => { setMenuIndex(0); menuIndexRef.current = 0; }, [slash?.query]);
@@ -576,6 +584,25 @@ function NotesBlockEditorInstance({
       {type:"text",text:" "},
     ]).run();
   };
+  const selectReferenceCategory=(kind:ReferenceKind|null)=>{
+    setReferenceKind(kind);setReferenceSearchText("");referenceIndexRef.current=0;setReferenceIndex(0);
+    requestAnimationFrame(()=>referenceSearchInput.current?.focus());
+  };
+  referenceKeyHandler.current=event=>{
+    if(!referenceRef.current || event.isComposing || event.nativeEvent?.isComposing)return false;
+    if(event.key==="Backspace"&&referenceKind&&!referenceQuery&&document.activeElement===referenceSearchInput.current){event.preventDefault();selectReferenceCategory(null);return true;}
+    const action=composerReferenceKeyAction({key:event.key,shiftKey:event.shiftKey,repeat:event.repeat,count:referenceCategories?NOTES_REFERENCE_KINDS.length:referenceResultsRef.current.length,index:referenceIndexRef.current});
+    if(action){
+      event.preventDefault();
+      if(action.type==="move"){referenceIndexRef.current=action.index;setReferenceIndex(action.index);}
+      else if(action.type==="dismiss"){referenceDismissed.current=[referenceRef.current.from,referenceRef.current.query].join(":");referenceRef.current=null;setReference(null);editor?.commands.focus();}
+      else if(referenceCategories)selectReferenceCategory(NOTES_REFERENCE_KINDS[action.index]);
+      else {const item=referenceResultsRef.current[action.index];if(item)selectReferenceRef.current(item);}
+      return true;
+    }
+    if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();return true;}
+    return false;
+  };
   const commandIcons:Record<string,typeof List>={text:Type,h1:Heading1,h2:Heading2,h3:Heading3,bullet:List,number:ListOrdered,task:ListTodo,toggle:ChevronRight,quote:Quote,callout:Info,divider:Minus,code:Code2,table:Table2,image:ImageIcon,file:Paperclip,embed:Globe,math:Sigma,"inline-math":Sigma,columns:Columns2,toc:ListTree,reference:Link2,page:FilePlus2,issue:CircleDot};
   const commandIcon=(id:string)=>{const Icon=commandIcons[id] || FileText;return <Icon size={17} aria-hidden="true"/>;};
   const selectHovered = (extend = false) => {
@@ -644,6 +671,8 @@ function NotesBlockEditorInstance({
     }
     const fileLocation = parseWorkspaceFileLink(resolved);
     if (fileLocation) { event.preventDefault(); event.stopPropagation(); window.dispatchEvent(new CustomEvent("ai-chat:open-file", { detail: fileLocation })); return; }
+    const referenceLink=parseReferenceLink(resolved);
+    if(referenceLink){event.preventDefault();event.stopPropagation();window.dispatchEvent(new CustomEvent("ai-chat:open-reference",{detail:referenceLink}));return;}
     const internal = parseInternalLink(resolved);
     if (internal) {
       event.preventDefault(); event.stopPropagation();
@@ -690,11 +719,8 @@ function NotesBlockEditorInstance({
           <button type="button" draggable aria-label="Drag block or open block actions" title="Drag to move · Shift-click to select blocks" onMouseDown={(event) => { if (event.shiftKey) event.preventDefault(); selectHovered(event.shiftKey); }} onClick={(event) => { if (!event.shiftKey) setBlockMenu({ top: event.clientY + 8, left: event.clientX }); }} onDragStart={(event) => { selectHovered(); event.dataTransfer.setData("application/x-metis-note-block", JSON.stringify({ noteId: identity, pos: hover.pos })); event.dataTransfer.effectAllowed = "move"; setBlockMenu(null); }}><GripVertical size={16}/></button>
         </div>}
       </div>}
-    {!disabled && !sourceMode && editor && editor.isActive("table") && <div className="notes-table-tools" role="toolbar" aria-label="Table actions">
-      <button type="button" onClick={() => editor.chain().focus().addRowAfter().run()}>+ Row</button><button type="button" onClick={() => editor.chain().focus().addColumnAfter().run()}>+ Column</button><button type="button" onClick={() => editor.chain().focus().deleteRow().run()}>Delete row</button><button type="button" onClick={() => editor.chain().focus().deleteColumn().run()}>Delete column</button><button type="button" onClick={() => editor.chain().focus().toggleHeaderRow().run()}>Header row</button><button type="button" onClick={() => editor.chain().focus().deleteTable().run()}>Delete table</button>
-    </div>}
-    {!disabled && !sourceMode && editor?.isActive("taskItem") && onCreateIssue && <button type="button" className="notes-code-language" disabled={creatingIssue} onMouseDown={(event) => event.preventDefault()} onClick={() => void createIssueFromSelection()}>Convert task to issue</button>}
-    {!disabled && !sourceMode && editor?.isActive("codeBlock") && <button type="button" className="notes-code-language" onClick={() => openDialog("code")}>Language: {editor.getAttributes("codeBlock").language || "plain text"}</button>}
+    <NotesContextToolbar editor={editor} hidden={disabled || sourceMode || Boolean(selectionMenu || slash || blockMenu || reference || dialog)}
+      onEditCode={() => openDialog("code")} onCreateIssue={onCreateIssue ? () => void createIssueFromSelection() : undefined} creatingIssue={creatingIssue} />
     {!disabled && selectionMenu && editor && !sourceMode && !dialog && createPortal(<div className="notes-selection-toolbar" role="toolbar" aria-label="Text formatting" style={{ top: selectionMenu.top, left: selectionMenu.left }}>
       <ToolButton label="Bold (⌘/Ctrl B)" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}><Bold size={15}/></ToolButton>
       <ToolButton label="Italic (⌘/Ctrl I)" active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}><Italic size={15}/></ToolButton>
@@ -719,16 +745,15 @@ function NotesBlockEditorInstance({
     </>, document.body)}
     {!disabled && reference && !sourceMode && createPortal(<>
       <div className="notes-menu-dismiss" onMouseDown={()=>{setReference(null);referenceRef.current=null;}}/>
-      <div className="notes-block-menu notes-reference-menu" style={{top:"clamp(8px, "+reference.top+"px, calc(100dvh - 360px))",left:"clamp(8px, "+reference.left+"px, calc(100vw - 308px))"}}>
-        <div className="notes-reference-kinds" role="group" aria-label="Reference category">
-          {(["note","canvas","plan"] as const).map(kind=><button key={kind} type="button" aria-pressed={referenceKind===kind} onMouseDown={event=>event.preventDefault()} onClick={()=>setReferenceKind(kind)}>{kind==="note"?"Notes":kind==="canvas"?"Canvases":"Plans"}</button>)}
-        </div>
-        <div role="listbox" id={referenceMenuId} aria-label="Link a note, canvas or plan" aria-busy={referenceSearch.loading}>
-          {referenceSearch.loading ? <div className="notes-menu-empty" role="status">Searching…</div>
-            : referenceSearch.error ? <div className="notes-menu-empty" role="alert">{referenceSearch.error}<button type="button" onClick={referenceSearch.retry}>Retry</button></div>
-            : referenceSearch.results.length ? referenceSearch.results.map((item,index)=><button type="button" key={item.kind+item.id+(item.chatId || "")} role="option" id={referenceMenuId+"-"+index} aria-selected={index===referenceIndex} className={index===referenceIndex?"is-selected":""} onMouseDown={event=>event.preventDefault()} onMouseEnter={()=>{setReferenceIndex(index);referenceIndexRef.current=index;}} onClick={()=>selectReferenceRef.current(item)}><span className="notes-command-icon"><Link2 size={16}/></span><span><strong>{item.label}</strong><small>{item.detail || item.kind}</small></span></button>)
-            : <div className="notes-menu-empty" role="status">No matching {referenceKind==="note"?"notes":referenceKind==="canvas"?"canvases":"plans"}.</div>}
-        </div>
+      <div className="notes-reference-popover" style={{top:Math.max(8,Math.min(reference.top,window.innerHeight-304)),left:Math.max(8,Math.min(reference.left,window.innerWidth-392))}}>
+        <ReferencePicker id={referenceMenuId} rootRef={referenceMenuRoot} inputRef={referenceSearchInput}
+          kind={referenceKind} query={referenceQuery} results={referenceResults} loading={referenceSearch.loading}
+          indexing={referenceSearch.indexing} notice={referenceSearch.notice} error={referenceSearch.error} retry={referenceSearch.retry}
+          index={referenceIndex} onIndex={index=>{referenceIndexRef.current=index;setReferenceIndex(index);}}
+          onCategory={selectReferenceCategory} onQuery={query=>{setReferenceSearchText(query);setReferenceIndex(0);referenceIndexRef.current=0;}}
+          onSelect={item=>selectReferenceRef.current(item)}
+          onKeyDown={event=>{if(referenceKeyHandler.current(event))event.stopPropagation();}}
+        />
       </div>
     </>,document.body)}
     {dialog && <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) setDialog(null); }}><DialogPrimitive.Portal><DialogPrimitive.Overlay className="notes-editor-dialog-overlay"/><DialogPrimitive.Content asChild aria-describedby={undefined} onCloseAutoFocus={(event) => { event.preventDefault(); editor?.commands.focus(); }}>

@@ -12,6 +12,7 @@ import {
   shouldCommitComposerParentState,
   shouldSyncComposerDom,
   composerTranscriptInsert,
+  composerTranscriptFinalizer,
   stripComposerPlaceholderLeak,
 } from "../lib/composer-send";
 
@@ -57,6 +58,37 @@ test("composerTranscriptInsert appends spoken text to the live draft", () => {
   assert.equal(composerTranscriptInsert("draft", "hello"), "draft hello");
   assert.equal(composerTranscriptInsert("  draft  ", "  hello  "), "draft hello");
   assert.equal(composerTranscriptInsert("draft", "   "), "draft");
+});
+
+test("final streaming text replaces only the untouched voice insertion and preserves existing text", () => {
+  let current = { text: "Draft spoken", chatId: "a", epoch: 4, editedAt: "now" };
+  const finalize = composerTranscriptFinalizer("Draft", () => current, text => { current = { ...current, text }; });
+  finalize("spoken words.");
+  assert.equal(current.text, "Draft spoken words.");
+  finalize("duplicate");
+  assert.equal(current.text, "Draft spoken words.");
+});
+
+test("late streaming finalization cannot overwrite edits, sends, chat switches or another recording", () => {
+  const inserted = { text: "Draft spoken", chatId: "a", epoch: 4, editedAt: "now" };
+  for (const change of [
+    { text: "User edited" }, { text: "" }, { chatId: "b" }, { epoch: 5 },
+    { editedAt: "later" },
+  ]) {
+    let current = { ...inserted };
+    let applied = false;
+    const finalize = composerTranscriptFinalizer("Draft", () => current, () => { applied = true; });
+    current = { ...current, ...change };
+    finalize("spoken words.");
+    assert.equal(applied, false, JSON.stringify(change));
+  }
+});
+
+test("empty final STT result retains the streamed draft", () => {
+  let text = "spoken";
+  const finalize = composerTranscriptFinalizer("", () => ({ text, chatId: null, epoch: 1, editedAt: "" }), value => { text = value; });
+  finalize("");
+  assert.equal(text, "spoken");
 });
 
 test("shouldAcceptRemoteComposerInput rejects a stale draft after local clear", () => {

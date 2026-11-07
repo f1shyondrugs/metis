@@ -80,6 +80,9 @@ async function run(task: InternalTask) {
     if ((task.state.status as string) === "cancelled") throw new Error("Upload cancelled");
     await task.onComplete?.(result);
     task.result = result; task.state.status = "completed"; task.state.remainingSeconds = 0;
+    // Hide only the tray row; queued messages still need the completed result.
+    const timer = setTimeout(() => dismissUpload(task.state.id), 5_000);
+    if (typeof timer === "object" && "unref" in timer) timer.unref();
     task.resolve(result);
     task.file = new File([], task.state.name);
   } catch (error) {

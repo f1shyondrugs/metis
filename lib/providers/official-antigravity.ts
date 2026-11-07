@@ -384,7 +384,7 @@ async function runIsolatedAntigravityOAuth(input:{flowId:string;ownerId:string})
     name: "xterm-256color",
     cols: 1000,
     rows: 50,
-    cwd: launch.cwd||tempHome,
+    cwd: launch.cwd || config.agentCwd,
     env: launch.env as Record<string, string>,
   });
   let output = "";
@@ -560,7 +560,7 @@ export async function runOfficialAntigravityJob(context: {
         ...(context.extraEnv || {}),
       }),
   );
-  const terminal=pty.spawn(launch.command,launch.args,{name:"xterm-256color",cols:1000,rows:50,cwd:launch.cwd||sessionHome,env:launch.env as Record<string,string>});
+  const terminal=pty.spawn(launch.command,launch.args,{name:"xterm-256color",cols:1000,rows:50,cwd:launch.cwd || context.cwd || config.agentCwd,env:launch.env as Record<string,string>});
   let output = "";
   let jsonlBuffer = "";
   let conversationId = context.conversationId === "continue" ? undefined : context.conversationId;

@@ -188,7 +188,97 @@ export function defaultGraphDocument(): GraphDocument {
   };
 }
 
-export function compileGraphExpression(expr: string, names: string[] = []) {
+type NumericExpression = (scope: Record<string, number>) => number;
+
+/** A numeric grammar for public graphs; author text is never JavaScript. */
+function compileNumericGraphExpression(expr: string, names: string[]): NumericExpression {
+  const tokens: string[] = [];
+  const pattern = /\s*(?:(\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][A-Za-z0-9_]*|\*\*|[+\-*/%^(),])/y;
+  let offset = 0;
+  while (offset < expr.length) {
+    if (!expr.slice(offset).trim()) break;
+    pattern.lastIndex = offset;
+    const match = pattern.exec(expr);
+    if (!match) throw new Error("Unsafe graph expression: " + expr);
+    tokens.push(match[0].trim());
+    offset = pattern.lastIndex;
+  }
+  const allowed = new Set(["x", ...names.map(name => name.trim()).filter(Boolean)]);
+  let position = 0, depth = 0;
+  const take = (token: string) => tokens[position] === token && (++position, true);
+  const fail = (): never => { throw new Error("Invalid numeric graph expression: " + expr); };
+  const primary = (): NumericExpression => {
+    if (++depth > 100) fail();
+    try {
+      const token = tokens[position++];
+      if (!token) return fail();
+      if (token === "(") {
+        const nested = addition();
+        if (!take(")")) fail();
+        return nested;
+      }
+      if (/^(?:\d|\.\d)/.test(token)) {
+        const number = Number(token);
+        if (!Number.isFinite(number)) fail();
+        return () => number;
+      }
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) return fail();
+      const lower = token.toLowerCase();
+      if (take("(")) {
+        if (!MATH_FNS.has(lower)) fail();
+        const args: NumericExpression[] = [];
+        if (!take(")")) {
+          do { args.push(addition()); } while (take(","));
+          if (!take(")")) fail();
+        }
+        const fn = (Math as unknown as Record<string, (...args: number[]) => number>)[lower === "ln" ? "log" : lower];
+        return scope => fn(...args.map(argument => argument(scope)));
+      }
+      if (MATH_CONST.has(lower)) return () => lower === "pi" ? Math.PI : Math.E;
+      if (!allowed.has(token) && !allowed.has(lower)) fail();
+      return scope => {
+        const key = Object.hasOwn(scope, token) ? token : lower;
+        const value = Object.hasOwn(scope, key) ? scope[key] : undefined;
+        return typeof value === "number" && Number.isFinite(value) ? value : Number.NaN;
+      };
+    } finally { depth -= 1; }
+  };
+  const power = (): NumericExpression => {
+    const left = primary();
+    if (take("^") || take("**")) {
+      const right = unary();
+      return scope => left(scope) ** right(scope);
+    }
+    return left;
+  };
+  const unary = (): NumericExpression => {
+    if (take("+")) return unary();
+    if (take("-")) { const value = unary(); return scope => -value(scope); }
+    return power();
+  };
+  const multiplication = (): NumericExpression => {
+    let value = unary();
+    while (["*", "/", "%"].includes(tokens[position])) {
+      const operator = tokens[position++], left = value, right = unary();
+      value = scope => operator === "*" ? left(scope) * right(scope) : operator === "/" ? left(scope) / right(scope) : left(scope) % right(scope);
+    }
+    return value;
+  };
+  const addition = (): NumericExpression => {
+    let value = multiplication();
+    while (["+", "-"].includes(tokens[position])) {
+      const operator = tokens[position++], left = value, right = multiplication();
+      value = scope => operator === "+" ? left(scope) + right(scope) : left(scope) - right(scope);
+    }
+    return value;
+  };
+  const evaluate = addition();
+  if (position !== tokens.length) fail();
+  return scope => { const value = evaluate(scope); return Number.isFinite(value) ? value : Number.NaN; };
+}
+
+export function compileGraphExpression(expr: string, names: string[] = [], options?: { numericOnly?: boolean }) {
+  if (options?.numericOnly) return compileNumericGraphExpression(expr.trim(), names);
   const source = expr.trim().replace(/\^/g, "**");
   if (!source) throw new Error("Function is empty.");
   if (!SAFE_EXPR.test(source)) throw new Error(`Unsafe graph expression: ${expr}`);

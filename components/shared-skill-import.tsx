@@ -45,7 +45,7 @@ export function SharedSkillImport({ initialToken, onImported }: { initialToken?:
     </form> : null}
     {busy ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : null}
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-    {skill ? <><div><h2 className="break-words text-xl font-semibold">{skill.title}</h2>{skill.description ? <p className="mt-2 text-sm leading-6 text-muted-foreground">{skill.description}</p> : null}<p className="mt-2 text-xs text-muted-foreground">{skill.files.length} {skill.files.length===1 ? "file" : "files"} · Shared {new Date(skill.createdAt).toLocaleDateString()}</p></div>
+    {skill ? <><div><h2 className="break-words text-xl font-semibold">{skill.title}</h2>{skill.description ? <p className="mt-2 text-sm leading-6 text-muted-foreground">{skill.description}</p> : null}<p className="mt-2 text-xs text-muted-foreground">{skill.files.length} {skill.files.length===1 ? "file" : "files"} · Shared {new Date(skill.createdAt).toLocaleDateString("en")}</p></div>
       <div className="flex flex-wrap items-end gap-3 border-y border-border py-4">
         {imported ? <p role="status" className="text-sm">Skill imported into your library.</p> : signedIn ? <><label className="min-w-0 flex-1 basis-52 text-xs text-muted-foreground">Import as<Input aria-label="Imported skill id" value={id} onChange={e=>setId(e.target.value)} className="mt-2" /></label><Button disabled={busy||!id.trim()} onClick={()=>void importSkill()}>Import skill</Button></> : <div className="space-y-3"><p className="text-sm text-muted-foreground">Sign in to Metis, then return to this link to import the skill.</p><Button asChild variant="outline"><Link href="/">Open Metis</Link></Button></div>}
       </div>

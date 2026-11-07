@@ -1,3 +1,5 @@
+import {Agent} from "@cursor/sdk";
+import {nativeIsolationEnabled} from "@/lib/native-isolation-policy";
 import type {Agent as SdkFactory,SDKAgent as SdkAgent,SDKMessage,RunResult} from "@cursor/sdk";
 import {StringDecoder} from "node:string_decoder";
 import {realpathSync} from "node:fs";
@@ -66,7 +68,12 @@ class NativeCursorAgent {
  }
  async [Symbol.asyncDispose](){if(this.closed)return;try{await this.request({op:"dispose"});}finally{this.closed=true;this.child.kill("SIGKILL");this.lines.close();}}
 }
-export function isolatedCursor(owner:string,workspace:string){
+export function isolatedCursor(owner:string,workspace:string): {
+ create: (options: CreateOptions) => Promise<NativeCursorAgent | SdkAgent>;
+ resume: (id: string, options: CreateOptions) => Promise<NativeCursorAgent | SdkAgent>;
+} {
+ if (!nativeIsolationEnabled()) return Agent;
+ if (process.platform !== "linux") throw Error("Native isolation requires Linux");
  const scope=createNativeRuntimeScope(owner,workspace);
  return {create:(options:CreateOptions)=>new NativeCursorAgent(scope).initialize("create",options),resume:(id:string,options:CreateOptions)=>new NativeCursorAgent(scope).initialize("resume",options,id)};
 }

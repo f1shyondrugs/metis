@@ -1,3 +1,5 @@
+.notes-reference-popover { position:fixed; z-index:90; width:min(384px,calc(100vw - 16px)); max-height:min(288px,calc(100dvh - 16px)); overflow-y:auto; border:1px solid var(--border); border-radius:12px; background:var(--popover); color:var(--popover-foreground); padding:6px; box-shadow:0 8px 30px #0003; }
+.notes-reference-popover button:focus-visible { outline:2px solid var(--ring); outline-offset:-2px; }
 .notes-reference-menu { max-width:calc(100vw - 16px); max-height:min(350px, calc(100dvh - 16px)); }
 .notes-reference-kinds { display:flex; gap:4px; padding:6px; border-bottom:1px solid var(--border); }
 .notes-reference-kinds>button { flex:1; min-height:44px; padding:6px 10px; border-radius:4px; color:var(--muted-foreground); }
@@ -63,14 +65,20 @@
 .notes-block-handle button[draggable] { cursor:grab; }.notes-block-handle button[draggable]:active { cursor:grabbing; }
 .notes-prosemirror .tableWrapper { overflow:auto; margin:14px 0; }
 .notes-prosemirror table { border-collapse:collapse; width:100%; table-layout:fixed; overflow:hidden; font-size:14px; }
+.notes-prosemirror table:has(.katex) { table-layout:auto; overflow-wrap:normal; }
+.notes-prosemirror table .katex { white-space:nowrap; }
 .notes-prosemirror td,.notes-prosemirror th { border:1px solid var(--border); padding:8px 12px; position:relative; min-width:80px; vertical-align:top; }
 .notes-prosemirror th { background:var(--secondary); text-align:left; font-weight:600; }
 .notes-prosemirror .selectedCell:after { background:color-mix(in srgb,var(--foreground) 12%,transparent); content:""; inset:0; position:absolute; pointer-events:none; z-index:2; }
 .notes-prosemirror .column-resize-handle { background:var(--ring); bottom:-2px; top:0; right:-2px; width:4px; position:absolute; pointer-events:none; }
 .notes-prosemirror.resize-cursor { cursor:col-resize; }
-.notes-table-tools { display:flex; flex-wrap:wrap; gap:4px; padding:8px 0 12px 30px; font-size:11px; color:var(--muted-foreground); }
-.notes-table-tools button,.notes-code-language { padding:4px 7px; border:1px solid var(--border); border-radius:4px; }.notes-table-tools button:hover { color:var(--foreground); background:var(--secondary); }
-.notes-code-language { font-size:11px; color:var(--muted-foreground); margin:0 0 12px 30px; }
+.notes-context-toolbar { z-index:85; width:max-content; max-width:min(620px,calc(100vw - 16px)); max-height:var(--radix-popover-content-available-height); overflow-y:auto; flex-direction:row; flex-wrap:wrap; align-items:center; gap:4px; padding:6px; font-size:12px; animation:none; }
+.notes-context-toolbar .notes-context-label { display:inline-flex; align-items:center; gap:5px; padding:0 6px; color:var(--muted-foreground); font-size:11px; }
+.notes-context-toolbar button { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:32px; padding:5px 8px; border-radius:4px; white-space:nowrap; cursor:pointer; color:var(--popover-foreground); }
+.notes-context-toolbar button:hover,.notes-context-toolbar button[aria-pressed=true] { background:var(--accent); }
+.notes-context-toolbar button:focus-visible { outline:2px solid var(--ring); outline-offset:-2px; }
+.notes-context-toolbar button:disabled { opacity:.4; cursor:default; }
+@media(max-width:640px), (pointer:coarse) { .notes-context-toolbar button { min-height:44px; min-width:44px; } }
 .notes-callout { background:var(--secondary); border-radius:4px; padding:12px 16px 12px 40px; position:relative; margin:14px 0; }
 .notes-callout:before { content:"ⓘ"; position:absolute; top:13px; left:15px; color:var(--muted-foreground); }
 .notes-toggle-block { margin:10px 0; }
@@ -89,7 +97,7 @@
 .notes-source-block textarea { display:block; width:100%; resize:vertical; padding:12px; background:var(--background); font-family:var(--font-mono),monospace; font-size:12px; line-height:1.5; outline:none; }
 .notes-source-preview { padding:12px; white-space:normal; }.notes-source-preview .markdown-body { font-size:14px; }
 .notes-math-block { margin:14px 0; padding:12px; background:var(--secondary); border-radius:4px; }
-.notes-math-preview { width:100%; overflow:auto; min-height:42px; }.notes-math-preview .katex-display { margin:0; }
+.notes-math-preview { display:block; width:100%; max-width:100%; overflow:auto; min-height:42px; padding:0.25em 0; }.notes-math-preview .katex-display { margin:0; }
 .notes-math-input { display:flex; align-items:center; gap:10px; margin-top:8px; font-size:11px; color:var(--muted-foreground); }
 .notes-math-input input { min-width:0; width:100%; background:var(--background); color:var(--foreground); padding:5px 8px; border:1px solid var(--border); border-radius:4px; font-family:var(--font-mono),monospace; }
 .notes-inline-math { display:inline; }.notes-inline-math button { display:inline; padding:0 3px; }.notes-inline-math input { max-width:180px; padding:0 5px; background:var(--secondary); }
@@ -119,7 +127,7 @@
 .notes-editor-dialog label { display:block; margin:12px 0; font-size:11px; color:var(--muted-foreground); }
 .notes-editor-dialog input { width:100%; padding:9px 10px; margin-top:5px; background:var(--background); border:1px solid var(--border); border-radius:4px; color:var(--foreground); font-size:13px; }
 .notes-editor-dialog footer { display:flex; justify-content:flex-end; gap:6px; margin-top:20px; }.notes-editor-dialog footer button { padding:7px 12px; border-radius:4px; }.notes-editor-dialog footer button:hover { background:var(--secondary); }.notes-editor-dialog button[type=submit] { background:var(--foreground); color:var(--background); }
-@media(max-width:640px) { .notes-prosemirror { padding-left:24px; font-size:14px; }.notes-prosemirror h1 { font-size:26px; }.notes-prosemirror h2 { font-size:22px; }.notes-columns { flex-direction:column; gap:12px; }.notes-selection-toolbar { max-width:calc(100vw - 16px); flex-wrap:wrap; }.notes-block-handle { left:-16px; }.notes-table-tools { padding-left:24px; } }
+@media(max-width:640px) { .notes-prosemirror { padding-left:24px; font-size:14px; }.notes-prosemirror h1 { font-size:26px; }.notes-prosemirror h2 { font-size:22px; }.notes-columns { flex-direction:column; gap:12px; }.notes-selection-toolbar { max-width:calc(100vw - 16px); flex-wrap:wrap; }.notes-block-handle { left:-16px; } }
 .notes-table-of-contents { margin:14px 0; padding:12px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); font-size:13px; }
 .notes-table-of-contents strong { display:block; font-size:11px; color:var(--muted-foreground); font-weight:550; margin-bottom:7px; }
 .notes-table-of-contents button { display:block; text-align:left; width:100%; color:var(--muted-foreground); padding:4px 0; }

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parseImageFraming, withImageFraming } from "@/lib/image-framing";
 import { mkdirSync, renameSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -407,7 +408,10 @@ export async function importNoteArchive(input: {
             return filePages.get(local) ?? id;
           } catch { return id; }
         });
-        if (content !== note.content) note = updateNote(note.id, { ownerId: input.ownerId, content, expectedVersion: note.version })!;
+        const parsedCover = note.cover ? parseImageFraming(note.cover) : null;
+        const coverSource = parsedCover ? sourceAttachmentUrls.get(parsedCover.source) : undefined;
+        const cover = coverSource && parsedCover ? withImageFraming(coverSource, parsedCover.framing) : note.cover;
+        if (content !== note.content || cover !== note.cover) note = updateNote(note.id, { ownerId: input.ownerId, content, cover, expectedVersion: note.version })!;
         created.set(page.key, note);
       }
       for (const page of pages) {

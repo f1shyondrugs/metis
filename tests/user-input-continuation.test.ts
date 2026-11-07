@@ -18,13 +18,31 @@ async function fixture(){
  const queued=jobs.enqueueJob({chatId:chat.id,userId:owner.id,modelId,message:"Help with this task"});
  const job=jobs.claimNextJob()!;assert.equal(job.id,queued.id);
  const submit=(id:string)=>answer.POST(new Request("http://test/api/chat/answer",{method:"POST",headers:{cookie:"ai_chat_auth="+token,"content-type":"application/json"},body:JSON.stringify({questionId:id,values:{choice:"saved answer"}})}));
+ const dismiss=(id:string)=>answer.POST(new Request("http://test/api/chat/answer",{method:"POST",headers:{cookie:"ai_chat_auth="+token,"content-type":"application/json"},body:JSON.stringify({questionId:id,cancelled:true})}));
  function ask(){
   const pending=questions.createPendingQuestion([{question:"Details?",key:"choice",type:"text"}],chat.id,owner.id,{jobId:job.id,runId:job.id});
   jobs.updateJob(job.id,{status:"waiting_input"});store.updateChat(chat.id,{runStatus:"waiting_for_user",pendingQuestion:{...pending,status:"waiting_for_user"}},owner.id);
   return pending;
  }
- return {owner,chat,job,store,jobs,questions,codex,runner,submit,ask};
+ return {owner,chat,job,store,jobs,questions,codex,runner,submit,dismiss,ask};
 }
+test("a cancelled form lets the provider acknowledge cancellation without another question or duplicate run",async t=>{
+ const f=await fixture();let calls=0;
+ t.mock.method(f.codex.codexAdapter,"runTurn",async(context:ProviderContext)=>{
+  calls++;context.onText("Please choose.");context.onTool({id:"ask",name:"ask_user",status:"running"});
+  const pending=f.ask();
+  try{
+   assert.equal((await f.dismiss(pending.questionId)).status,200);
+   assert.deepEqual(await pending.promise,["User cancelled"]);
+   context.onTool({id:"ask",name:"ask_user",status:"completed",result:JSON.stringify({cancelled:true,summary:"User cancelled"})});
+   context.onText(" Cancelled.");
+   return {};
+  }finally{pending.stop();}
+ });
+ await f.runner.runAlternativeProviderJob(f.job,f.chat);
+ assert.equal(calls,1);assert.equal(f.jobs.getJob(f.job.id)!.status,"completed");assert.equal(f.jobs.claimNextJob(),null);
+ assert.match(f.store.getChat(f.chat.id)!.messages.filter(m=>m.role==="assistant").at(-1)!.content,/Cancelled/);
+});
 test("the real provider runner automatically continues when the answer only completes ask_user and no reply follows",async t=>{
  const f=await fixture();let calls=0,questionId="";
  t.mock.method(f.codex.codexAdapter,"runTurn",async(context:ProviderContext)=>{

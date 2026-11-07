@@ -28,6 +28,9 @@ export type ToolPart = {
   editedFile?: import("./edited-files").EditedFile | null;
   input?: string;
   result?: string;
+  research?: import("./research-progress").ResearchProgress;
+  /** Server-derived research route, retained before wrapper input truncation; never read from result bodies. */
+  researchToolName?: string;
   /** UI-only URL for a large persisted output, loaded on expansion. */
   resultUrl?: string;
   /** UI-only URL for full tool arguments, loaded on expansion. */
@@ -120,6 +123,7 @@ export type ChatMessage = {
 
 export type MessagePart =
  | import("./provider-retry").ProviderRetryPart
+  | import("./run-control-event").RunControlPart
  | { type: "thinking"; content: string; done?: boolean; durationMs?: number }
  | ({ type: "tool" } & ToolPart)
  | {
@@ -364,6 +368,7 @@ export type ChatShare = {
   id: string;
   active: boolean;
   passwordHash?: string;
+  accessKey?: string;
   content?: {
     attachments?: boolean;
     thinking?: boolean;
@@ -416,7 +421,7 @@ export type ChatSessionState = {
   terminalSessionId?: string;
   terminalTabs?: TerminalTab[];
   activeTerminalTabId?: string;
-  workspaceTab?: "canvas" | "plan" | "terminal" | "files" | "browser" | "monitor" | "team" | "memory";
+  workspaceTab?: "canvas" | "plan" | "terminal" | "files" | "browser" | "monitor" | "team" | "memory" | "notes";
   activeWorkspaceId?: string | null;
   workspaceOpen?: boolean;
   workspaceWidth?: number;
@@ -552,7 +557,7 @@ export type ChatIndexEntry = {
   pinned?: boolean;
   archived?: boolean;
   lastMessageSent?: string;
-  share?: Omit<ChatShare, "passwordHash">;
+  share?: Omit<ChatShare, "passwordHash" | "accessKey">;
   projectId?: string;
 };
 

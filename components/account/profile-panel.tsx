@@ -1,6 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, Link2, Pencil, Plus, Share2, Trash2 } from "lucide-react";
+import { Check, Copy, Crop, ExternalLink, Link2, Pencil, Plus, Share2, Trash2 } from "lucide-react";
+import { ImageFramingDialog } from "@/components/image-framing-dialog";
+import { BannerUpload } from "@/components/banner-upload";
+import { BannerHeader } from "@/components/banner-image";
+import { uploadProfileBannerFile } from "@/lib/profile-banner-upload";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,16 +25,24 @@ async function avatarData(file:File) {
   if(!["image/png","image/jpeg","image/webp"].includes(file.type) || file.size>5_000_000) throw new Error("Choose a PNG, JPEG or WebP image smaller than 5 MB.");
   const bitmap=await createImageBitmap(file);
   try {
-    const canvas=document.createElement("canvas");canvas.width=256;canvas.height=256;
+    const canvas=document.createElement("canvas");
     const context=canvas.getContext("2d");if(!context)throw new Error("Could not read this image.");
-    const side=Math.min(bitmap.width,bitmap.height);
-    context.drawImage(bitmap,(bitmap.width-side)/2,(bitmap.height-side)/2,side,side,0,0,256,256);
-    return canvas.toDataURL("image/png");
+    let edge=512;
+    while(edge>=64) {
+      const scale=Math.min(1,edge/Math.max(bitmap.width,bitmap.height));
+      canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+      context.drawImage(bitmap,0,0,canvas.width,canvas.height);
+      const source=canvas.toDataURL("image/png");
+      if(source.length<340_000)return source;
+      edge=Math.floor(edge*0.8);
+    }
+    throw new Error("This image is too large. Choose a smaller image.");
   } finally {bitmap.close();}
 }
 export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChange:(profile:AccountProfile)=>void}) {
   const [draft,setDraft]=useState(profile),[editing,setEditing]=useState(false),[saving,setSaving]=useState(false),[uploading,setUploading]=useState(false);
   const [handleError,setHandleError]=useState("");
+  const [imageToAdjust,setImageToAdjust]=useState<string|null>(null);
   const sharePath="/p/"+(profile.handle || profile.shareId);
   const [activity,setActivity]=useState<AccountUsage|null>(null),[activityError,setActivityError]=useState(""),[copied,setCopied]=useState(false);
   useEffect(()=>{if(!editing)setDraft(profile);},[profile,editing]);
@@ -46,7 +58,7 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
     setSaving(true);setHandleError("");
     try {
       const response=await fetch("/api/profile",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-        displayName:value.displayName,handle:value.handle,bio:value.bio,avatar:value.avatar,links:value.links,sharing:Boolean(value.shareId),shareActivity:value.shareActivity,
+        displayName:value.displayName,handle:value.handle,bio:value.bio,avatar:value.avatar,banner:value.banner ?? null,links:value.links,sharing:Boolean(value.shareId),shareActivity:value.shareActivity,
       })});
       const data=await response.json();
       if(!response.ok){if(data.field==="handle")setHandleError(data.error);throw new Error(data.error || "Could not save profile.");}
@@ -62,6 +74,7 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Profile</h1><p className="mt-2 text-sm text-muted-foreground">A little about you, and what you build.</p></div>
       {!editing ? <Button variant="outline" className="h-11 gap-2" onClick={()=>{setDraft(profile);setHandleError("");setEditing(true);}}><Pencil className="size-4" /> Edit profile</Button>:null}
     </div>
+    <BannerHeader value={editing ? draft.banner : profile.banner} alt="Profile banner" bannerClassName="aspect-[4/1] w-full rounded-xl" gapClassName="mt-8">
     <div className="grid items-start gap-8 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10">
       <div className="min-w-0">
         <ProfileAvatar profile={editing?draft:profile} name={profile.displayName} className="mb-5 size-24 text-3xl sm:size-28" />
@@ -73,12 +86,14 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
       <div className="min-w-0 space-y-6">
         {editing ? <form onSubmit={event=>{event.preventDefault();void save(draft);}} className="space-y-5 rounded-xl border border-border/60 p-5">
           <h2 className="text-base font-medium">Edit profile</h2>
+          <div><p className="mb-1 text-sm">Profile banner</p><BannerUpload value={draft.banner} disabled={saving || uploading} uploadFile={uploadProfileBannerFile} onUploadingChange={setUploading} onChange={banner=>setDraft(value=>({...value,banner}))}/><p className="mt-1 text-xs text-muted-foreground">PNG, JPG, WebP or GIF up to 20 MB</p></div>
           <div><label htmlFor="profile-image" className="mb-2 block text-sm">Profile picture</label>
             <Input id="profile-image" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.gif" disabled={saving || uploading} className="h-11" onChange={event=>{
               const file=event.target.files?.[0];if(!file)return;
-              setUploading(true);void avatarData(file).then(avatar=>setDraft(value=>({...value,avatar}))).catch(error=>toast.error(error.message)).finally(()=>setUploading(false));event.target.value="";
+              setUploading(true);void avatarData(file).then(setImageToAdjust).catch(error=>toast.error(error.message)).finally(()=>setUploading(false));event.target.value="";
             }}/><p role="status" className="mt-2 text-xs text-muted-foreground">{uploading ? "Uploading picture…" : "Animated GIF up to 50 MB · PNG, JPEG or WebP up to 5 MB"}</p>
-            {draft.avatar ? <Button variant="ghost" type="button" size="sm" disabled={saving || uploading} onClick={()=>setDraft({...draft,avatar:null})}>Remove picture</Button>:null}
+            {draft.avatar ? <div className="mt-2 flex flex-wrap gap-2"><Button variant="outline" type="button" className="min-h-11 gap-2" disabled={saving || uploading} onClick={()=>setImageToAdjust(draft.avatar)}><Crop className="size-4" aria-hidden="true"/>Adjust picture</Button><Button variant="ghost" type="button" className="min-h-11" disabled={saving || uploading} onClick={()=>setDraft({...draft,avatar:null})}>Remove picture</Button></div>:null}
+            <ImageFramingDialog value={imageToAdjust} kind="profile" onClose={()=>setImageToAdjust(null)} onApply={avatar=>{setDraft(value=>({...value,avatar}));setImageToAdjust(null);}}/>
           </div>
           <label className="block space-y-2 text-sm">Name<Input aria-label="Profile name" value={draft.displayName} maxLength={80} required onChange={event=>setDraft({...draft,displayName:event.target.value})} className="h-11"/></label>
           <div className="space-y-2">
@@ -100,7 +115,7 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
         {activity ? <TokenHeatmap days={activity.days} detailDays={activity.days}/> : <div className="rounded-xl border border-border/60 p-5 text-sm text-muted-foreground" role="status">{activityError || "Loading token activity…"}</div>}
         <section className="rounded-xl border border-border/60 p-5">
           <h2 className="flex items-center gap-2 text-sm font-medium"><Share2 className="size-4"/> Share profile</h2>
-          <div className="mt-4 flex items-center justify-between gap-4"><div><label htmlFor="profile-sharing" className="text-sm">Shareable link</label><p className="mt-1 text-xs text-muted-foreground">Anyone with the link can see your name, picture, bio and links.</p></div>
+          <div className="mt-4 flex items-center justify-between gap-4"><div><label htmlFor="profile-sharing" className="text-sm">Shareable link</label><p className="mt-1 text-xs text-muted-foreground">Anyone with the link can see your name, picture, banner, bio and links.</p></div>
             <Switch id="profile-sharing" checked={Boolean(profile.shareId)} disabled={saving || editing} onCheckedChange={sharing=>void save({...profile,shareId:sharing?"new":null})}/>
           </div>
           {profile.shareId ? <><div className="mt-4 flex items-center justify-between gap-4"><div><label htmlFor="profile-share-activity" className="text-sm">Include token activity</label><p className="mt-1 text-xs text-muted-foreground">Share the daily heatmap. Usage details and costs stay private.</p></div>
@@ -112,5 +127,6 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
         </section>
       </div>
     </div>
+    </BannerHeader>
   </div>;
 }

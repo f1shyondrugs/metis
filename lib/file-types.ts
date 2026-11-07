@@ -31,7 +31,7 @@ export function fileViewKind(mime: string, name: string) {
   return "binary";
 }
 export function isFileUrl(url: string) {
-  return /^\/api\/(?:file-uploads\/[a-f0-9-]+\/file|uploads\/[^\s]+|share\/attachment\?[^\s]+|notes\/[^/]+\/attachments\/[^\s]+)$/.test(url);
+  return /^\/api\/(?:file-uploads\/[a-f0-9-]+\/file|uploads\/[^\s]+|share\/attachment\?[^\s]+|shared-notes\/[A-Za-z0-9_-]{43}\/assets\?[^\s]+|notes\/[^/]+\/attachments\/[^\s]+)$/.test(url);
 }
 /** Keep authenticated file downloads on the existing attachment endpoints. */
 export function fileDownloadUrl(url: string) {

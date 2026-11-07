@@ -10,7 +10,9 @@ import type { DocumentExportFormat } from "@/lib/document-export";
 
 type ExportDocument = { id: string; name: string; content: string; type: "canvas" | "plan" };
 
-export function WorkspaceExportMenu({ chatId, workspace }: { chatId: string; workspace: ExportDocument }) {
+type ExportProps = { workspace: ExportDocument } & ({ chatId: string; shareId?: never } | { shareId: string; chatId?: never });
+
+export function WorkspaceExportMenu({ chatId, shareId, workspace }: ExportProps) {
   const [exporting, setExporting] = useState(false);
   const inFlight = useRef(false);
 
@@ -19,9 +21,10 @@ export function WorkspaceExportMenu({ chatId, workspace }: { chatId: string; wor
     inFlight.current = true;
     setExporting(true);
     // Capture the current draft before a refresh or workspace switch can change it.
-    const snapshot = { chatId, workspaceId: workspace.id, name: workspace.name, content: workspace.content, format };
+    const snapshot = shareId ? { id: shareId, workspaceId: workspace.id, format }
+      : { chatId, workspaceId: workspace.id, name: workspace.name, content: workspace.content, format };
     try {
-      const response = await fetch("/api/workspace-export", {
+      const response = await fetch(shareId ? "/api/share/workspace" : "/api/workspace-export", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot),
       });
       if (!response.ok) {

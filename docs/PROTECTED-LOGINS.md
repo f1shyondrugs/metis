@@ -33,13 +33,21 @@ Console credentials use the same protected form and encrypted storage. They bind
 to the SSH host, account, authentication method and host key, or to a local PAM
 account/method. `console_connect`, `console_authenticate` and
 `console_request_password` request protected authentication; ordinary
-`console_command` input must never contain a password. The service preserves the
-host's existing SSH, sudo and PAM policy.
+`console_command` input must never contain a password. Local console authentication always starts a fixed su/sudo binary in a fresh
+broker-owned PTY. Reauthentication closes the previous local console and loses
+its shell state. sudo authenticates the console service account; su authenticates
+the target account, under existing OS policy. Protected elevation inside an
+existing SSH session is unavailable: connect directly to the intended SSH account.
+The service never sends authentication commands or passwords to an arbitrary
+program already running in a terminal.
 
 ## Deployment prerequisites
 
 This feature requires a reviewed Linux service deployment; copying the UI alone
-is insufficient. The templates under `services/browser-login/` and
+is insufficient. Existing installations keep their previous native execution
+until an operator explicitly sets `METIS_NATIVE_ISOLATION=1`. Protected login
+requests and the credential engine refuse to run without this opt-in on Linux.
+This is a deployment mode, never a per-request override or automatic fallback. The templates under `services/browser-login/` and
 `services/secure-console/` document the service topology. Adapt their Node,
 release, browser-runtime, working-directory and unit paths to the installation.
 They are templates for operator installation, not an automatic installer step.
@@ -68,7 +76,13 @@ for Bubblewrap, immutable code, per-owner writable mounts, gateway edit receipts
 and systemd hardening requirements. Linux native execution fails closed when
 that boundary cannot be established. This does not establish an equivalent OS
 boundary on Windows or macOS. Configure and test the full deployment before
-enabling protected credential use.
+enabling protected credential use. Provision Bubblewrap, user namespaces, an
+unprivileged service identity, immutable code and a separate writable workspace
+first. Set `METIS_NATIVE_ISOLATION=1` on app, worker and credential services
+together, restart the worker only when idle, and verify all native providers
+before allowing protected logins. Do not enable the mode on an old HOME workspace
+without migrating that workspace. Once enabled, isolation failures stop execution;
+they never retry outside the namespace.
 
 ## Navigation and SSO
 

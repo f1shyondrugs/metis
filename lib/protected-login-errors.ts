@@ -1,6 +1,7 @@
 // Only these fixed diagnostics may cross the private-browser boundary.
 // Never expose Playwright exceptions, selectors, URLs, request bodies or values.
 const messages = {
+  isolation_required: "Protected logins are unavailable until an operator enables and verifies the Linux isolation deployment. Never enter credentials through ordinary chat or ask_user.",
   session_unavailable: "The protected browser session is unavailable. Close the browser, open the intended HTTPS login page again, then request a new protected login.",
   session_limit: "The protected browser session limit has been reached. Close an unused protected browser and retry.",
   page_unavailable: "The protected login page could not be opened. Check the website and retry.",

@@ -4,7 +4,7 @@ import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import { mergeQueuedFollowUps, shouldStartQueuedFollowUp } from "../lib/composer-send";
-import { updateChatQueue, type ChatQueueState, type ChatQueueUpdate } from "../lib/queue-client";
+import { saveQueuedFollowUps, updateChatQueue, type ChatQueueState, type ChatQueueUpdate } from "../lib/queue-client";
 
 const file = ts.createSourceFile("app-shell.tsx", readFileSync("components/app-shell.tsx", "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const handlers: Record<string, string> = {};
@@ -36,7 +36,7 @@ function fixture() {
     modelId: "unit-test-selection",
     pendingQuestion: null as { questionId: string } | null, pendingQuestionIdRef: { current: null as string | null }, answeringQuestion: false,
     sendInFlightKeysRef: { current: new Set<string>() }, queueDrainRef, queueDrainBlockedRef, queuedSendRef,
-    shouldStartQueuedFollowUp, mergeQueuedFollowUps, updateChatQueue,
+    shouldStartQueuedFollowUp, mergeQueuedFollowUps, saveQueuedFollowUps, updateChatQueue,
     stateRef: { current: { chatId: "chat", queueChatId: "chat", loadingChatId: null as string | null, messages: [] as Array<{ id: string; role: string }> } },
     removedIdsFor: () => new Set<string>(),
     fetch: async (url: string, request: { body: string }) => { urls.push(url); saved.push(JSON.parse(request.body)); return Response.json({}); },

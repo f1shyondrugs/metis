@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import React from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import {ReferencePicker} from "../components/reference-picker";
+import {REFERENCE_KINDS} from "../lib/reference-search";
+Object.assign(globalThis,{React});
+const props={id:"picker",kind:null,query:"",results:[],loading:false,indexing:false,retry(){},index:0,onIndex(){},onCategory(){},onQuery(){},onSelect(){},onKeyDown(){}} as const;
+test("the shared picker offers all categories before searching and exposes accessible result selection",()=>{
+ const categories=renderToStaticMarkup(<ReferencePicker {...props}/>);
+ assert.equal((categories.match(/role="option"/g)||[]).length,REFERENCE_KINDS.length);
+ assert.match(categories,/Search context/);assert.doesNotMatch(categories,/Searching/);
+ const results=renderToStaticMarkup(<ReferencePicker {...props} query="Launch" results={[{kind:"note",id:"child",label:"Launch checklist",detail:"Project / Parent / Subfile"}]}/>);
+ assert.match(results,/Launch checklist/);assert.match(results,/All categories/);assert.match(results,/aria-selected="true"/);
+ assert.doesNotMatch(results,/aria-label="Files"/);
+ const loading=renderToStaticMarkup(<ReferencePicker {...props} query="Launch" loading/>);
+ assert.match(loading,/Searching/);
+ const error=renderToStaticMarkup(<ReferencePicker {...props} query="Launch" error="Search timed out"/>);
+ assert.match(error,/role="alert"/);assert.match(error,/Try again/);
+});

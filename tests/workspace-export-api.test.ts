@@ -39,7 +39,22 @@ test("workspace exports authenticate, isolate owners and export the submitted cu
     assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
     assert.equal((await GET(new Request("http://localhost/api/remote/download?path=x"))).status, 401);
     assert.equal((await GET(new Request("http://localhost/api/remote/download?path=x", { headers: { cookie: "ai_chat_auth=" + tokenB } }))).status, 403);
-    assert.equal((await import("../lib/db-store")).getChat(chat.id, a.id)!.workspaces![0].content, "Old content");
+    const store = await import("../lib/db-store");
+    assert.equal(store.getChat(chat.id, a.id)!.workspaces![0].content, "Old content");
+    const report = { id: "report", type: "canvas" as const, name: "Research", content: "Evidence. ".repeat(12_000) + "REPORT_END", version: 1, createdAt: time, updatedAt: time, idempotencyKey: "run:research_report" };
+    const current = store.getChat(chat.id, a.id)!;
+    saveChat({ ...current, workspaces: [...current.workspaces!, report] });
+    const reportDraft = { ...draft, workspaceId: report.id, name: report.name, content: report.content };
+    const large = await POST(request(reportDraft, tokenA));
+    assert.equal(large.status, 200); assert.equal(await large.text(), report.content);
+    assert.equal((await POST(request(reportDraft, tokenB))).status, 404);
+    assert.equal((await POST(request({ ...reportDraft, content: "ä".repeat(250_001) }, tokenA))).status, 400);
+    const workspaces = await import("../app/api/workspaces/route");
+    const edit = await workspaces.PATCH(request({ chatId: chat.id, id: report.id, version: 1, content: report.content + "\nEdited" }, tokenA));
+    assert.equal(edit.status, 200); assert.ok((await edit.json()).workspace.content.endsWith("REPORT_END\nEdited"));
+    const tooLarge = await workspaces.PATCH(request({ chatId: chat.id, id: report.id, version: 2, content: "ä".repeat(250_001) }, tokenA));
+    assert.equal(tooLarge.status, 413);
+    assert.ok(store.getChat(chat.id, a.id)!.workspaces!.find(item => item.id === report.id)!.content.endsWith("REPORT_END\nEdited"));
   } finally {
     getDatabase().close();
     rmSync(root, { recursive: true, force: true });

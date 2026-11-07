@@ -56,6 +56,9 @@ test("limits permit shrinking legacy oversized documents and honor each document
   assert.equal(markdownAttachmentLimit(markdownAttachmentTarget("note"), 200_000), 50_000);
   assert.equal(markdownAttachmentLimit(markdownAttachmentTarget(undefined, { chatId: "chat", id: "plan" }), 200_000), 100_000);
   assert.equal(markdownAttachmentLimit(null, 2_000_000), 2_000_000);
+  const reportTarget = markdownAttachmentTarget(undefined, { chatId: "chat", id: "report", type: "canvas", idempotencyKey: "run:research_report" });
+  assert.equal(markdownAttachmentLimit(reportTarget, 500_000), 500_000);
+  assert.equal(markdownAttachmentLimit(reportTarget, 600_000), 500_000);
   assert.equal(markdownAttachmentTarget(undefined), null);
 });
 

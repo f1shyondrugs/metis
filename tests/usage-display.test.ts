@@ -27,7 +27,7 @@ test("plan usage paths use the runtime home directory", () => {
  assert.equal(source.includes("/home/samuel"), false);
  assert.equal(source.includes(".npm-global/bin/codex"), false);
  assert.match(source, /homedir\(\)/);
- assert.match(source, /path\.join\(config\.root, [\"']node_modules\/\.bin\/codex[\"']\)/);
+ assert.match(readFileSync(new URL("../lib/providers/codex-cli.ts", import.meta.url), "utf8"), /path\.join\(config\.root,/);
  assert.match(source, /path\.join\(homedir\(\), [\"']AiApi-Wrapper\/\.env[\"']\)/);
 });
 

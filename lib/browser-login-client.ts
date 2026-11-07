@@ -1,4 +1,5 @@
 import http from "node:http";
+import {requireProtectedLoginIsolation} from "./native-isolation-policy";
 import { ProtectedLoginError } from "./protected-login-errors";
 
 // Next's custom server may expose an internal localhost URL in route handlers.
@@ -14,6 +15,8 @@ export function browserLoginSameOrigin(req:Request) {
 }
 
 export function browserLoginRequest(owner: string, chat: string | undefined, operation: string, input: unknown={}, management=false): Promise<any> {
+  try { requireProtectedLoginIsolation(); }
+  catch { return Promise.reject(new ProtectedLoginError("isolation_required")); }
   return new Promise((resolve,reject)=>{
     const body=JSON.stringify({owner,chat,operation,input,management});
     const request=http.request({socketPath:process.env.METIS_BROWSER_LOGIN_SOCKET || "/run/metis-browser-login/client.sock",path:"/",method:"POST",agent:false,

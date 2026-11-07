@@ -1,0 +1,47 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {mkdtempSync,rmSync} from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {createResearchWorkflow} from "../lib/mcp-core/research-workflow.mjs";
+const root=mkdtempSync(path.join(os.tmpdir(),"metis-research-completion-"));
+Object.assign(process.env,{AI_CHAT_ROOT:root,CHAT_DATA_DIR:root,CHAT_DB_PATH:path.join(root,"chat.sqlite"),AI_CHAT_MCP_STATE_DIR:path.join(root,"mcp"),AGENT_CWD:root});
+for(const key of ["AI_CHAT_JOB_ID","AI_CHAT_WORKER_ID","AI_CHAT_JOB_LEASE_TOKEN"])delete process.env[key];
+test.after(()=>rmSync(root,{recursive:true,force:true}));
+
+test("research success requires attached report; denial never auto-resumes",async()=>{
+ const [{getDatabase},store,jobs,{researchContinuationForJob}]=await Promise.all([import("../lib/sqlite"),import("../lib/db-store"),import("../lib/db-jobs"),import("../lib/research-completion")]);
+ const userId=crypto.randomUUID();
+ getDatabase().prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES(?,?,?,?)").run(userId,userId,"unused",new Date().toISOString());
+ const chat=store.createChat("Research",undefined,userId);
+ const job=jobs.enqueueJob({chatId:chat.id,userId,message:"Research",modeId:"deep-research"});
+ assert.equal((await researchContinuationForJob(job)).required,true);
+ const context={userId,chatId:chat.id,jobId:job.id};
+ let decision="approve";
+ const workflow=createResearchWorkflow({stateDir:path.join(root,"mcp"),ask:async()=>({questionId:"q",values:{plan:["Read sources","Write report"],decision,source_target:1,minimum_words:500}}),attachReport:async()=>({canvasId:"report-canvas",workspaceLink:"workspace://canvas/report-canvas",markdown:"[Open report in Canvas](workspace://canvas/report-canvas)"})});
+ await workflow.plan({title:"Study",plan:["Read"]},context);
+ const pending=await researchContinuationForJob(job);
+ assert.equal(pending.required,true);
+ assert.match(pending.prompt!,/already approved/);
+ await workflow.progress({step:1,status:"completed"},context);
+ assert.notEqual((await researchContinuationForJob(job)).signature,pending.signature);
+ await workflow.report({title:"Study",content:"Evidence"},context);
+ assert.equal((await researchContinuationForJob(job)).required,false);
+ decision="deny";
+ jobs.updateJob(job.id,{status:"completed"});
+ const deniedJob=jobs.enqueueJob({chatId:chat.id,userId,message:"Another study",modeId:"deep-research"});
+ await workflow.plan({title:"Study",plan:["Read"]},{...context,jobId:deniedJob.id});
+ assert.equal((await researchContinuationForJob(deniedJob)).required,false);
+ assert.equal((await researchContinuationForJob(deniedJob)).stopped,true);
+});
+test("research metadata survives truncation and compact parts for reload",async()=>{
+ const {compactToolForPersistence,compactMessagePartsForPersistence}=await import("../lib/tool-persistence");
+ const progress={kind:"research-progress",runId:"run",title:"Study",language:"en",status:"researching",steps:[{id:1,content:"Read",status:"in_progress"}],plan:["Read"],sourceTarget:200,minimumWords:4000,discoveredCount:220,openedCount:180,readCount:150,blockedCount:0,failedCount:0} as const;
+ const tool={id:"read",name:"research_open",status:"completed",result:JSON.stringify({content:"x".repeat(100000),research:progress})};
+ const saved=compactToolForPersistence(tool);
+ assert.equal(saved.research?.readCount,150);
+ assert.ok(saved.result!.length<=64000);
+ const [part]=compactMessagePartsForPersistence([{type:"tool",...tool}]);
+ assert.equal(part.type,"tool");
+ if(part.type==="tool") assert.equal(part.research?.readCount,150);
+});

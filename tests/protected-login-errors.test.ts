@@ -22,6 +22,9 @@ test("private-browser transport reconstructs only fixed diagnostics and preserve
   const dir = mkdtempSync(path.join(os.tmpdir(), "metis-login-errors-"));
   const socket = path.join(dir, "test.sock");
   const previous = process.env.METIS_BROWSER_LOGIN_SOCKET;
+  const isolation = process.env.METIS_NATIVE_ISOLATION;
+  process.env.METIS_NATIVE_ISOLATION = "1";
+  t.after(() => { if (isolation === undefined) delete process.env.METIS_NATIVE_ISOLATION; else process.env.METIS_NATIVE_ISOLATION = isolation; });
   let status = 403;
   let reply: unknown = { code: "unsafe_target", error: "TEST-PRIVATE-MESSAGE" };
   let malformed = false;

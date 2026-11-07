@@ -79,7 +79,10 @@ test("typed submission persists values, emits one readable message and preserves
     const result = await response.json();
     assert.deepEqual(result.values, { hz: 60, enabled: false });
     assert.equal(result.summary, "Display 60 Hz. Enabled: No.");
-    assert.deepEqual(result.message.questionAnswer, { questionId: pending.questionId, assistantMessageId: "form-assistant", toolCallId: "ask-call" });
+    assert.deepEqual(result.message.questionAnswer, {
+      questionId: pending.questionId, assistantMessageId: "form-assistant", toolCallId: "ask-call", cursor: { partIndex: 2 },
+      display: { summary: "Display 60 Hz. Enabled: No.", fields: [{ question: "Refresh rate", answer: "60 Hz" }, { question: "Enabled?", answer: "No" }] },
+    });
     const firstAnswerMessage = result.message;
     assert.deepEqual(await pending.promise, ["60", "false"]);
     assert.equal(jobs.isJobLeaseActive(job.id, lease.leaseOwner!, lease.leaseToken!), true);
@@ -106,7 +109,10 @@ test("wrapped ask_user answers persist their exact transcript boundary before th
     const response = await submit(pending.questionId, { choice: "Keep this answer here" });
     assert.equal(response.status, 200);
     const result = await response.json();
-    assert.deepEqual(result.message.questionAnswer, { questionId: pending.questionId, assistantMessageId: "wrapped-assistant", toolCallId: "wrapped-ask" });
+    assert.deepEqual(result.message.questionAnswer, {
+      questionId: pending.questionId, assistantMessageId: "wrapped-assistant", toolCallId: "wrapped-ask", cursor: { partIndex: 2 },
+      display: { summary: "Choice: Keep this answer here", fields: [{ question: "Choice", answer: "Keep this answer here" }] },
+    });
     assert.deepEqual(await pending.promise, ["Keep this answer here"]);
     const restored = store.getChat(chat.id, owner.id)!;
     assert.deepEqual(restored.messages.at(-1)!.questionAnswer, result.message.questionAnswer);
@@ -116,6 +122,37 @@ test("wrapped ask_user answers persist their exact transcript boundary before th
     assert.deepEqual((await repeated.json()).message, result.message);
   } finally { pending.stop(); }
 });
+test("opaque provider questions persist their submission cursor and stay before later streamed text", async () => {
+  const { projectQuestionTranscript } = await import("../lib/question-transcript");
+  const chat = store.createChat("Opaque form flow", undefined, owner.id);
+  const pending = questions.createPendingQuestion([{ question: "Choice", key: "choice", type: "text" }], chat.id, owner.id);
+  store.appendMessage(chat.id, {
+    id: "opaque-assistant", role: "assistant", content: "Before.",
+    parts: [{ type: "text", content: "Before." }],
+  }, owner.id);
+  try {
+    const response = await submit(pending.questionId, { choice: "Accepted" });
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(result.message.questionAnswer, {
+      questionId: pending.questionId, assistantMessageId: "opaque-assistant",
+      cursor: { partIndex: 0, textOffset: 7 },
+      display: { summary: "Choice: Accepted", fields: [{ question: "Choice", answer: "Accepted" }] },
+    });
+    assert.deepEqual(await pending.promise, ["Accepted"]);
+    store.checkpointAssistantMessage(chat.id, {
+      id: "opaque-assistant", role: "assistant", content: "Before.After.",
+      parts: [{ type: "text", content: "Before.After." }],
+    });
+    const restored = store.getChat(chat.id, owner.id)!;
+    assert.deepEqual(projectQuestionTranscript(restored.messages).map(message => message.content), [
+      "Before.", result.summary, "After.",
+    ]);
+    const repeated = await submit(pending.questionId, { choice: "Changed" });
+    assert.deepEqual((await repeated.json()).message, result.message);
+  } finally { pending.stop(); }
+});
+
 test("invalid values return field errors and leave the durable form open", async () => {
   const chat = store.createChat("Validation", undefined, owner.id);
   const pending = questions.createPendingQuestion([{ question: "Count", key: "count", type: "number", min: 1, max: 10 }], chat.id, owner.id);
@@ -260,6 +297,8 @@ test("secure completion resumes the original run using only broker-confirmed sta
   const lease = jobs.claimNextJob({ workerId: "secure-resume-worker" })!;
   const requestId = randomUUID();
   const previousSocket = process.env.METIS_BROWSER_LOGIN_SOCKET;
+  const previousIsolation = process.env.METIS_NATIVE_ISOLATION;
+  process.env.METIS_NATIVE_ISOLATION = "1";
   const socket = path.join(dir, "secure-status.sock");
   const brokerRequests: Array<Record<string, any>> = [];
   const server = http.createServer(async (req, res) => {
@@ -306,6 +345,8 @@ test("secure completion resumes the original run using only broker-confirmed sta
     globalThis.fetch = originalFetch;
     if (pendingId) questions.cancelQuestion(pendingId, owner.id);
     await running.catch(() => undefined);
+    if (previousIsolation === undefined) delete process.env.METIS_NATIVE_ISOLATION;
+    else process.env.METIS_NATIVE_ISOLATION = previousIsolation;
     if (previousSocket === undefined) delete process.env.METIS_BROWSER_LOGIN_SOCKET;
     else process.env.METIS_BROWSER_LOGIN_SOCKET = previousSocket;
     await new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); });

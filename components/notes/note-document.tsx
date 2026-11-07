@@ -1,8 +1,8 @@
 "use client";
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import Image from "next/image";
+import { BannerHeader } from "@/components/banner-image";
 import { Check, Loader2, RefreshCw, AlertCircle, Plus, ListTodo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NoteMedia } from "@/components/note-media";
@@ -21,6 +21,8 @@ const NotesBlockEditor = dynamic(() => import("./block-editor").then(mod => mod.
 });
 export type NoteDocumentHandle = { flush: () => Promise<boolean> };
 type Props = {
+  headerOnly?: boolean;
+  afterHeader?: ReactNode;
   note: TreeNote;
   ownerId: string;
   onSaved: (note: TreeNote) => void;
@@ -31,7 +33,7 @@ type Props = {
 };
 
 export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteDocument({
-  note, ownerId, onSaved, onCreateSubpage, onOpenNote, onOpenIssue, onCreateIssue,
+  note, ownerId, onSaved, onCreateSubpage, onOpenNote, onOpenIssue, onCreateIssue, headerOnly = false, afterHeader,
 }, ref) {
   const [document, setDocument] = useState<TreeNote>(note);
   const [status, setStatus] = useState<"saved" | "saving" | "offline" | "conflict">("saved");
@@ -202,8 +204,9 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
   }
 
   const todos = document.todos || [];
+  const issuePage = document.kind === "issuebook" || Boolean(document.issueId);
   return <article
-    className={cn("mx-auto w-full px-5 pb-24 pt-7 sm:px-10 sm:pt-10", document.fullWidth ? "max-w-none" : "max-w-[920px]")}
+    className={cn("w-full pt-7 sm:pt-10", headerOnly ? "pb-0" : "pb-24", issuePage ? "max-w-none px-4 sm:px-6" : cn("mx-auto px-5 sm:px-10", document.fullWidth ? "max-w-none" : "max-w-[920px]"))}
     data-note-document={note.id}
     onClick={event => {
       const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
@@ -216,7 +219,7 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
       else onOpenIssue(target.id);
     }}
   >
-    {document.cover && <div className="relative mb-7 h-36 overflow-hidden rounded-lg bg-muted"><Image src={document.cover} alt="Page banner" fill unoptimized sizes="100vw" className="object-cover" /></div>}
+    <BannerHeader value={document.cover} alt="Page banner" bannerClassName="h-36 rounded-lg">
     <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
       <div className="flex min-w-0 items-center gap-1" aria-label={document.issueId ? "Issue appearance" : "Note appearance"}>
         <NoteIconPicker value={document.icon} onChange={icon => update({ icon })} />
@@ -257,6 +260,9 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
         }}>Use saved version</Button>
       </div> : <Button className="mt-2" variant="outline" size="sm" onClick={() => void flushRef.current()}><RefreshCw className="size-3" />Retry save</Button>}
     </div>}
+    </BannerHeader>
+    {afterHeader}
+    {!headerOnly && <>
     {document.asset && <div className="mb-5"><NoteMedia note={document} /></div>}
     {todos.length > 0 && <section aria-label="Checklist" className="mb-6 border-b border-border pb-5">
       {todos.map(todo => <div key={todo.id} className="group flex min-h-10 items-center gap-2">
@@ -275,5 +281,6 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
       onOpenNote={(id, blockId) => { persist(); onOpenNote(id, blockId); }}
     />
     <Button variant="ghost" size="sm" className="mt-8 text-muted-foreground" onClick={() => { persist(); onCreateSubpage(); }}><Plus className="size-3.5" />Add subfile</Button>
+    </>}
   </article>;
 });

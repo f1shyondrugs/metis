@@ -2,6 +2,7 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { protectMathTablePipes, restoreMathTablePipes } from "./markdown-math-tables";
 import { getSchema } from "@tiptap/core";
 import { type Schema, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { notesEditorExtensions } from "./notes-editor-extensions";
@@ -68,6 +69,7 @@ function block(node: Ast, source: string): EditorNode {
   const sourceFor = () => source.slice(node.position?.start.offset || 0, node.position?.end.offset || 0);
   switch (node.type) {
     case "paragraph": {
+      if(node.children?.length===1 && node.children[0].type==="inlineMath" && /^\$\$[\s\S]+\$\$$/.test(sourceFor().trim()))return {type:"mathBlock",attrs:{latex:node.children[0].value || ""}};
       const content = inline(node.children);
       // Images are inline in this editor, matching Markdown's inline semantics.
       return { type: "paragraph", content };
@@ -120,7 +122,9 @@ function leadingFrontmatterEnd(source: string): number {
 export function parseNotesMarkdown(source: string): EditorNode {
   const frontmatterEnd = leadingFrontmatterEnd(source);
   const body = source.slice(frontmatterEnd);
-  const tree = parser.parse(body) as Ast;
+  const protectedMath = protectMathTablePipes(body);
+  const tree = parser.parse(protectedMath.source) as Ast;
+  restoreMathTablePipes(tree, protectedMath.marker);
   const content: EditorNode[] = [];
   if (frontmatterEnd) {
     const originalSource = source.slice(0, frontmatterEnd);

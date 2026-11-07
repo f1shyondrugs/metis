@@ -77,7 +77,7 @@
       "source": "custom",
       "sourceType": "local",
       "skillPath": "skills/manual/deep-research/SKILL.md",
-      "computedHash": "616ac36bf773025b20334a89756e9121f0531670c1d327fea3376b93870c4e05"
+      "computedHash": "a69f73e6a4920e8d2a0688d10cc5ea63e4104b0cdb8a91b1a3b8e2d868a643a5"
     },
     "ae-abstract-art-direction": {
       "source": "custom",
@@ -116,6 +116,130 @@
       "sourceRef": "f3990f7f99ae63b9e26eaa61114f60e0408742ff",
       "skillPath": ".agents/skills/launch-strategy/SKILL.md",
       "computedHash": "5d603157a784f42521128334d68904c00f62a0b7ee92dceb7b182473d5e9a8a1"
+    },
+    "roblox-development": {
+      "source": "custom",
+      "sourceType": "local",
+      "skillPath": "skills/manual/roblox-development/SKILL.md",
+      "computedHash": "c7a6f48de545091c2776c4ae779fcc7af7da211ecb0e479dacf081beff530e26"
+    },
+    "audit-context-building": {
+      "source": "trailofbits/skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/audit-context-building/SKILL.md",
+      "computedHash": "33fa693dc6e166cfa4919e4373cb6578c009d296234c2ae7cb3cd4e79b443765",
+      "sourceRef": "2be6433b39e009cd2b6fd3be1895f6b1faa5af9a"
+    },
+    "burpsuite-project-parser": {
+      "source": "trailofbits/skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/burpsuite-project-parser/SKILL.md",
+      "computedHash": "6c34b59d603023bc03b2aa2b6a5788eba6be9b69ff5c4096d19c288cce3dbd13",
+      "sourceRef": "2be6433b39e009cd2b6fd3be1895f6b1faa5af9a"
+    },
+    "differential-review": {
+      "source": "trailofbits/skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/differential-review/SKILL.md",
+      "computedHash": "f9af6a8193fc1a9f8ca3c54bb8d19095a5f20c9472ca6d014488bbde50b67da0",
+      "sourceRef": "2be6433b39e009cd2b6fd3be1895f6b1faa5af9a"
+    },
+    "variant-analysis": {
+      "source": "trailofbits/skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/variant-analysis/SKILL.md",
+      "computedHash": "7b6b78e499bcb88d05c68254ffc91ebc28edabf4e9808adcc40e2628ebb9407e",
+      "sourceRef": "2be6433b39e009cd2b6fd3be1895f6b1faa5af9a"
+    },
+    "api-security-testing": {
+      "source": "usestrix/strix",
+      "sourceType": "local",
+      "skillPath": "skills/manual/api-security-testing/SKILL.md",
+      "computedHash": "bd04c90d87be2353ebefee33363af0818746345e25c80ed36f63fcdd2b25509c",
+      "sourceRef": "6b7ae2ebe4d47037a927aade23265ff4e4f27e84"
+    },
+    "web-app-penetration-testing": {
+      "source": "usestrix/strix",
+      "sourceType": "local",
+      "skillPath": "skills/manual/web-app-penetration-testing/SKILL.md",
+      "computedHash": "2e8df0b9233971c496d0c0c7660808fc717c08d4165455a0423229045389608a",
+      "sourceRef": "6b7ae2ebe4d47037a927aade23265ff4e4f27e84"
+    },
+    "fp-check": {
+      "source": "trailofbits/skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/fp-check/SKILL.md",
+      "computedHash": "129223b79b8cb1e7c289c90cbe4ba288d9b210e318a0d1464f319e30329481b3",
+      "sourceRef": "2be6433b39e009cd2b6fd3be1895f6b1faa5af9a"
+    },
+    "sharp-edges": {
+      "source": "trailofbits/skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/sharp-edges/SKILL.md",
+      "computedHash": "3b69a709c2f8f0cfcf57d40a3186e166f307865cc8ed924be4098e549a121e9c",
+      "sourceRef": "2be6433b39e009cd2b6fd3be1895f6b1faa5af9a"
+    },
+    "fuzzing-dictionary": {
+      "source": "trailofbits/skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/fuzzing-dictionary/SKILL.md",
+      "computedHash": "db1a9dda2d39f7ef7039624bb3002188cb78d381d46eba297290b4417e0006d0",
+      "sourceRef": "2be6433b39e009cd2b6fd3be1895f6b1faa5af9a"
+    },
+    "korlei-shorts-cutter": {
+      "source": "custom",
+      "sourceType": "local",
+      "skillPath": "skills/manual/korlei-shorts-cutter/SKILL.md",
+      "computedHash": "fa68b5c119c1366d36dca0a3d9ddc50a8b610ec506da023d5fe7e26b04e66491"
+    },
+    "blender-animation": {
+      "source": "RobLe3/cc-blender-skill",
+      "sourceType": "local",
+      "skillPath": "skills/manual/blender-animation/SKILL.md",
+      "computedHash": "875301e83c751d0b71e7b7a5689d9f9c7854569bc2370a4265e35783f28f132d",
+      "sourceSkillPath": "plugin/skills/blender-animation/SKILL.md"
+    },
+    "text-to-blender": {
+      "source": "RobLe3/cc-blender-skill",
+      "sourceType": "local",
+      "skillPath": "skills/manual/text-to-blender/SKILL.md",
+      "computedHash": "be8b2f7726e217bf78e65a77dff99a983aa86823ece22c52b71048bae2e2289e",
+      "sourceSkillPath": "plugin/skills/text-to-blender/SKILL.md"
+    },
+    "camera-cinematography": {
+      "source": "arjun988/blender-skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/camera-cinematography/SKILL.md",
+      "computedHash": "0838fe51a882af69b47d598b09ef3c921852e498a394d35b793d607826e43ece",
+      "sourceSkillPath": ".claude/skills/camera-cinematography/SKILL.md"
+    },
+    "short-drama-storyboard": {
+      "source": "zenstory-ai/drama-skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/short-drama-storyboard/SKILL.md",
+      "computedHash": "526bf607e1193801d4910bb32da49c3fddebd769ad0c59c77484b18ab529aebe",
+      "sourceSkillPath": "skills/short-drama-storyboard/SKILL.md"
+    },
+    "sw-premise-theme": {
+      "source": "jtydhr88/screenwriting-skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/sw-premise-theme/SKILL.md",
+      "computedHash": "1a715602130e43a14da78f700d4af757e856e4bd1466ae3d23ee7c91473259c5",
+      "sourceSkillPath": "plugins/screenwriting/skills/sw-premise-theme/SKILL.md"
+    },
+    "sw-scene-craft": {
+      "source": "jtydhr88/screenwriting-skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/sw-scene-craft/SKILL.md",
+      "computedHash": "8e17bd548c7b27e7c88d8bceb498cf7d61e545d567085efecb1e4818f4e0e902",
+      "sourceSkillPath": "plugins/screenwriting/skills/sw-scene-craft/SKILL.md"
+    },
+    "sw-workflow": {
+      "source": "jtydhr88/screenwriting-skills",
+      "sourceType": "local",
+      "skillPath": "skills/manual/sw-workflow/SKILL.md",
+      "computedHash": "1e51911c81123196dfcfe4a4a5712d09483745f626a75c832bda2188c53e24d8",
+      "sourceSkillPath": "plugins/screenwriting/skills/sw-workflow/SKILL.md"
     }
   }
 }

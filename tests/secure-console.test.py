@@ -42,7 +42,7 @@ class ConsoleTests(unittest.TestCase):
             if session.ready:return
             time.sleep(.05)
         self.fail("Console did not finish authentication")
-    def test_real_ssh_then_sudo_and_su_prompts_are_private_and_bound(self):
+    def test_real_ssh_is_private_and_bound_and_rejects_inplace_elevation(self):
         key=paramiko.RSAKey.generate(2048)
         listener=socket.socket();listener.bind(("127.0.0.1",0));listener.listen(10);listener.settimeout(.2)
         stopped=threading.Event();transports=[]
@@ -70,7 +70,7 @@ class ConsoleTests(unittest.TestCase):
                             channel.sendall((line+"\r\nPassword: ").encode())
                         elif line=="whoami":channel.sendall(b"root\r\nmock-root$ ")
                         elif line=="echo-secret":
-                            for secret in [SSH_PASSWORD,PAM_PASSWORD,base64.b64encode(PAM_PASSWORD.encode()).decode()]:
+                            for secret in [SSH_PASSWORD,base64.b64encode(SSH_PASSWORD.encode()).decode()]:
                                 channel.sendall(secret[:5].encode());time.sleep(.01);channel.sendall((secret[5:]+"\r\n").encode())
                         else:channel.sendall(b"mock-root$ ")
             except Exception:pass
@@ -90,14 +90,13 @@ class ConsoleTests(unittest.TestCase):
             with self.assertRaises(ValueError):console.dispatch({"owner":"bob","chat":"chat","operation":"fill","input":{"requestId":request["secureInput"]["requestId"],"password":SSH_PASSWORD}})
             session.fill(request["secureInput"]["requestId"],SSH_PASSWORD);self.ready(session)
             console.dispatch({"owner":"alice","chat":"chat","operation":"input","input":{"command":"whoami"}});time.sleep(.1);self.assertIn("root",session.clean())
-            sudo=session.elevate("sudo","root");self.assertEqual(sudo["status"],"input_required");self.assertFalse(session.ready)
-            self.assertNotEqual(sudo["target"],request["target"])
-            session.fill(sudo["secureInput"]["requestId"],PAM_PASSWORD);self.ready(session)
-            su=session.elevate("su","other");self.assertEqual(su["status"],"input_required");self.assertIn("other",su["target"])
-            session.fill(su["secureInput"]["requestId"],PAM_PASSWORD);self.ready(session)
+            for method in ["sudo", "su"]:
+                with self.assertRaisesRegex(ValueError, "existing SSH terminal"):
+                    session.elevate(method, "other")
+                self.assertTrue(session.ready)
             console.dispatch({"owner":"alice","chat":"chat","operation":"input","input":{"command":"echo-secret"}});time.sleep(.2)
             output=session.clean();self.assertNotIn(SSH_PASSWORD,output);self.assertNotIn(PAM_PASSWORD,output);self.assertNotIn(base64.b64encode(PAM_PASSWORD.encode()).decode(),output);self.assertIn("REDACTED",output)
-            with self.assertRaises(ValueError):session.fill(su["secureInput"]["requestId"],PAM_PASSWORD)
+            with self.assertRaises(ValueError):session.fill(request["secureInput"]["requestId"],SSH_PASSWORD)
         finally:
             stopped.set();listener.close()
             for transport in transports:transport.close()

@@ -39,7 +39,7 @@ export function SettingsSearch({isHostAdmin, mobile = false, onSelect}: {
   return (
     <Popover open={showingResults} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
-        <div className="relative mt-2 sm:mt-3">
+        <div className="relative">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={input}

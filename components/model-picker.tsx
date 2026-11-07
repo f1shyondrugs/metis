@@ -27,6 +27,7 @@ export function ModelPicker({
   ariaLabel = "Default model",
   placeholder = "Select a model",
   noneLabel,
+  allowPinning = true,
 }: {
   models: ModelInfo[];
   value: string;
@@ -38,6 +39,7 @@ export function ModelPicker({
   ariaLabel?: string;
   placeholder?: string;
   noneLabel?: string;
+  allowPinning?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -89,7 +91,7 @@ export function ModelPicker({
         <Check className={cn("size-3.5 shrink-0", model.id === selected?.id ? "opacity-100" : "opacity-0")} />
         <ProviderLogo providerId={providerId} />
         <span className="min-w-0 flex-1 truncate">{model.displayName}{model.connectionLabel ? <span className="ml-1 text-xs text-muted-foreground">· {model.connectionLabel}</span> : null}</span>
-        <button
+        {allowPinning && <button
           type="button"
           className="rounded p-1 text-muted-foreground hover:text-foreground"
           aria-label={favorite ? `Unpin ${model.displayName}` : `Pin ${model.displayName}`}
@@ -100,7 +102,7 @@ export function ModelPicker({
           }}
         >
           <Pin className={cn("size-3", favorite ? "fill-current text-primary" : "")} />
-        </button>
+        </button>}
       </DropdownMenuItem>
     );
   }

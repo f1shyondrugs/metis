@@ -7,6 +7,7 @@ export type MessageToolLike = {
 
 export type MessagePartLike<TTool extends MessageToolLike = MessageToolLike> =
   | import("./provider-retry").ProviderRetryPart
+  | import("./run-control-event").RunControlPart
   | { type: "thinking"; content: string; done?: boolean; durationMs?: number }
   | ({ type: "tool" } & TTool)
   | ({ type: "compaction" } & Record<string, unknown>)

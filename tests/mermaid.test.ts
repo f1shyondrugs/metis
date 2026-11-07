@@ -44,6 +44,27 @@ test("fitMermaidSvg drops fixed height so diagrams do not sit at the bottom", ()
   assert.match(fitted, /max-width:100%;height:auto/);
 });
 
+test("fitMermaidSvg preserves node, label and nested SVG dimensions", () => {
+  const node = '<rect width="180" height="64" style="stroke-width:2px" />';
+  const label = '<foreignObject width="160" height="40"><div>Video workflow</div></foreignObject>';
+  const nested = '<svg width="24" height="24" style="width:24px;height:24px"></svg>';
+  const fitted = fitMermaidSvg(
+    `<svg width="800" height="1200" viewBox="0 0 800 1200" style="max-width:800px;height:1200px;stroke-width:2px">${node}${label}${nested}</svg>`,
+  );
+  assert.ok(fitted.includes(node));
+  assert.ok(fitted.includes(label));
+  assert.ok(fitted.includes(nested));
+  assert.match(fitted, /viewBox="0 0 800 1200"/);
+  assert.match(fitted, /style="stroke-width:2px;width:800px;max-width:100%;height:auto"/);
+});
+
+test("fitMermaidSvg adds responsive sizing without changing child-only styles", () => {
+  const child = '<rect width="180" height="64" style="width:180px;height:64px" />';
+  const fitted = fitMermaidSvg(`<svg width='800' height='1200' viewBox="0 0 800 1200">${child}</svg>`);
+  assert.ok(fitted.includes(child));
+  assert.match(fitted, /^<svg viewBox="0 0 800 1200" style="width:800px;max-width:100%;height:auto">/);
+});
+
 test("isMermaidErrorSvg ignores mermaid CSS and catches the bomb SVG", () => {
   assert.equal(
     isMermaidErrorSvg('<svg class="flowchart"><style>#t1 .error-icon{fill:#a44141;}</style></svg>'),

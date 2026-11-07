@@ -5,6 +5,7 @@ run before an independently constructed ssh/su/sudo authentication completes.
 Existing arbitrary terminals are deliberately not accepted as password sinks.
 """
 import base64
+import codecs
 import hashlib
 import http.server
 import json
@@ -59,7 +60,9 @@ class Session:
             raise ValueError("Invalid authentication")
         self.owner, self.chat, self.method, self.account = owner, chat, method, account
         self.id, self.nonce = str(uuid.uuid4()), uuid.uuid4().hex
-        self.buffer, self.secrets = "", []
+        self.buffer, self.secrets, self.pending_output = "", [], ""
+        self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self.pending_ansi = ""
         self.ready, self.closed, self.used = False, False, time.time()
         self.request, self.filled = None, False
         self.host = host.lower() if host else socket.gethostname()
@@ -105,21 +108,57 @@ class Session:
                 data = os.read(self.master, 8192)
                 if not data: break
                 with self.lock:
-                    self.buffer = (self.buffer + data.decode("utf-8", errors="replace"))[-200000:]
-                    if "\x1e" + self.marker + "\x1f" in self.buffer:
-                        self.ready = True
-                        self.buffer = self.buffer.replace("\x1e" + self.marker + "\x1f", "")
+                    self.append_output(self.decoder.decode(data))
         except OSError:
             pass
         finally:
             self.closed = True
 
+    def redact(self, text):
+        """Hold suffixes that can still become a known secret, including at EOF."""
+        variants = set()
+        for secret in self.secrets:
+            variants.update([secret, urllib.parse.quote(secret, safe=""), base64.b64encode(secret.encode()).decode(), secret.encode().hex()])
+        variants.discard("")
+        output, position = [], 0
+        maximum = max(map(len, variants), default=0)
+        while position < len(text):
+            # Only the final max-length suffix can be an incomplete match.
+            tail = text[position:] if len(text) - position < maximum else ""
+            if tail and any(len(tail) < len(value) and value.startswith(tail) for value in variants):
+                return "".join(output), tail
+            matched = max((value for value in variants if text.startswith(value, position)), key=len, default=None)
+            if matched:
+                output.append("[REDACTED]")
+                position += len(matched)
+            else:
+                output.append(text[position])
+                position += 1
+        return "".join(output), ""
+
+    def append_output(self, text):
+        # Normalize terminal escapes before matching, including split sequences.
+        text = self.pending_ansi + text
+        self.pending_ansi = ""
+        escape = text.rfind("\x1b")
+        if escape >= 0 and not ANSI.match(text, escape):
+            suffix, text = text[escape:], text[:escape]
+            if len(suffix) <= 4096: self.pending_ansi = suffix
+        text = ANSI.sub("", text)
+        # Redact before retention limits so trimming never exposes a secret tail.
+        emitted, self.pending_output = self.redact(self.pending_output + text)
+        self.buffer += emitted
+        marker = "\x1e" + self.marker + "\x1f"
+        if marker in self.buffer:
+            self.ready = True
+            self.buffer = self.buffer.replace(marker, "")
+        self.buffer = self.buffer[-200000:]
+
     def clean(self):
-        output = self.buffer
-        for secret in sorted(self.secrets, key=len, reverse=True):
-            for variant in [secret, urllib.parse.quote(secret, safe=""), base64.b64encode(secret.encode()).decode(), secret.encode().hex()]:
-                output = output.replace(variant, "[REDACTED]")
-        return ANSI.sub("", output).replace("\x1e", "").replace("\x1f", "")[-60000:]
+        # Defense in depth for output retained before credential entry.
+        normalized = ANSI.sub("", self.buffer).replace("\x1e", "").replace("\x1f", "")
+        output, _pending = self.redact(normalized)
+        return output[-60000:]
 
     def waiting(self):
         if self.ready or self.closed: return False
@@ -137,25 +176,16 @@ class Session:
         return {"status": "input_required", "target": self.target, "label": self.label, "sessionId": self.id, "secureInput": {"requestId": self.request, "origin": self.label, "kind": "console", "sessionId": self.id, "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.expires))}}
 
     def elevate(self, method, account):
-        if not self.ready or self.closed or method not in {"sudo", "su"} or not USER.fullmatch(account): raise ValueError("Authenticated console required")
-        with self.lock:
-            previous_account = self.account
-            self.method, self.account = method, account
-            self.nonce = uuid.uuid4().hex; self.marker = "METIS_AUTH_" + self.nonce
-            self.ready, self.filled, self.request = False, False, None
-            # Erase old prompts/markers before entering a new fixed auth program.
-            self.buffer = ""
-            shell = f"printf '\\036{self.marker}\\037'; exec /bin/bash --noprofile --norc"
-            if method == "su":
-                command = ["/usr/bin/su", "-", account, "-s", "/bin/bash", "-c", shell]
-                self.auth_user = account
-            else:
-                command = ["/usr/bin/sudo", "-k", "-p", f"METIS_PASSWORD_{self.nonce}: ", "-u", account, "--", "/bin/bash", "--noprofile", "--norc", "-c", shell]
-                self.auth_user = previous_account
-            self.target = json.dumps([method, self.host, self.port if self.remote_user else 0, self.auth_user, account, self.fingerprint], separators=(",", ":"))
-            self.label = f"{method}: {self.auth_user}@{self.host} → {account}" + (" · " + self.fingerprint if self.remote_user else "")
-            os.write(self.master, (shlex.join(command) + "\n").encode())
-        return self.prepare()
+        if not self.ready or self.closed or method not in {"sudo", "su"} or not USER.fullmatch(account):
+            raise ValueError("Authenticated console required")
+        if self.remote_user:
+            raise ValueError("Protected elevation over an existing SSH terminal is unavailable; connect directly to the target account")
+        # A prior command may own the old PTY. Never send it an authentication
+        # command or a password. Start a fixed binary in a fresh broker-owned PTY.
+        # sudo authenticates the service account; su authenticates the target.
+        replacement = Session(self.owner, self.chat, method, account)
+        self.close()
+        return replacement
 
     def fill(self, request, password):
         with self.lock:
@@ -196,7 +226,12 @@ def dispatch(body):
             return session.prepare()
         if not session: raise ValueError("Console unavailable")
         session.used = time.time()
-        if operation == "elevate": return session.elevate(value.get("method"), value.get("user"))
+        if operation == "elevate":
+            if session.remote_user:
+                return {"status": "console_unavailable", "reason": "Protected elevation inside an existing SSH session is unavailable. Connect directly to the target SSH account."}
+            replacement = session.elevate(value.get("method"), value.get("user"))
+            SESSIONS[key] = replacement
+            return replacement.prepare()
         if operation == "fill": return session.fill(value.get("requestId"), value.get("password"))
         if operation == "status": return {"filled": session.filled and value.get("requestId") == session.request and time.time()<getattr(session,"expires",0)}
         if operation == "read":

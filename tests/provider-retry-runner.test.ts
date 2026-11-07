@@ -87,6 +87,90 @@ test("real provider runner retries after cleanup, keeps the session/checkpoint a
   assert.equal(events.filter(event => event.event === "error").length, 0);
 });
 
+test("unknown Codex reconnect crashes continue from the checkpoint", async t => {
+  const f = await fixture();
+  let calls = 0;
+  t.mock.method(f.codexAdapter, "runTurn", async (context: ProviderContext) => {
+    calls++;
+    if (calls === 1) {
+      context.onText("Saved progress before disconnect.");
+      throw new Error("Reconnecting 2/5: stream disconnected before completion");
+    }
+    assert.match(context.job.resumePrompt!, /Original task/);
+    context.onText("Continued successfully.");
+    return {};
+  });
+  await f.runAlternativeProviderJob(f.job, f.chat);
+  assert.equal(calls, 2);
+  assert.equal(f.jobs.getJob(f.job.id)?.status, "completed");
+  assert.equal(f.jobs.getJob(f.job.id)?.providerRetryCount, 1);
+});
+
+for (const duringAbort of [false, true]) test(`Codex model handoff uses the new model (abort ${duringAbort})`, async t => {
+  const f = await fixture();
+  const nextModelId = `codex:${f.connection.id}:fixture-next`;
+  let calls = 0;
+  t.mock.method(f.codexAdapter, "runTurn", async (context: ProviderContext) => {
+    calls++;
+    if (calls === 1) {
+      context.onText("Progress under original model.");
+      f.jobs.requestJobModelSwitch(f.chat.id, f.userId, nextModelId);
+      if (duringAbort) await new Promise((_resolve, reject) => {
+        context.signal.addEventListener("abort", () => reject(new Error("CLI aborted during handoff")), { once: true });
+      });
+      return {};
+    }
+    assert.equal(context.modelId, "fixture-next");
+    assert.match(context.job.resumePrompt!, /Original task/);
+    context.onText("Finished under new model.");
+    return {};
+  });
+  await f.runAlternativeProviderJob(f.job, f.chat);
+  assert.equal(f.jobs.getJob(f.job.id)?.status, "switching");
+  const parts = f.store.getChat(f.chat.id, f.userId)!.messages.flatMap(message => message.parts || []);
+  const switched = parts.find(part => part.type === "model-switch");
+  assert.ok(switched && switched.type === "model-switch");
+  assert.equal(switched.fromModelId, f.job.modelId);
+  assert.equal(switched.toModelId, nextModelId);
+  assert.equal(f.jobs.getJob(f.job.id)?.providerRetryCount || 0, 0);
+  f.jobs.requeueSwitchingJob(f.job.id);
+  const resumed = f.jobs.claimNextJob()!;
+  await f.runAlternativeProviderJob(resumed, f.chat);
+  assert.equal(f.jobs.getJob(f.job.id)?.status, "completed");
+  assert.equal(calls, 2);
+});
+
+test("switching a model during a provider wait immediately uses the new selection", async t => {
+  const f = await fixture();
+  const before = process.env.AI_CHAT_PROVIDER_LIMIT_WAITER;
+  process.env.AI_CHAT_PROVIDER_LIMIT_WAITER = "1";
+  t.after(() => { if (before === undefined) delete process.env.AI_CHAT_PROVIDER_LIMIT_WAITER; else process.env.AI_CHAT_PROVIDER_LIMIT_WAITER = before; });
+  let calls = 0;
+  const deadline = new Date(Date.now() + 600_000).toISOString();
+  f.jobs.updateJob(f.job.id, { agentRuntimeDeadlineAt: deadline });
+  t.mock.method(f.codexAdapter, "runTurn", async (context: ProviderContext) => {
+    calls++;
+    if (calls === 1) throw Object.assign(new Error("Usage limit reached"), { statusCode: 429, responseHeaders: { "retry-after": "18000" } });
+    assert.equal(context.modelId, "fixture-next");
+    context.onText("Finished after switching.");
+    return {};
+  });
+  await f.runAlternativeProviderJob(f.job, f.chat);
+  assert.equal(f.jobs.getJob(f.job.id)?.status, "queued");
+  assert.ok(f.store.getChat(f.chat.id, f.userId)!.messages.flatMap(m => m.parts || []).some(p => p.type === "provider-wait"));
+  assert.equal(f.jobs.claimNextJob(), null);
+  const waitStarted = Date.parse(f.jobs.getJob(f.job.id)!.providerRateLimit!.detectedAt);
+  t.mock.timers.enable({ apis: ["Date"], now: waitStarted + 3_600_000 });
+  f.jobs.requestJobModelSwitch(f.chat.id, f.userId, `codex:${f.connection.id}:fixture-next`);
+  assert.equal(f.jobs.getJob(f.job.id)?.agentRuntimeDeadlineAt, new Date(Date.parse(deadline) + 3_600_000).toISOString());
+  assert.equal(f.jobs.getJob(f.job.id)?.providerRateLimit, undefined);
+  const next = f.jobs.claimNextJob()!;
+  assert.equal(next.id, f.job.id);
+  await f.runAlternativeProviderJob(next, f.chat);
+  assert.equal(f.jobs.getJob(f.job.id)?.status, "completed");
+  assert.equal(calls, 2);
+});
+
 test("persistent transient errors stop after the third retry and retain the final error", async t => {
   const f = await fixture();
   let calls = 0;
@@ -116,7 +200,7 @@ for (const scenario of ["default-off", "permanent", "usage-unknown-reset", "canc
       throw new Error("Model is under capacity");
     });
     await f.runAlternativeProviderJob(f.job, f.chat);
-    assert.equal(calls, scenario === "disabled-after-first" ? 2 : 1);
+    assert.equal(calls, scenario === "disabled-after-first" ? 2 : scenario === "permanent" || scenario === "usage-unknown-reset" ? 4 : 1);
     assert.equal(f.jobs.getJob(f.job.id)?.status, scenario === "cancelled" ? "cancelled" : "error");
   });
 }
