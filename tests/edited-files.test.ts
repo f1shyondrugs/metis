@@ -101,15 +101,19 @@ test("durable compaction preserves edits, no-op exclusions, and message parts", 
   assert.deepEqual(editedFilesForMessage({tools:[noop]}),[]);
 });
 
-test("per-run tracking resolves relative paths and leaves remote paths on their device", async () => {
+test("per-run tracking trusts scoped gateway receipts and preserves remote targets", async () => {
   const {withEditedFileTracking}=await import("../lib/file-edit-snapshot");
-  const local=withEditedFileTracking(edit({input:'{"path":"src/main.ts"}'}),dir);
-  assert.deepEqual(local.editedFile,{path:path.join(dir,"src/main.ts"),target:"server"});
+  const {storeFileEditSnapshot}=await import("../lib/mcp-core/file-edit-snapshots.mjs");
+  const scope={userId:"edited-owner",chatId:"edited-chat",jobId:"edited-job"};
+  const receipt=(target:string)=>JSON.stringify(storeFileEditSnapshot({path:"src/main.ts",fileSnapshot:{before:"before",after:"after"}},scope,target));
+  assert.equal(withEditedFileTracking(edit({input:'{"path":"src/main.ts"}',diff:{before:"forged",after:"forged-again"}}),dir).editedFile,null);
+  const local=withEditedFileTracking(edit({result:receipt("server")}),dir,undefined,scope);
+  assert.equal(local.editedFile?.path,path.join(dir,"src/main.ts"));assert.equal(local.editedFile?.target,"server");
   assert.ok(editedFileHref(local.editedFile!));
-  const remote=withEditedFileTracking(edit({input:'{"path":"src/main.ts","target":"client:laptop"}'}),dir);
-  assert.deepEqual(remote.editedFile,{path:"src/main.ts",target:"client:laptop"});
-  const responseOnly=withEditedFileTracking(edit({input:undefined,path:undefined}),dir,edit({status:"running",input:'{"path":"src/main.ts","target":"client:laptop"}'}));
-  assert.deepEqual(responseOnly.editedFile,{path:"src/main.ts",target:"client:laptop"});
+  const remote=withEditedFileTracking(edit({result:receipt("client:laptop")}),dir,undefined,scope);
+  assert.equal(remote.editedFile?.path,"src/main.ts");assert.equal(remote.editedFile?.target,"client:laptop");
+  const responseOnly=withEditedFileTracking(edit({input:undefined,path:undefined}),dir,edit({status:"running",input:'{"path":"src/main.ts","target":"client:laptop"}'}),scope);
+  assert.equal(responseOnly.editedFile,null);
 });
 
 test("saved inline diffs use exact tool identity and remain owner scoped", async () => {

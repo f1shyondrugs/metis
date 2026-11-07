@@ -1,0 +1,29 @@
+[Unit]
+Description=Metis private SSH and PAM authentication console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=metis-console
+Group=metis-secret-client
+WorkingDirectory=/var/lib/metis-secure-console
+ExecStart=/usr/bin/python3 /opt/metis-browser-login/services/secure-console/server.py
+RuntimeDirectory=metis-secure-console
+RuntimeDirectoryMode=0750
+StateDirectory=metis-secure-console
+StateDirectoryMode=0700
+UMask=0077
+# su/sudo must be able to apply their existing PAM/setuid policy. This service
+# does not grant sudo rights, change PAM, unlock root or skip authentication.
+NoNewPrivileges=no
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitCORE=0
+MemoryMax=1G
+TasksMax=256
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

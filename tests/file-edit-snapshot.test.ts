@@ -27,7 +27,7 @@ function tool(
   };
 }
 
-test("provider write_file snapshot lets Revert delete a newly created file", () => {
+test("unverified provider creation cannot authorize privileged snapshot or rollback", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "metis-revert-create-"));
   try {
     const filePath = path.join(root, "created.txt");
@@ -39,15 +39,15 @@ test("provider write_file snapshot lets Revert delete a newly created file", () 
       root,
     );
 
-    assert.deepEqual(completed.diff, { before: undefined, after: "new content" });
-    assert.equal(revertEditTool(completed, root).status, "reverted");
-    assert.equal(existsSync(filePath), false);
+    assert.equal(completed.diff,undefined);
+    assert.equal(revertEditTool(completed, root).status, "warning");
+    assert.equal(readFileSync(filePath,"utf8"),"new content");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("provider edit_file snapshot lets Revert restore existing content", () => {
+test("unverified provider edit cannot request an existing file's body", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "metis-revert-edit-"));
   try {
     const filePath = path.join(root, "edited.txt");
@@ -66,15 +66,15 @@ test("provider edit_file snapshot lets Revert restore existing content", () => {
       root,
     );
 
-    assert.deepEqual(completed.diff, { before: "before", after: "after" });
-    assert.equal(revertEditTool(completed, root).status, "reverted");
-    assert.equal(readFileSync(filePath, "utf8"), "before");
+    assert.equal(completed.diff,undefined);
+    assert.equal(revertEditTool(completed, root).status, "warning");
+    assert.equal(readFileSync(filePath, "utf8"), "after");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("a batch edit produces one snapshot and Revert restores the entire original", () => {
+test("unverified batch arguments cannot synthesize a trusted snapshot", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "metis-revert-batch-"));
   try {
     const filePath = path.join(root, "batch.txt");
@@ -83,9 +83,9 @@ test("a batch edit produces one snapshot and Revert restores the entire original
     const running = withLocalFileEditSnapshot(tool("batch-1", "edit_file", "running", filePath, { input: JSON.stringify(input) }), undefined, root);
     executeFileEdit(fs, input);
     const completed = withLocalFileEditSnapshot(tool("batch-1", "edit_file", "completed", filePath, { input: undefined }), running, root);
-    assert.deepEqual(completed.diff, { before: "one\ntwo", after: "first\nsecond" });
-    assert.equal(revertEditTool(completed, root).status, "reverted");
-    assert.equal(readFileSync(filePath, "utf8"), "one\ntwo");
+    assert.equal(completed.diff,undefined);
+    assert.equal(revertEditTool(completed, root).status, "warning");
+    assert.equal(readFileSync(filePath, "utf8"), "first\nsecond");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -97,7 +97,8 @@ test("remote client file tools are not snapshotted against the server workspace"
     const original = tool("write-2", "write_file", "running", filePath, {
       input: JSON.stringify({ target: "client:laptop", path: filePath, content: "remote content" }),
     });
-    assert.equal(withLocalFileEditSnapshot(original, undefined, root), original);
+    const clean=withLocalFileEditSnapshot(original, undefined, root);
+    assert.equal(clean.path,undefined);assert.equal(clean.diff,undefined);assert.equal(clean.input,original.input);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

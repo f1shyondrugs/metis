@@ -19,6 +19,8 @@ import { classifyToolKind } from "@/lib/tool-call-display";
 import type { ToolPart } from "@/lib/store";
 
 import { getUserAgentCwd } from "@/lib/mcp";
+import {assertNativeMcpServers,codexNativeExecutable} from "../native-sandbox";
+import {readSafeFile} from "@/lib/safe-file-read";
 import {
   RUNTIME_MODE_TO_CODEX,
   runtimeModeForChat,
@@ -154,7 +156,7 @@ async function persistCodexOAuthHome(
 ) {
   if (context.connection.authType !== "oauth" || !context.job.userId) return;
   try {
-    const official = JSON.parse(await readFile(home.authFile, "utf8")) as {
+    const official = JSON.parse(readSafeFile(home.authFile).toString("utf8")) as {
       tokens?: {
         access_token?: string;
         refresh_token?: string;
@@ -231,9 +233,8 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
         )
       : undefined;
   const agentCwd = getUserAgentCwd(context.job.userId);
-  const mcp = getMcpServers(
-    providerMcpContext(context),
-  ).gateway;
+  const nativeMcp=getMcpServers(providerMcpContext(context));assertNativeMcpServers(nativeMcp);
+  const mcp = nativeMcp.gateway;
   const bearerToken = mcp.type === "http"
     ? mcp.headers?.Authorization?.replace(/^Bearer\s+/i, "").trim()
     : undefined;
@@ -260,13 +261,14 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
     ...(serviceTier === "fast" ? { features: { ...codexMcpOnlyConfig().features, fast_mode: true } } : {}),
     mcp_servers: { metis_ai: codexMcp },
   };
+  const isolated=codexNativeExecutable(codexCliExecutable(),env);
   const codex = new Codex({
-    codexPathOverride: codexCliExecutable(),
+    codexPathOverride: isolated.executable,
     ...(context.connection.authType === "api_key" && context.connection.secret
       ? { apiKey: context.connection.secret }
       : {}),
     config: codexConfig,
-    env,
+    env:isolated.env,
   });
   const sessionBinding = getProviderSessionBinding(
     context.chat,

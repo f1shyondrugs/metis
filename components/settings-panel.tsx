@@ -1,4 +1,5 @@
 "use client";
+import { SavedWebsiteLogins } from "@/components/saved-website-logins";
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import {
@@ -372,6 +373,7 @@ function scrollSettingsSection(id: string) {
 type SettingsPaneId =
   | "tab"
   | "browser-storage"
+  | "credential-vault"
   | "appearance"
   | "providers"
   | "versions"
@@ -394,6 +396,7 @@ type SettingsPaneId =
   | "updates";
 
 const SETTINGS_SECTION_TO_PANE: Partial<Record<string, Exclude<SettingsPaneId, "tab">>> = {
+  "settings-credential-vault": "credential-vault",
   "settings-appearance": "appearance",
   "settings-browser-storage": "browser-storage",
   "settings-providers": "providers",
@@ -420,6 +423,7 @@ type SettingsCategory = (typeof SETTINGS_TABS)[number];
 
 function settingsCategoryIcon(value: string): LucideIcon {
   return value === "general" ? Settings2
+    : value === "security" ? ShieldCheck
     : value === "models" ? KeyRound
     : value === "agent" ? Puzzle
     : value === "devices" ? PlugZap
@@ -1655,6 +1659,7 @@ export function SettingsPanel({
               className="h-10 w-full"
               options={[
                 { value: "general", label: "General" },
+                { value: "security", label: "Security" },
                 { value: "models", label: "Models" },
                 { value: "agent", label: "Agent" },
  { value: "devices", label: "Devices" },
@@ -2709,6 +2714,10 @@ export function SettingsPanel({
                     </div>
                   </div>
  </SettingsFeaturePane>
+ ) : settingsPane === "credential-vault" ? (
+ <SettingsFeaturePane backLabel="Security" title="Credential vault" slot="credential-vault-settings" onBack={() => backToSettings("settings-credential-vault")}>
+  <SavedWebsiteLogins />
+ </SettingsFeaturePane>
  ) : settingsPane === "updates" ? (
  <SettingsFeaturePane backLabel="Updates" slot="update-settings" onBack={() => backToSettings("settings-update-preferences")}>
  <UpdateSettingsPanel
@@ -2719,6 +2728,11 @@ export function SettingsPanel({
  ) : (
  <>
 
+<TabsContent value="security" className="mt-0">
+ <SettingsOverview title="Security">
+  <SettingsTile id="settings-credential-vault" title="Credential vault" meta="Manage encrypted website and console logins" icon={ShieldCheck} onOpen={() => openSettingsPane("credential-vault")} />
+ </SettingsOverview>
+</TabsContent>
 <TabsContent value="general" className="mt-0">
  <SettingsOverview title="General">
   <SettingsTile id="settings-appearance" title="Appearance" meta={appearance.ready ? appearance.theme.name : "Loading…"} icon={Palette} onOpen={() => openSettingsPane("appearance")} />

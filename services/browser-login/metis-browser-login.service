@@ -1,0 +1,46 @@
+[Unit]
+Description=Metis isolated saved website logins
+After=network-online.target metis-secure-console.service
+Wants=network-online.target metis-secure-console.service
+
+[Service]
+Environment=METIS_NATIVE_ISOLATION=1
+Type=simple
+User=metis-browser-login
+Group=metis-runtime
+SupplementaryGroups=metis-secret-client
+WorkingDirectory=/opt/metis-browser-login
+ExecStart=/usr/bin/python3 /opt/metis-browser-login/services/browser-login/start.py
+Environment=NODE_ENV=production
+Environment=PLAYWRIGHT_BROWSERS_PATH=/srv/metis/browser-runtime
+LoadCredential=login.key:/etc/metis-browser-login/login.key
+RuntimeDirectory=metis-browser-login
+RuntimeDirectoryMode=0750
+StateDirectory=metis-browser-login
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+InaccessiblePaths=-/srv/metis/production-data -/srv/metis/production-home -/srv/metis/dev -/srv/metis/etc
+LimitCORE=0
+MemoryMax=2G
+TasksMax=256
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

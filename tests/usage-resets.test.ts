@@ -15,7 +15,7 @@ process.env.CODEX_BIN = path.join(root, "fake-codex");
 writeFileSync(process.env.CODEX_BIN, `#!/usr/bin/env node
 const fs=require("node:fs"),path=require("node:path"),readline=require("node:readline");
 const account=JSON.parse(fs.readFileSync(path.join(process.env.CODEX_HOME,"auth.json"),"utf8")).tokens.account_id;
-const file=process.env.METIS_RESET_TEST_STATE;
+const file=${JSON.stringify(process.env.METIS_RESET_TEST_STATE)};
 const send=(id,result)=>process.stdout.write(JSON.stringify({id,result})+"\\n");
 readline.createInterface({input:process.stdin}).on("line",line=>{
 const m=JSON.parse(line);

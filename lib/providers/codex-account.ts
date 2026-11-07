@@ -1,7 +1,8 @@
-import { spawn } from "node:child_process";
+import { spawnNative, nativeTemporaryHome, withNativeRuntime } from "./native-sandbox";
+import { providerProcessEnv } from "./process-env";
+import { writeSafeFile } from "@/lib/safe-file-read";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { codexCliExecutable } from "@/lib/providers/codex-cli";
 import { findActiveConnection, getProviderConnection, getProviderConnectionSecret } from "@/lib/provider-connections";
@@ -37,8 +38,8 @@ function session(ownerId: string, connectionId?: string) {
     accountId = typeof parsed.tokens?.account_id === "string" ? parsed.tokens.account_id : undefined;
   } else if (connection.authType !== "api_key") throw new Error("This connection does not expose ChatGPT account usage.");
   const binding = createHash("sha256").update(connection.id + ":" + (accountId || credential.secret)).digest("hex");
-  const home = mkdtempSync(path.join(tmpdir(), "metis-codex-account-"));
-  try { writeFileSync(path.join(home, "auth.json"), JSON.stringify(auth) + "\n", { mode: 0o600 }); }
+  const home = nativeTemporaryHome("codex-account-");
+  try { writeSafeFile(path.join(home, "auth.json"), JSON.stringify(auth) + "\n"); }
   catch (error) { rmSync(home, { recursive: true, force: true }); throw error; }
   return { home, connection, binding, accountId, authTokens, apiKey: connection.authType === "api_key" ? credential.secret.trim() : undefined };
 }
@@ -65,6 +66,10 @@ export function codexAccountCommand(executable: string, platform: NodeJS.Platfor
 
 /** A short-lived, account-scoped app-server session shared by usage reads and confirmed reset actions. */
 export async function requestCodexAccount(ownerId: string, connectionId: string | undefined, request: CodexAccountRequest): Promise<{ result: Record<string, unknown>; binding: string }> {
+  return withNativeRuntime(ownerId, undefined, () => requestAccountInRuntime(ownerId, connectionId, request));
+}
+
+async function requestAccountInRuntime(ownerId: string, connectionId: string | undefined, request: CodexAccountRequest): Promise<{ result: Record<string, unknown>; binding: string }> {
   const auth = session(ownerId, connectionId);
   if (request.method === "account/rateLimitResetCredit/consume" &&
       (auth.connection.authType === "api_key" || request.expectedBinding !== auth.binding)) {
@@ -72,13 +77,13 @@ export async function requestCodexAccount(ownerId: string, connectionId: string 
     throw new Error("The account changed. Review the reset again.");
   }
   return new Promise((resolve, reject) => {
-    const env: NodeJS.ProcessEnv = { ...process.env, CODEX_HOME: auth.home };
+    const env: NodeJS.ProcessEnv = providerProcessEnv({ CODEX_HOME: auth.home });
     delete env.OPENAI_API_KEY; delete env.CODEX_API_KEY; delete env.OPENAI_BASE_URL;
     if (auth.apiKey) env.CODEX_API_KEY = auth.apiKey;
     let invocation: ReturnType<typeof codexAccountCommand>;
     try { invocation = codexAccountCommand(process.env.CODEX_BIN || codexCliExecutable()); }
     catch (error) { rmSync(auth.home, { recursive: true, force: true }); reject(error); return; }
-    const child = spawn(invocation.command, invocation.args, {
+    const child = spawnNative(invocation.command, invocation.args, {
       env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
     });
     let settled = false, buffer = "";

@@ -1,4 +1,5 @@
 import test from "node:test";
+import {ProtectedBrowserRouting} from "../lib/protected-browser-routing";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import ts from "typescript";
@@ -98,8 +99,10 @@ function backendHarness(capture: (attempt: number) => Promise<StreamFrame>, acti
   const timers = new Map<number, { callback: () => unknown; delay: number }>();
   const subscribers = new Map<string, Set<(event: { tabId: string }) => void>>();
   const captures: unknown[][] = [], actions: unknown[][] = [];
+  const protectedBrowserRouting=new ProtectedBrowserRouting(async()=>({status:"protected_browser_ready"}),async()=>{throw Error("No ordinary tab is needed for this fixture");});
   let nextTimer = 0;
   const context = {
+    protectedBrowserRouting,
     captureBrowserFrame: (...args: unknown[]) => { captures.push(args); return capture(captures.length); },
     performSharedBrowserAction: (...args: unknown[]) => { actions.push(args); return action(); },
     setBrowserViewport: async () => {}, browserStreamSubscribers: subscribers,
@@ -108,7 +111,7 @@ function backendHarness(capture: (attempt: number) => Promise<StreamFrame>, acti
   };
   const connectHandler = new Function(...Object.keys(context), sendFrameDeclaration.getText(serverTree) + ";return (" + connectionCallback.getText(serverTree) + ");")(...Object.values(context));
   return {
-    timers, subscribers, captures, actions,
+    timers, subscribers, captures, actions, protectedBrowserRouting,
     connect(options: Record<string, unknown> = {}) {
       const socket = new StreamSocket();
       const done = connectHandler(socket, {}, { userId: "owner", chatId: "chat" }, { tabId: "browser-1", realtime: false, ...options }) as Promise<void>;
@@ -124,6 +127,19 @@ function backendHarness(capture: (attempt: number) => Promise<StreamFrame>, acti
     },
   };
 }
+
+test("protected sessions never capture or send images, including restoration by explicit tab identity",async()=>{
+  for(const explicitTab of [false,true]){
+    const h=backendHarness(async()=>streamFrame());
+    if(!explicitTab)await h.protectedBrowserRouting.prepare("owner","chat",{tabId:"protected"});
+    const {socket,done}=h.connect({tabId:explicitTab?"protected":"browser-1",frameAck:true});
+    await done;
+    assert.equal(h.captures.length,0);
+    assert.equal(socket.frames().length,0);
+    assert.match(socket.errors()[0]?.message??"",/Protected login/);
+    socket.close();
+  }
+});
 
 test("an opted-in slow client retains one unacknowledged image instead of a growing network backlog", async () => {
   const h = backendHarness(async () => streamFrame());

@@ -214,6 +214,26 @@ test("mobile navigation preserves root, category, detail and focus-return levels
   assert.equal(nav.state.tab, "general");
 });
 
+test("Security keeps the credential manager reachable from its overview and search", () => {
+  const overview = tabElement("security");
+  assert.equal(elements(overview, "SettingsTile").length, 1);
+  assert.equal(elements(paneNode("credential-vault"), "SavedWebsiteLogins").length, 1);
+  for (const mobile of [true, false]) {
+    const nav = navigationHarness(mobile);
+    nav.openSettingsCategory("security");
+    nav.openSettingsPane("credential-vault");
+    assert.deepEqual({ tab: nav.state.tab, menu: nav.state.menu, pane: nav.state.pane, target: nav.state.target },
+      { tab: "security", menu: false, pane: "credential-vault", target: "pane" });
+    nav.backToSettings("settings-credential-vault");
+    assert.equal(nav.state.pane, "tab");
+    assert.equal(nav.state.target, "settings-credential-vault");
+    nav.openSettingsSearchResult({ id: "settings-credential-vault", sectionId: "settings-credential-vault", tab: "security", label: "Credential Vault", category: "Security" });
+    assert.equal(nav.state.tab, "security");
+    assert.equal(nav.state.pane, "credential-vault");
+    assert.equal(nav.state.menu, false);
+  }
+});
+
 test("mobile search opens categories and nested details while external-links search returns to the root", () => {
   const nav = navigationHarness();
   nav.openSettingsSearchResult({ id: "models", tab: "models", label: "Models", category: "Settings" });

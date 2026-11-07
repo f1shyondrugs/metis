@@ -11,6 +11,7 @@ import { materializeQueuedUploads, type QueuedUploadMessage } from "@/lib/queued
 import { ChatProjectError, validateChatProjectMove } from "@/lib/chat-projects";
 import { projectModelOverride } from "@/lib/project-model-server";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { browserLoginRequest } from "@/lib/browser-login-client";
 import {
   deleteChat,
   getChatPage,
@@ -220,5 +221,6 @@ export async function DELETE(req: Request, { params }: Params) {
   if (!deleteChat(id, ownerId)) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
+  await browserLoginRequest(ownerId,id,"forget_chat",{},true).catch(()=>{});
   return Response.json({ ok: true });
 }

@@ -123,7 +123,7 @@ test("real Cursor success exit uses the same bounded Goal handoff and preserves 
   f.jobs.requeueSwitchingJob(f.job.id);
   const resumed = f.jobs.claimNextJob()!;
   await runner.runQueuedJob(resumed);
-  assert.equal(f.jobs.getJob(f.job.id)!.status, "completed");
+  assert.equal(f.jobs.getJob(f.job.id)!.status, "completed", f.jobs.getJob(f.job.id)!.error);
   assert.equal(calls, 2);
   assert.equal(disposals, 2);
   assert.equal(f.jobs.getJob(f.job.id)!.agentRuntimeDeadlineAt, f.deadline);
@@ -140,7 +140,7 @@ test("real Deep Research runner cannot finish before its approved report is atta
     stateDir: path.join(dir, "mcp-state"),
     ask: async () => ({ questionId: "approved-fixture", values: { decision: "approve", plan: ["Read evidence", "Write report"], source_target: 1, minimum_words: 500 } }),
     evidence: async () => ({ readCount: 1 }),
-    attachReport: async () => ({ downloadUrl: "/fixture-report.md", markdown: "[Report](/fixture-report.md)" }),
+    attachReport: async () => ({ canvasId:"fixture-report", workspaceLink:"workspace://canvas/fixture-report" }),
   });
   await workflow.plan({ title: "Fixture research", plan: ["Read evidence", "Write report"] }, context);
   let calls = 0;
@@ -160,8 +160,9 @@ test("real Deep Research runner cannot finish before its approved report is atta
   assert.equal(f.jobs.claimNextJob(), null);
   f.jobs.requeueSwitchingJob(f.job.id);
   await runAlternativeProviderJob(f.jobs.claimNextJob()!, f.store.getChat(f.chat.id)!);
-  assert.equal(f.jobs.getJob(f.job.id)!.status, "completed");
+  assert.equal(f.jobs.getJob(f.job.id)!.status, "completed", f.jobs.getJob(f.job.id)!.error);
   assert.equal((await workflow.state(context))!.status, "report_attached");
+  assert.equal((await workflow.state(context))!.workspaceLink, "workspace://canvas/fixture-report");
   assert.equal(calls, 2);
 });
 

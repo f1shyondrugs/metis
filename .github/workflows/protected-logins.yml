@@ -1,0 +1,63 @@
+name: Protected login regressions
+
+on:
+  pull_request:
+  push:
+    branches:
+      - pr-19-validation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: protected-logins-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: Credential boundaries, browser regressions and full suite
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      NODE_OPTIONS: --experimental-sqlite
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Install isolated test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap python3-venv openssh-client
+          python3 -m venv /tmp/metis-console-tests
+          /tmp/metis-console-tests/bin/pip install paramiko
+      - name: Install frozen application dependencies and browser binaries
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm rebuild node-pty
+          node -e "require('node-pty')"
+          pnpm exec playwright install --with-deps chromium
+      - name: Lint contributed files
+        run: |
+          git diff --name-only origin/master...HEAD -- '*.ts' '*.tsx' '*.mjs' | xargs -r pnpm exec eslint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Verify stream lifecycle with simulated captures
+        run: pnpm exec tsx --test tests/browser-stream-lifecycle.test.ts
+      - name: Verify actual Linux namespace and console boundaries
+        run: |
+          python3 tests/native-runtime-launcher.test.py
+          /tmp/metis-console-tests/bin/python tests/secure-console.test.py
+      - name: Run complete test suite
+        run: pnpm test
+      - name: Build the reviewed source
+        run: pnpm build

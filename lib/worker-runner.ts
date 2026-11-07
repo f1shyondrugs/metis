@@ -1,16 +1,16 @@
 import { modeById } from "@/lib/modes";
 import { memoryWorkingPrompt } from "@/lib/mcp-core/memory-instructions.mjs";
+import { SECURE_CREDENTIAL_INSTRUCTIONS } from "@/lib/mcp-core/credential-question-policy.mjs";
 import { projectModelOverride, validateProjectModelSelection } from "@/lib/project-model-server";
 import { payloadRecord, payloadText as asText } from "@/lib/agent-payload";
 import { isProviderUsageLimit } from "@/lib/provider-rate-limit";
 import { initializeJobModelChain, requestModelChainFallback } from "@/lib/model-chain-runtime";
 import { deferProviderLimitedJob } from "@/lib/db-jobs";
+import { isolatedCursor } from "@/lib/providers/cursor-runtime";
 import { commitPendingModelSwitch } from "@/lib/model-switch";
 import { requestTaskContinuation } from "@/lib/task-continuation";
 import { researchContinuationForJob } from "@/lib/research-completion";
 import { requestProviderRetry, runWithProviderRetries } from "@/lib/provider-retry-runner";
-import { readFileSync } from "node:fs";
-import { Agent } from "@cursor/sdk";
 import {
   appendMessage,
   createChat,
@@ -27,7 +27,6 @@ import { getProject, projectContextBlock } from "@/lib/projects";
 import { projectSkillSettings } from "@/lib/skills";
 import { buildSkillContext } from "@/lib/skill-context";
 import { getUserAgentCwd, getMcpServers } from "@/lib/mcp";
-import { resolveAgentPath } from "@/lib/revert";
 import { withEditedFileTracking } from "@/lib/file-edit-snapshot";
 import { appendRunEvent, enqueueJob, getJob, touchJob, updateJob } from "@/lib/db-jobs";
 import { canonicalizeToolPart } from "@/lib/providers/tool-events";
@@ -169,108 +168,6 @@ function extractProvidedAttachment(value: unknown): ProvidedAttachment | null {
     }
   }
   return null;
-}
-
-function readFileSnapshot(rawPath: string, agentCwd: string): string | undefined {
-  const filePath = resolveAgentPath(rawPath, agentCwd);
-  if (!filePath) return undefined;
-  try {
-    return readFileSync(filePath, "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
-function isDeleteTool(name: string) {
-  return /(^|[._:/-])(delete|remove|unlink)(?=[._:/-]|$)/i.test(name);
-}
-
-function diffStats(before?: string, after?: string) {
-  const beforeLines = (before ?? "").split("\n");
-  const afterLines = (after ?? "").split("\n");
-  let start = 0;
-  while (start < beforeLines.length && start < afterLines.length && beforeLines[start] === afterLines[start]) start += 1;
-  let beforeEnd = beforeLines.length;
-  let afterEnd = afterLines.length;
-  while (beforeEnd > start && afterEnd > start && beforeLines[beforeEnd - 1] === afterLines[afterEnd - 1]) {
-    beforeEnd -= 1;
-    afterEnd -= 1;
-  }
-  return {
-    additions: Math.max(0, afterEnd - start),
-    deletions: Math.max(0, beforeEnd - start),
-  };
-}
-
-function extractEditMetadata(
-  name: string,
-  args: unknown,
-  agentCwd: string,
-  previousDiff?: ToolPart["diff"],
-  captureAfter = true,
-): Pick<ToolPart, "path" | "diff"> {
-  if (classifyTool(name) !== "edit") return {};
-  const input = asRecord(args);
-  const target = typeof input.target === "string" ? input.target
-    : input.client_id || input.clientId ? "client" : "server";
-  if (target !== "server" && target !== "local") return {};
-  const rawPath = [input.path, input.filePath, input.filename]
-    .find((value): value is string => typeof value === "string" && value.trim().length > 0);
-  if (!rawPath) return {};
-
-  const metadata: Pick<ToolPart, "path" | "diff"> = { path: rawPath };
-  const filePath = resolveAgentPath(rawPath, agentCwd);
-  if (!filePath) return metadata;
-  const before = previousDiff?.before ?? readFileSnapshot(rawPath, agentCwd);
-  if (!captureAfter) return { path: rawPath, diff: { before } };
-  if (isDeleteTool(name)) {
-    return { path: rawPath, diff: { before, after: undefined, ...diffStats(before, undefined) } };
-  }
-
-  const edits = Array.isArray(input.edits)
-    ? input.edits
-        .map(asRecord)
-        .filter((edit) => typeof edit.oldText === "string" && typeof edit.newText === "string")
-    : [];
-  let after: string | undefined;
-  try {
-    after = readFileSync(filePath, "utf8");
-  } catch {
-    after = typeof input.content === "string" ? input.content : undefined;
-  }
-  if (typeof input.content === "string") after = input.content;
-
-  if (edits.length && typeof after === "string") {
-    let reconstructedBefore = after;
-    for (let index = edits.length - 1; index >= 0; index -= 1) {
-      const edit = edits[index];
-      const newText = edit.newText as string;
-      const oldText = edit.oldText as string;
-      const position = reconstructedBefore.indexOf(newText);
-      if (position < 0) break;
-      reconstructedBefore = `${reconstructedBefore.slice(0, position)}${oldText}${reconstructedBefore.slice(position + newText.length)}`;
-    }
-    // A tool_call event can arrive after the SDK has already applied the edit.
-    // In that case the snapshot captured from disk is the *after* state and
-    // produces a misleading +0 -0 diff. Prefer it only when replaying the
-    // declared edit actually produces the recorded result.
-    const previousBefore = previousDiff?.before;
-    const previousReplaysToAfter = (() => {
-      if (typeof previousBefore !== "string") return false;
-      let candidate = previousBefore;
-      for (const edit of edits) {
-        const oldText = edit.oldText as string;
-        const newText = edit.newText as string;
-        const position = candidate.indexOf(oldText);
-        if (position < 0) return false;
-        candidate = `${candidate.slice(0, position)}${newText}${candidate.slice(position + oldText.length)}`;
-      }
-      return candidate === after;
-    })();
-    const originalBefore = previousReplaysToAfter ? previousBefore : reconstructedBefore;
-    return { path: rawPath, diff: { before: originalBefore, after, ...diffStats(originalBefore, after) } };
-  }
-  return { path: rawPath, diff: { before, after, ...diffStats(before, after) } };
 }
 
 function extractSubagent(
@@ -624,6 +521,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
     return;
   }
   const agentCwd = getUserAgentCwd(job.userId);
+  const Agent=isolatedCursor(job.userId!,agentCwd);
   const assistantMessageId = crypto.randomUUID();
   appendMessage(job.chatId, { id: assistantMessageId, role: "assistant", content: "" });
   const emit = (event: string, data: unknown) => {
@@ -1031,6 +929,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
       "Execution efficiency: batch related read-only inspection instead of issuing many tiny calls; reuse the known project/repository cwd instead of rediscovering it; run targeted checks while iterating and the expensive full test/build pass only once after the working tree has stopped changing. Parallelize independent lightweight reads when safe, but do not run competing heavyweight builds. Keep progress narration to short milestone updates rather than one message per tool call.",
       !job.incognito && !chat.incognito ? agentRulesPrompt(globalModelSettings) : "",
       runToolContract,
+      SECURE_CREDENTIAL_INSTRUCTIONS,
       "Web/browser routing: use web_search for discovery and web_fetch for fast read-only extraction of ordinary public pages (local Scrapling static scraper first, public remote fallback second). For login/authenticated state, forms, uploads/downloads, purchases/checkouts, important state-changing tasks, long interactive page workflows, or any web_fetch result with requiresBrowser=true, ALWAYS use the persistent Metis in-app browser (browser_navigate, browser_form_state, browser_batch, browser_wait_for, browser_fill_form, browser_snapshot). Inspect current browser state first; navigate only when the URL needs to change and never reload/re-login merely to inspect progress. Do not use shell, curl, detached Playwright, or stealth/challenge-bypass tooling as a substitute. If a site blocks static extraction, use the normal persistent browser if appropriate or report the limitation. Request browser_screenshot only when visual reasoning is genuinely required.",
       `Available mode IDs for request_mode_change: ${availableModes || "agent (Agent), plan (Plan), ask (Ask)"}. Use the exact ID before the parentheses; never invent values such as "Code". For implementation or file changes, request modeId "agent".`,
       ...(!["agent", "gauntlet"].includes(activeMode.id) && !job.automationId
@@ -1198,16 +1097,8 @@ async function runQueuedJobAttempt(job: AgentJob) {
           editArgs = undefined;
         }
       }
-      const editMetadata =
-        !preparing && (toolStatus === "running" || isFinishedToolStatus(toolStatus))
-          ? extractEditMetadata(
-              toolName,
-              editArgs,
-              agentCwd,
-              existingTool?.diff,
-              isFinishedToolStatus(toolStatus),
-            )
-          : {};
+      // Native SDK events are untrusted claims. Only an owner-bound gateway
+      // receipt may supply file history; never read a claimed host path here.
       const resolvedName = resolveMcpToolName(toolName, toolArgs, existingTool?.input);
       const displayName = innerToolName(resolvedName, editArgs, toolResult);
       const inputText = !preparing && editArgs !== undefined ? JSON.stringify(editArgs) : undefined;
@@ -1223,8 +1114,6 @@ async function runQueuedJobAttempt(job: AgentJob) {
         ...(inputChars !== undefined ? { inputChars } : {}),
         kind,
         ...(detail ? { detail } : {}),
-        ...(editMetadata.path ? { path: editMetadata.path } : {}),
-        ...(editMetadata.diff ? { diff: editMetadata.diff } : {}),
         ...(inputText ? { input: inputText } : {}),
         ...(resultText ? { result: resultText } : {}),
         ...(todos?.length ? { todos } : {}),

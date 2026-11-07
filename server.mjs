@@ -1,6 +1,10 @@
 import http from "node:http";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { WebSocketServer } from "ws";
+import { browserLoginRequest } from "./lib/browser-login-client.ts";
+import { ProtectedBrowserRouting } from "./lib/protected-browser-routing.ts";
+import { ProtectedLoginError, protectedLoginFailure } from "./lib/protected-login-errors.ts";
+import { verifyBrowserUserAction } from "./lib/browser-user-capability.ts";
 
 // Next's custom-server entrypoint expects this Node primitive to be exposed
 // globally. The regular `next start` launcher does this during its bootstrap,
@@ -20,6 +24,7 @@ const {
   closeBrowserSession,
   cleanupBrowserSessions,
   performBrowserAction,
+  getBrowserLoginTarget,
   setBrowserViewport,
   browserEvents,
 } = await import("./lib/server-browser.ts");
@@ -132,7 +137,14 @@ async function persistBrowserContext(userId, chatId, result) {
   }
 }
 
+const protectedBrowserRouting = new ProtectedBrowserRouting(browserLoginRequest, getBrowserLoginTarget);
 async function performSharedBrowserAction(userId, chatId, action) {
+  if (action.action === "secure_input_prepare") {
+    return protectedBrowserRouting.prepare(userId, chatId, action);
+  }
+  if (protectedBrowserRouting.has(userId, chatId) || action.tabId === "protected") {
+    return protectedBrowserRouting.action(userId, chatId, action);
+  }
   const now = Date.now();
   if (now - lastBrowserCleanupAt > 60_000) {
     lastBrowserCleanupAt = now;
@@ -168,6 +180,12 @@ async function handleBrowserEngine(request, response) {
   }
   try {
     const action = await readRequestJson(request);
+    if(!verifyBrowserUserAction(userId,chatId,action,request.headers["x-metis-browser-app-capability"])){
+      response.writeHead(403,{"Content-Type":"application/json"});response.end(JSON.stringify({error:"Trusted app action required"}));return;
+    }
+    // Internal bearer tokens are present in native runtimes. They cannot mint
+    // an authenticated browser-user action or management capability.
+    action.source = verifyBrowserUserAction(userId,chatId,action,request.headers["x-metis-browser-user-capability"]) ? "user" : "agent";
     const result = await performSharedBrowserAction(userId, chatId, action);
     response.writeHead(200, {
       "Cache-Control": "no-store",
@@ -177,13 +195,19 @@ async function handleBrowserEngine(request, response) {
   } catch (error) {
     response.writeHead(400, { "Content-Type": "application/json" });
     response.end(JSON.stringify({
-      error: error instanceof Error ? error.message : "Browser action failed",
+      ...(error instanceof ProtectedLoginError ? protectedLoginFailure(error) : {error: error instanceof Error ? error.message : "Browser action failed"}),
     }));
   }
 }
 
 async function sendFrame(socket, context, tabId, quality, streamState, includeMetadata = false) {
-  if (socket.readyState !== 1 || socket.bufferedAmount > 2_000_000 || streamState.awaitingAck) return;
+  if (socket.readyState !== 1 || socket.bufferedAmount > 2_000_000 || streamState.awaitingAck) return tabId;
+  const protectedSession=protectedBrowserRouting.has(context.userId,context.chatId) || tabId === "protected";
+  if(protectedSession) {
+    if(streamState.metadataKey!=="protected")socket.send(JSON.stringify({type:"error",message:"Protected login: browser images are unavailable. The agent uses page controls; credentials stay in the protected browser."}));
+    streamState.metadataKey="protected";
+    return "protected";
+  }
   const frame = await captureBrowserFrame(context.userId, context.chatId, tabId, quality, includeMetadata);
   if (socket.readyState !== 1) return;
   if (includeMetadata) {

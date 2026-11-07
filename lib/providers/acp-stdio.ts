@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import type { ToolPart } from "@/lib/store";
 import { canonicalizeToolPart } from "@/lib/providers/tool-events";
 import { providerProcessEnv } from "@/lib/providers/process-env";
+import {assertNativeMcpServers,spawnNative} from "./native-sandbox";
 import { type McpServerMap } from "@/lib/mcp";
 
 export type AcpRunInput = {
@@ -102,7 +103,8 @@ export function rejectedAcpPermissionResult(params: unknown) {
 }
 
 export async function runAcpStdioAgent(input: AcpRunInput): Promise<{ sessionId?: string }> {
-  const child: ChildProcess = spawn(input.command, input.args, {
+  assertNativeMcpServers(input.mcp);
+  const child: ChildProcess = spawnNative(input.command, input.args, {
     cwd: input.cwd,
     env: providerProcessEnv(input.env),
     stdio: ["pipe", "pipe", "pipe"],

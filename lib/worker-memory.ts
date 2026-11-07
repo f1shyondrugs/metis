@@ -43,7 +43,7 @@ async function workerCgroupPaths() {
 export async function readWorkerMemoryState(): Promise<WorkerMemoryState> {
   const state: WorkerMemoryState = { totalBytes: totalmem(), availableBytes: freemem(), constraints: [] };
   if (process.platform !== "linux") return state;
-  const [meminfo, groups] = await Promise.all([readText("/proc/meminfo"), workerCgroupPaths()]);
+  const [meminfo, groups] = await Promise.all([readText(process.env.METIS_MEMORY_INFO_FILE || "/proc/meminfo"), workerCgroupPaths()]);
   const available = meminfo.match(/^MemAvailable:\s+(\d+)\s+kB/m);
   if (available) state.availableBytes = Number(available[1]) * 1024;
   const constraints = await Promise.all(groups.map(async group => {

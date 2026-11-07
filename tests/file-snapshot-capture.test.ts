@@ -87,20 +87,20 @@ test("checkpointing cannot downgrade a full snapshot, and authoritative creation
   assert.deepEqual(getToolRevertSnapshot(scope.chatId, "checkpoint", "new"), { path: file, after: "already written" });
 });
 
-test("repeated running updates preserve known absence, supplied snapshots, and wrapped input", () => {
+test("native lifecycle, supplied snapshots and wrapped input never establish trusted file claims", () => {
   const file = path.join(directory, "lifecycle.txt");
   const start = withLocalFileEditSnapshot(part("lifecycle", "running", file), undefined, directory);
   fs.writeFileSync(file, "created");
   const repeated = withLocalFileEditSnapshot(part("lifecycle", "running", file), start, directory);
   const complete = withLocalFileEditSnapshot(part("lifecycle", "completed", file), repeated, directory);
-  assert.deepEqual(complete.diff, { before: undefined, after: "created" });
+  assert.equal(complete.diff,undefined);
   const supplied = withLocalFileEditSnapshot(part("supplied", "completed", file, { diff: { before: "provided", after: "authoritative" } }), start, directory);
-  assert.deepEqual(supplied.diff, { before: "provided", after: "authoritative" });
+  assert.equal(supplied.diff,undefined);
   const wrapped = part("wrapped", "running", file, { name: "call_mcp_tool",
     input: JSON.stringify({ tool: "write_file", arguments: { path: file } }) });
-  assert.deepEqual(withLocalFileEditSnapshot(wrapped, undefined, directory).diff, { before: "created" });
+  assert.equal(withLocalFileEditSnapshot(wrapped, undefined, directory).diff,undefined);
   const preparing = part("preparing", "running", file, { phase: "preparing" });
-  assert.equal(withLocalFileEditSnapshot(preparing, undefined, directory), preparing);
+  assert.equal(withLocalFileEditSnapshot(preparing, undefined, directory).path,undefined);
 });
 
 test("receipt isolation covers owner, chat, run, incognito and path traversal", () => {

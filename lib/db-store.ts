@@ -10,6 +10,7 @@ import { createChatShareAccess, validChatShareAccess } from "@/lib/chat-share-ac
 import { chatShareAssets } from "@/lib/chat-share-assets";
 import { getDatabase, parseData, transaction } from "@/lib/sqlite";
 import { config } from "@/lib/config";
+import {ensureSafeDirectory,copySafeFile} from "@/lib/safe-file-read";
 import { recordAccountUsage, syncAccountUsage } from "@/lib/account-usage";
 import type {
   BrowserContext,
@@ -1049,11 +1050,11 @@ export function cloneChatByShareId(shareId: string, password: string | undefined
     const attachments = cloned.messages.flatMap((message) => message.attachments || []);
     if (attachments.length) {
       const targetDir = chatUploadDir(clonedId, ownerId);
-      mkdirSync(targetDir, { recursive: true });
+      ensureSafeDirectory(targetDir);
       for (const attachment of attachments) {
         const sourcePath = resolveUploadPath(source.id, attachment.storedName, source.ownerId);
         if (sourcePath && existsSync(sourcePath)) {
-          copyFileSync(sourcePath, path.join(targetDir, path.basename(attachment.storedName)));
+          copySafeFile(sourcePath,path.join(targetDir,path.basename(attachment.storedName)),{exclusive:true,mode:0o644});
         }
       }
     }

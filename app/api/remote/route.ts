@@ -1,3 +1,4 @@
+import { callNativeDevelopmentBroker } from "@/lib/native-development-broker";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import * as pty from "node-pty";
@@ -86,6 +87,13 @@ export async function GET(req: Request) {
       .map((event, index) => ({ id: cursor + index + 1, data: String(event.data || "") }));
     return Response.json({ chunks, cursor: cursor + chunks.length });
   }
+  if (process.env.METIS_DEVELOPMENT_BROKER) {
+    const isolation = gatewayContext(ownerId);
+    const result = await callNativeDevelopmentBroker({ action: "pty-chunks", uid: isolation.uid, root: isolation.workspaceRoot, owner: ownerId,
+      body: { sessionId: url.searchParams.get("sessionId"), cursor: url.searchParams.get("cursor") } });
+    const { status = 200, ...payload } = result;
+    return Response.json(payload, { status: Number(status) });
+  }
   const session = sessionFor(url.searchParams.get("sessionId"), ownerId);
   if (!session) return Response.json({ error: "Terminal session not found" }, { status: 404 });
   session.lastActivity = Date.now();
@@ -147,6 +155,12 @@ export async function POST(req: Request) {
   }
 
   try {
+    if (!body.clientId && process.env.METIS_DEVELOPMENT_BROKER &&
+        ["pty-create", "pty-attach", "pty-input", "pty-resize", "pty-close"].includes(body.action || "")) {
+      const result = await callNativeDevelopmentBroker({ action: body.action, uid: isolation.uid, root: defaultCwd, owner: ownerId, body: { ...body, cwd } });
+      const { status = 200, ...payload } = result;
+      return Response.json(payload, { status: Number(status) });
+    }
     cleanupTerminalSessions();
     if (body.clientId) {
       const clientId = body.clientId.trim();

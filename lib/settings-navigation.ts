@@ -1,5 +1,6 @@
 export type SettingsSection = { id: string; label: string; keywords?: string; parentSectionId?: string };
 export const SETTINGS_SECTIONS: Record<string, SettingsSection[]> = {
+  security: [{ id: "settings-credential-vault", label: "Credential Vault", keywords: "password credentials login vault security sicherheit zugangsdaten" }],
   general: [
     { id: "settings-appearance", label: "Appearance", keywords: "theme colors colour midnight graphite nord forest sand paper gray grey dark light design custom json import export fonts spacing radius aussehen farben grau schrift abstand" },
     { id: "settings-attachments", label: "Attachments", keywords: "upload file size limit unlimited MB GB anhänge anhaenge dateigröße dateigrosse größe unbegrenzt" },
@@ -35,6 +36,7 @@ export const SETTINGS_SECTIONS: Record<string, SettingsSection[]> = {
 
 export const SETTINGS_TABS = [
   { value: "general", label: "General", keywords: "allgemein" },
+  { value: "security", label: "Security", keywords: "sicherheit" },
   { value: "models", label: "Models", keywords: "modelle" },
   { value: "agent", label: "Agent" },
   { value: "devices", label: "Devices", keywords: "geräte" },

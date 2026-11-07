@@ -62,12 +62,13 @@ import { withEditedFileTracking, withLocalFileEditSnapshot } from "@/lib/file-ed
 import { getAgentCwd } from "@/lib/mcp";
 import { isJobWaitingForUser } from "@/lib/user-input-resume";
 import { parkEndedUserInputWriter, commitWithUserInputContinuation } from "@/lib/db-jobs";
+import {withNativeRuntime} from "./native-sandbox";
 
 async function runProvider(context: ProviderContext): Promise<ProviderResult> {
   const providerKey =
     context.connection.providerKey ||
     parseModelKey(context.job.modelId).providerKey;
-  return providerAdapterForExecution(providerExecution(providerKey)).runTurn(context);
+  return withNativeRuntime(context.job.userId!,getAgentCwd(context.job.userId),()=>providerAdapterForExecution(providerExecution(providerKey)).runTurn(context));
 }
 
 export async function runAlternativeProviderJob(job: AgentJob, initialChat: Chat) {

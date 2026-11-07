@@ -7,6 +7,8 @@ import { normalizeQuestionAnswers, questionAnswerDisplay, QuestionValidationErro
 import { questionAnswerAnchor } from "@/lib/question-transcript";
 import { userInputProgress } from "@/lib/user-input-progress";
 import { transaction } from "@/lib/sqlite";
+import { browserLoginRequest, browserLoginSameOrigin } from "@/lib/browser-login-client";
+import { requiresProtectedCredentials } from "@/lib/mcp-core/credential-question-policy.mjs";
 
 export const runtime = "nodejs";
 
@@ -34,7 +36,22 @@ export async function POST(req: Request) {
   if (pending.status !== "waiting_for_user" && !(cancelled ? pending.cancelled : pending.status === "answered")) {
     return Response.json({ error: "This form is no longer available. Refresh the chat." }, { status: 409 });
   }
+  if (!cancelled && !pending.secureBrowserInput && requiresProtectedCredentials(pending)) {
+    return Response.json({error:"Enter credentials only in the protected login form. Start the login again.",code:"secure_credentials_required"},{status:409});
+  }
   let input = body.values ?? body.answers;
+  const secure=pending.secureBrowserInput;
+  if(!cancelled && secure && pending.status!=="answered") {
+    if(!req.headers.get("cookie") || !browserLoginSameOrigin(req))return Response.json({error:"Forbidden"},{status:403});
+    try {
+      const status=await browserLoginRequest(userId!,pending.chatId,secure.kind==="console"?"console_status":"status",{requestId:secure.requestId},true);
+      if(!status.filled)throw Error();
+      const label=secure.kind==="console"?"Password":"Credentials";
+      input={secure_login:status.scope==="permanent"?`${label} entered securely and saved permanently.`:`${label} entered securely and saved for this chat only.`};
+    }catch{return Response.json({error:"Enter credentials in the protected form first."},{status:409});}
+    // Never persist client-supplied values for secure input, even if a client
+    // accidentally posts a password to this ordinary transcript endpoint.
+  }
   if (!cancelled && pending.status !== "answered") {
     try { input = normalizeQuestionAnswers(pending.questions, input).values; }
     catch (error) {
