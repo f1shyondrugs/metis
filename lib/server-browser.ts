@@ -523,7 +523,10 @@ async function waitForLocatorAcrossFrames(
   }
 }
 
-export const BROWSER_SENSITIVE_SELECTOR = 'input[type="password"], input[type="hidden"], input[autocomplete*="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"], input[name*="token" i], input[name*="secret" i], input[name*="pass" i], input[id*="pass" i]';
+export const BROWSER_CREDENTIAL_SELECTOR = 'input[type="password"], input[autocomplete*="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"], input[name*="token" i], input[name*="secret" i], input[name*="pass" i], input[id*="pass" i]';
+// Hidden search/routing fields are redacted from text, but their presence alone
+// does not mean a screenshot contains credentials.
+export const BROWSER_SENSITIVE_SELECTOR = BROWSER_CREDENTIAL_SELECTOR + ', input[type="hidden"]';
 
 async function redactBrowserText(page: Page, text: string) {
   return (await browserTextRedactor(page))(text);
@@ -658,7 +661,7 @@ export async function collectFormState(page: Page): Promise<{ text: string; cont
 
 export async function screenshotPage(page: Page, options: { type: "png" } | { type: "jpeg"; quality: number }) {
   for(const frame of page.frames()) {
-    const containsSecret=await frame.locator(BROWSER_SENSITIVE_SELECTOR).evaluateAll(elements=>elements.some(el=>'value' in el && Boolean((el as HTMLInputElement).value))).catch(()=>true);
+    const containsSecret=await frame.locator(BROWSER_CREDENTIAL_SELECTOR).evaluateAll(elements=>elements.some(el=>'value' in el && Boolean((el as HTMLInputElement).value))).catch(()=>true);
     // Field masks cannot cover a reflected value in surrounding DOM/canvas.
     if(containsSecret) throw new Error("Screenshot unavailable while sensitive form values are present");
   }
