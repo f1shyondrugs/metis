@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
+import { createChatModelSettingsQueue } from "../lib/chat-model-settings";
 
 const source = ts.createSourceFile("app-shell.tsx", readFileSync("components/app-shell.tsx", "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const callbacks = new Map<string, string>();
@@ -20,7 +21,10 @@ function callback(name: string, context: Record<string, unknown>) {
   const js = ts.transpileModule("const callback = " + callbacks.get(name) + "; callback;", {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
-  return vm.runInNewContext(js, context);
+  return vm.runInNewContext(js, {
+    chatModelSettingsRef: { current: createChatModelSettingsQueue(async (_id, selection) => selection) },
+    ...context,
+  });
 }
 
 for (const mismatch of ["render", "queue", "loading"] as const) {

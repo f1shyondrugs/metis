@@ -26,7 +26,7 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
 
   const push = (item: ReferenceResult) => {
     if (includes(item.kind) && referenceMatches(query, item.label, item.detail, item.path, item.content)) {
-      const key = item.kind === "file" ? [item.kind,item.chatId,item.path].join(":") : [item.kind,item.id,item.chatId || ""].join(":");
+      const key = item.kind === "chat" ? "chat:" + (item.chatId || item.id) : item.kind === "file" ? [item.kind,item.chatId,item.path].join(":") : [item.kind,item.id,item.chatId || ""].join(":");
       if(seen.has(key))return;
       if(results.filter(result=>result.kind===item.kind).length>=perKindLimit) {
         const score=(candidate:ReferenceResult)=>Number(Boolean(candidate.isCurrentChat))*2+Number(referenceMatches(query,candidate.label));

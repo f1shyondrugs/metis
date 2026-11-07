@@ -5,6 +5,18 @@ export type ReferenceResult = {
   isCurrentChat?: boolean; path?: string; content?: string; sessionId?: string; parentId?: string; target?: string;
 };
 
+/** Chat references select the conversation, even if an older response uses message IDs. */
+export function uniqueChatReferences<T extends ReferenceResult>(results: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return results.filter(item => {
+    if (item.kind !== "chat") return true;
+    const chatId = item.chatId || item.id;
+    if (seen.has(chatId)) return false;
+    seen.add(chatId);
+    return true;
+  }).map(item => item.kind === "chat" && item.chatId && item.id !== item.chatId ? { ...item, id: item.chatId } : item);
+}
+
 export const normalizeReferenceText = (text: string) => text.normalize("NFKD").replace(/\p{M}/gu, "").toLocaleLowerCase().replace(/ß/g, "ss");
 /** Search words independently; accents and German spelling should not hide a result. */
 export function referenceMatches(query: string, ...values: Array<string | undefined>) {

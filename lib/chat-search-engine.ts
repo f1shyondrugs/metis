@@ -66,7 +66,7 @@ export function prepareLegacySearch(db: DatabaseSync, chatId: string, revision: 
     finally { db.exec("DELETE FROM temp.chat_search_staging"); }
     return true;
 }
-export async function runSearch(db: DatabaseSync, query: string, ownerId: string | undefined, limit: number, related: boolean, cancelled: () => boolean, includeNotes = true): Promise<SearchPayload> {
+export async function runSearch(db: DatabaseSync, query: string, ownerId: string | undefined, limit: number, related: boolean, cancelled: () => boolean, includeNotes = true, uniqueChats = false): Promise<SearchPayload> {
     const needle = query.trim().slice(0, 200).toLowerCase();
     const empty: SearchPayload = { results: [], notes: [], projects: [] };
     if (!needle)
@@ -134,12 +134,13 @@ export async function runSearch(db: DatabaseSync, query: string, ownerId: string
         .map(gram => '"' + gram.replaceAll('"', '""') + '"').join(" AND ");
     const messages: (ChatSearchResult & {position:number})[] = [];
     if (useFts) messages.push(...db.prepare(`WITH hits AS (
-  SELECT m.id FROM chat_search_messages m JOIN chat_list c ON c.id=m.chat_id
+  SELECT m.id${uniqueChats ? ", MIN(m.position) AS firstPosition" : ""} FROM chat_search_messages m JOIN chat_list c ON c.id=m.chat_id
   LEFT JOIN projects p ON p.id=c.project_id
   JOIN chat_page_state s ON s.chat_id=c.id
   JOIN chat_search_state r ON r.chat_id=c.id AND r.ready_revision=s.revision
   WHERE ${matched} instr(m.normalized,?)>0 AND ${SEARCH_CHAT_ACCESS}
-  ORDER BY c.pinned DESC,COALESCE(c.last_message_sent,c.created_at) DESC,c.id,m.position LIMIT ?
+  ${uniqueChats ? "GROUP BY c.id" : ""}
+  ORDER BY c.pinned DESC,COALESCE(c.last_message_sent,c.created_at) DESC,c.id,${uniqueChats ? "firstPosition" : "m.position"} LIMIT ?
  ) SELECT m.chat_id AS chatId,substr(c.title,1,200) AS chatTitle,c.updated_at AS updatedAt,
  m.message_id AS messageId,m.role,search_snippet(m.body,?) AS snippet,m.position
  FROM hits JOIN chat_search_messages m ON m.id=hits.id JOIN chat_list c ON c.id=m.chat_id`)
@@ -159,14 +160,22 @@ export async function runSearch(db: DatabaseSync, query: string, ownerId: string
             WHERE m.chat_id=? AND instr(m.normalized,?)>0 AND ${SEARCH_CHAT_ACCESS}
             ORDER BY m.position LIMIT ?`);
         for (const entry of entries) {
-            const hits = short.all(needle,entry.id,needle,...access,limit-messages.length) as unknown as (ChatSearchResult & {position:number})[];
+            const hits = short.all(needle,entry.id,needle,...access,uniqueChats ? 1 : limit-messages.length) as unknown as (ChatSearchResult & {position:number})[];
             messages.push(...hits);
             if (messages.length>=limit) break;
         }
     }
     const ranked = [...results.map(result => ({ ...result, position: -1 })), ...messages];
     ranked.sort((a, b) => (order.get(a.chatId) ?? Infinity) - (order.get(b.chatId) ?? Infinity) || a.position - b.position);
-    empty.results = ranked.slice(0, limit).map(({ position: _position, ...result }) => result);
+    // Apply the chat limit after grouping, so a long transcript cannot hide
+    // other conversations. Keep message-level results for tool/API consumers.
+    const seenChats = new Set<string>();
+    empty.results = ranked.filter(result => {
+        if (!uniqueChats) return true;
+        if (seenChats.has(result.chatId)) return false;
+        seenChats.add(result.chatId);
+        return true;
+    }).slice(0, limit).map(({ position: _position, ...result }) => result);
     if (!related)
         return empty;
     check();

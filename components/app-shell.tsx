@@ -6917,10 +6917,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }
   }
 
-  async function removeMessageFromQueue(message: QueuedMessage) {
+  async function removeMessageFromQueue(message: QueuedMessage, onRemoved?: () => void) {
     if (activeChatIdRef.current !== activeChatId || loadingChatId || queuedState.chatId !== activeChatId) return false;
     const chatId = activeChatId;
     const index = queuedMessages.findIndex((item) => item.id === message.id);
+    if (index < 0 || queuedSendRef.current.has(message.id)) return false;
     try {
       return await removeQueuedFollowUp({
         chatId,
@@ -6928,6 +6929,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         removedIds: removedIdsFor(chatId ?? ""),
         removeLocally: () => {
           setQueuedMessages((current) => current.filter((item) => item.id !== message.id));
+          onRemoved?.();
           if (!chatId) return;
           const cached = chatCacheRef.current.get(chatId);
           if (!cached) return;
@@ -6954,22 +6956,51 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         },
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not remove queued message");
+      toast.error(onRemoved
+        ? "Could not remove the original queued message. It is still queued; your draft has been kept."
+        : error instanceof Error ? error.message : "Could not remove queued message");
       return false;
     }
   }
 
   async function editQueuedMessage(message: QueuedMessage) {
-    const chatId = activeChatIdRef.current;
-    if (!await removeMessageFromQueue(message) || activeChatIdRef.current !== chatId) return;
-    setInput(message.text);
-    setComposerSyncNonce((current) => current + 1);
-    setReferenceText(message.referenceText ?? "");
-    setReferences(message.references ?? []);
-    setPendingFiles(message.files);
-    setRestoredAttachments(message.storedAttachments ?? []);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    window.setTimeout(() => textareaRef.current?.focus(), 0);
+    const sendLockKey = activeChatIdRef.current || "__draft__";
+    if (sendInFlightKeysRef.current.has(sendLockKey)) return;
+    const editLockKey = "queue-edit:" + sendLockKey;
+    let locked = false;
+    try {
+      // Transfer the draft in the same event as the optimistic removal. The DELETE
+      // acknowledgement must never gate editing or overwrite a newer draft/chat.
+      await removeMessageFromQueue(message, () => {
+        // Keep submission blocked until the original can no longer be sent too.
+        sendInFlightKeysRef.current.add(sendLockKey);
+        sendInFlightKeysRef.current.add(editLockKey);
+        locked = true;
+        setSendLockTick((value) => value + 1);
+        handleComposerInputChange(message.text, message.text.length);
+        if (inputCommitTimerRef.current) window.clearTimeout(inputCommitTimerRef.current);
+        inputCommitTimerRef.current = 0;
+        setInput(message.text);
+        setComposerSyncNonce((current) => current + 1);
+        setReferenceText(message.referenceText ?? "");
+        setReferences(message.references ?? []);
+        setPendingFiles(message.files);
+        setRestoredAttachments(message.storedAttachments ?? []);
+        setReferenceMenu(null);
+        setSlashQuery(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        const chatId = activeChatIdRef.current;
+        window.setTimeout(() => {
+          if (activeChatIdRef.current === chatId) textareaRef.current?.focus();
+        }, 0);
+      });
+    } finally {
+      if (locked) {
+        sendInFlightKeysRef.current.delete(sendLockKey);
+        sendInFlightKeysRef.current.delete(editLockKey);
+        setSendLockTick((value) => value + 1);
+      }
+    }
   }
 
   function moveQueuedMessage(messageId: string, direction: -1 | 1) {
@@ -7126,6 +7157,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }
     e?.preventDefault();
     const isOverride = textOverride !== undefined;
+    if (!isOverride && sendInFlightKeysRef.current.has("queue-edit:" + (activeChatIdRef.current || "__draft__"))) {
+      toast.info("Wait for the queued message to finish moving before sending.");
+      return;
+    }
     // Read the live task map: Enter/form submission can beat the next React render.
     if (hasUnfinishedComposerUploads(attachmentsOverride ?? pendingFilesRef.current, getUploadStatus)) return;
     let text = (textOverride ?? composerLiveText(textareaRef.current ? composerPlainText(textareaRef.current, "Message Metis…") : "", input)).trim();

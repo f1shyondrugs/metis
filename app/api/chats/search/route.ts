@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     const related = url.searchParams.get("related") === "1";
     try {
         const includeNotes = related && featureFlags(getGlobalModelSettings(ownerId)).notes;
-        const data = await searchOffThread(query, ownerId, limit, related, req.signal, includeNotes);
+        const data = await searchOffThread(query, ownerId, limit, related, req.signal, includeNotes, url.searchParams.get("group") === "chat");
         return Response.json(related ? data : { results: data.results, indexing: data.indexing }, { headers });
     }
     catch (error) {

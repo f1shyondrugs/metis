@@ -26,8 +26,13 @@ const records = (value: unknown, max: number) => Array.isArray(value) ? value.sl
 /** Defense in depth: a bad/older response must not freeze the command palette. */
 export function boundedSearchResults(value: unknown): PaletteResults {
     const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    const seenChats = new Set<string>();
     return {
-        results: records(data.results, 30).filter(r => typeof r.chatId === "string").map(r => ({
+        results: records(data.results, 50).filter(r => {
+            if (typeof r.chatId !== "string" || !r.chatId || seenChats.has(r.chatId)) return false;
+            seenChats.add(r.chatId);
+            return true;
+        }).slice(0, 30).map(r => ({
             chatId: text(r.chatId, 200), chatTitle: text(r.chatTitle, 200), updatedAt: text(r.updatedAt, 80),
             ...(typeof r.messageId === "string" ? { messageId: text(r.messageId, 200) } : {}),
             snippet: text(r.snippet, 400), matchedKeywords: Array.isArray(r.matchedKeywords) ? r.matchedKeywords.filter((k): k is string => typeof k === "string").slice(0, 5).map(k => k.slice(0, 120)) : [],

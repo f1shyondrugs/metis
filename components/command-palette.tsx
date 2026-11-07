@@ -90,7 +90,7 @@ export function CommandPalette(props: Props) {
         setLoading(true);
         const search = async () => {
             try {
-                const response = await fetch(`/api/chats/search?q=${encodeURIComponent(normalized)}&related=1`, { signal: controller.signal, cache: "no-store" });
+                const response = await fetch(`/api/chats/search?q=${encodeURIComponent(normalized)}&related=1&group=chat`, { signal: controller.signal, cache: "no-store" });
                 if (!response.ok)
                     throw new Error("Search failed");
                 const next = boundedSearchResults(await response.json());
@@ -186,7 +186,7 @@ export function CommandPalette(props: Props) {
     {normalized && <>
      <p className={heading}>Chats</p>
      {loading && <p role="status" className="px-2 py-4 text-center text-sm text-muted-foreground">Searching…</p>}
-     {results.map((result, index) => <button type="button" key={result.chatId + ":" + (result.messageId || "title")} {...rowProps(commandCount + index)}>
+     {results.map((result, index) => <button type="button" key={result.chatId} {...rowProps(commandCount + index)}>
       <MessageSquare className="mt-0.5 size-4 shrink-0 text-muted-foreground"/><span className="min-w-0 flex-1">
        <span className="block truncate text-sm"><Highlight text={result.chatTitle} query={normalized}/></span>
        <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground"><Highlight text={result.snippet} query={normalized}/></span>
