@@ -1,6 +1,6 @@
 import type { ProjectModelSelection } from "./project-model";
 
-export type ChatModelSettingsSelection = ProjectModelSelection;
+export type ChatModelSettingsSelection = ProjectModelSelection & { modelChainId?: string | null };
 export type ChatModelSettingsResult = {
   current: boolean;
   selection: ChatModelSettingsSelection;
@@ -17,7 +17,7 @@ type Entry = {
 };
 
 function copy(selection: ChatModelSettingsSelection): ChatModelSettingsSelection {
-  return { modelId: selection.modelId, modelParams: selection.modelParams.map(({ id, value }) => ({ id, value })) };
+  return { modelId: selection.modelId, modelParams: selection.modelParams.map(({ id, value }) => ({ id, value })), ...(selection.modelChainId !== undefined ? { modelChainId: selection.modelChainId } : {}) };
 }
 
 /** Serializes full selections per chat; account defaults never participate in restoration. */

@@ -14,6 +14,7 @@ import { projectLogoSrc } from "@/lib/project-constants";
 import type { Project } from "@/lib/store";
 import { NoteDocument, type NoteDocumentHandle } from "./note-document";
 import { NoteBannerUpload, NoteIconPicker } from "./note-appearance-controls";
+import { BannerImage } from "@/components/banner-image";
 import { NoteIcon } from "./note-icon";
 import { IssuesView, IssueFileProperties } from "./issues-view";
 import { buildNoteTree, noteAncestors, noteDescendantIds, noteDisplayTitle, notesInContainer, searchNoteTree, type NoteTreeNode, type TreeNote } from "@/lib/notes-tree";
@@ -499,7 +500,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
     </DialogContent></Dialog>
     <Dialog open={appearance} onOpenChange={setAppearance}><DialogContent><DialogHeader><DialogTitle>Page appearance</DialogTitle></DialogHeader>
       <div className="flex items-center gap-2"><NoteIconPicker value={icon} onChange={value => setIcon(value || "")} />{selected && <NoteBannerUpload key={selected.id} noteId={selected.id} value={cover} onChange={value => setCover(value || "")} />}</div>
-      {cover && <div className="relative h-28 overflow-hidden rounded-lg"><Image src={cover} alt="Banner preview" fill unoptimized sizes="100vw" className="object-cover" /></div>}
+      {cover && <BannerImage src={cover} alt="Banner preview" className="h-28 rounded-lg"/>}
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={fullWidth} onChange={event => setFullWidth(event.target.checked)} />Full width</label>
       <DialogFooter><Button variant="outline" onClick={() => setAppearance(false)}>Cancel</Button><Button onClick={() => { if (selected) void patch(selected, { icon: icon || null, cover: cover || null, fullWidth }).then(note => { if (note) setAppearance(false); }).catch(cause => setError(cause.message)); }}>Save</Button></DialogFooter>
     </DialogContent></Dialog>

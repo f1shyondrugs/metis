@@ -7,6 +7,8 @@ import { transaction } from "@/lib/sqlite";
 import { appendMessage } from "@/lib/db-store";
 import { commitPendingModelSwitch } from "@/lib/model-switch";
 import type { ModelSwitchPart } from "@/lib/run-control-event";
+import { modelChainFailure } from "@/lib/model-chain-failure";
+import { requestModelChainFallback } from "@/lib/model-chain-runtime";
 import { providerContinuationPrompt } from "@/lib/provider-continuation";
 
 /** Publish/checkpoint the retry while retaining the same worker lease and runtime budget. */
@@ -17,8 +19,11 @@ export function requestProviderRetry(
 ): boolean {
   return transaction(() => {
     const current = getJob(jobId);
-    if (!current || current.status !== "running" || !getProviderRetryEnabled(current.userId)) return false;
-    const count = current.providerRetryCount ?? 0;
+    if (!current || current.status !== "running" || current.cancellationCause) return false;
+    if (current.agentRuntimeDeadlineAt && Date.parse(current.agentRuntimeDeadlineAt) <= Date.now()) return false;
+    const chainUnavailable = Boolean(current.modelChain && modelChainFailure(error) === "unavailable");
+    if (!chainUnavailable && !getProviderRetryEnabled(current.userId)) return false;
+    const count = chainUnavailable ? current.modelChain!.unavailableRetries : current.providerRetryCount ?? 0;
     if (!Number.isInteger(count) || count < 0 || count >= MAX_PROVIDER_RETRIES) return false;
     const attempt = count + 1;
     const event: ProviderRetryPart = {
@@ -28,7 +33,8 @@ export function requestProviderRetry(
       detail: providerRetryDetail(error),
     };
     const updated = updateJob(jobId, {
-      providerRetryCount: attempt,
+      providerRetryCount: (current.providerRetryCount ?? 0) + 1,
+      ...(chainUnavailable ? { modelChain: { ...current.modelChain!, unavailableRetries: attempt } } : {}),
       resumePrompt: providerContinuationPrompt(current, "An error interrupted this same run."),
       resumeRequestedAt: new Date().toISOString(),
     }, { expectedRevision: current.revision ?? 0 });
@@ -71,6 +77,7 @@ export async function runWithProviderRetries<T>(
       result = await runAttempt(job);
     } catch (error) {
       if (commitPendingModelSwitch(job.id, job.modelId || "", event => checkpointRecoveryEvent(job, event))) return result;
+      if (requestModelChainFallback(job.id, error, event => checkpointRecoveryEvent(job, event))) return result;
       if (!requestProviderRetry(job.id, error, event => checkpointRecoveryEvent(job, event))) throw error;
     }
     const current = getJob(job.id);

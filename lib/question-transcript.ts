@@ -5,7 +5,7 @@ type Part = { type: string; content?: string; id?: string; name?: string; input?
 
 export type QuestionTranscriptCursor = { partIndex: number; textOffset?: number };
 export type QuestionAnswerAnchor = { assistantMessageId: string; toolCallId?: string; cursor?: QuestionTranscriptCursor };
-export type QuestionAnswerReference = { questionId: string } & Partial<QuestionAnswerAnchor>;
+export type QuestionAnswerReference = { questionId: string; display?: import("./question-contract").QuestionAnswerDisplay } & Partial<QuestionAnswerAnchor>;
 type TranscriptMessage = {
   id: string;
   role: string;

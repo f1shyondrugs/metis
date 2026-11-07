@@ -4,6 +4,8 @@ export type ModelSwitchPart = {
   fromModelId: string;
   toModelId: string;
   timestamp: string;
+  reason?: "chain-usage" | "chain-unavailable";
+  chainName?: string;
 };
 
 export type ProviderWaitPart = {
@@ -22,7 +24,7 @@ export function parseRunControlEvent(value: unknown): RunControlPart | null {
   const field = (key: string) => typeof v[key] === "string" && (v[key] as string).length <= 8000;
   if (!field("id") || !v.id) return null;
   if (v.type === "model-switch" && field("fromModelId") && field("toModelId") && field("timestamp")) {
-    return { type: v.type, id: v.id as string, fromModelId: v.fromModelId as string, toModelId: v.toModelId as string, timestamp: v.timestamp as string };
+    return { type: v.type, id: v.id as string, fromModelId: v.fromModelId as string, toModelId: v.toModelId as string, timestamp: v.timestamp as string, ...((v.reason === "chain-usage" || v.reason === "chain-unavailable") ? { reason: v.reason, ...(field("chainName") ? { chainName: v.chainName as string } : {}) } : {}) };
   }
   if (v.type === "provider-wait" && field("resetAt") && field("detectedAt") && field("detail")) {
     return { type: v.type, id: v.id as string, resetAt: v.resetAt as string, detectedAt: v.detectedAt as string, detail: v.detail as string };

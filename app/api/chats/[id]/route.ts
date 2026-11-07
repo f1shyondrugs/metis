@@ -1,3 +1,5 @@
+import { setChatModelChain } from "@/lib/model-chains";
+import { getChatMetadata } from "@/lib/db-store";
 import { ensureChatPage, updateChatOffThread } from "@/lib/chat-page-loader";
 import { getDatabase } from "@/lib/sqlite";
 import { randomUUID, createHash } from "node:crypto";
@@ -147,6 +149,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   const projectModel = projectModelOverride(teamAgent?.projectId, ownerId);
   if (projectModel) { body.modelId = projectModel.modelId; body.modelParams = projectModel.modelParams; }
+  if (requestedModelId && getChatMetadata(id, ownerId)?.modelId !== requestedModelId) setChatModelChain(ownerId, id, null);
   const sessionState = body.sessionState ? { ...body.sessionState } : body.sessionState;
   // Only the internal subagent route may widen a child's goal reference scope.
   if (sessionState) delete sessionState.goalOriginChatId;

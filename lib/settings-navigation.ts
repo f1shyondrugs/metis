@@ -13,6 +13,7 @@ export const SETTINGS_SECTIONS: Record<string, SettingsSection[]> = {
   models: [
     { id: "settings-usage", label: "Usage", keywords: "quota cost limits tokens plan verbrauch kosten kontingent" },
     { id: "settings-providers", label: "Providers", keywords: "ai connections api key oauth credentials anbieter verbindungen schlüssel" },
+    { id: "settings-model-chains", label: "Model Chains", keywords: "fallback routing order usage unavailable retry chain kette modelle" },
     { id: "settings-versions", label: "Versions", keywords: "cli installed version update versionen" },
   ],
   agent: [

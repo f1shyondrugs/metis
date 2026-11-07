@@ -8,7 +8,7 @@ export function RunEventDivider({ event, modelLabel }: {
   event: ProviderRetryPart | RunControlPart;
   modelLabel?: (id: string) => string;
 }) {
-  const label = event.type === "model-switch" ? "Switched model"
+  const label = event.type === "model-switch" ? event.reason ? "Model chain fallback" : "Switched model"
     : event.type === "provider-wait" ? "Usage limit wait"
       : `Continuing Run… (${event.attempt}/${event.maxRetries})`;
   const Icon = event.type === "model-switch" ? ArrowRightLeft : event.type === "provider-wait" ? Clock : Repeat2;
@@ -29,6 +29,7 @@ export function RunEventDivider({ event, modelLabel }: {
       {event.type === "model-switch" ? <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
         <dt>From</dt><dd className="break-words text-foreground/90" title={event.fromModelId}>{name(event.fromModelId)}</dd>
         <dt>To</dt><dd className="break-words text-foreground/90" title={event.toModelId}>{name(event.toModelId)}</dd>
+        {event.reason ? <><dt>Chain</dt><dd className="break-words">{event.chainName}</dd><dt>Reason</dt><dd>{event.reason === "chain-usage" ? "Usage limit reached" : "Unavailable after 3 retries"}</dd></> : null}
         <dt>Switched at</dt><dd className="break-words"><time dateTime={event.timestamp}>{event.timestamp}</time></dd>
       </dl> : <>
         <p className="mb-1.5 font-medium text-foreground/90">{event.type === "provider-wait" ? "Provider usage limit" : "Provider error"}</p>

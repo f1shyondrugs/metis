@@ -1,3 +1,4 @@
+import { chatModelChain, snapshotModelChain, resolveChainStep } from "@/lib/model-chains";
 import { providerRetryDetail } from "@/lib/provider-retry";
 import type { ModelSwitchPart, ProviderWaitPart } from "@/lib/run-control-event";
 import { MEMORY_WAIT_MESSAGE, MEMORY_OVERRIDE_MESSAGE, WORKER_QUEUE_MESSAGE } from "@/lib/memory-queue";
@@ -192,6 +193,14 @@ function enqueueJobInTransaction(
     // in the chat with no job behind it.
     options?.beforeInsert?.();
 
+    const selectedChain = input.userId && !input.parentJobId && !input.modelChain ? chatModelChain(input.userId, input.chatId) : null;
+    const chainChat = selectedChain ? getChatMetadata(input.chatId, input.userId) : null;
+    if (selectedChain && input.userId && !projectModelOverride(chainChat?.projectId, input.userId)) {
+      const modelChain = snapshotModelChain(input.userId, selectedChain);
+      const step = resolveChainStep(input.userId, modelChain.steps[modelChain.index]);
+      input = { ...input, ...step, modelChain, agentId: undefined };
+      updateChat(input.chatId, { ...step, ...(chainChat?.modelId !== step.modelId ? { agentId: null } : {}), touchUpdatedAt: false }, input.userId, { metadataProjection: true });
+    }
     const team = getDatabase().prepare("SELECT p.id AS projectId, p.owner_id AS ownerId, p.data AS projectData, a.data AS agentData FROM chats c LEFT JOIN chat_list l ON l.id=c.id JOIN projects p ON p.id = CASE WHEN l.id IS NULL THEN json_extract(c.data, '$.projectId') ELSE l.project_id END LEFT JOIN project_agents a ON a.chat_id = c.id WHERE c.id = ?").get(input.chatId) as { projectId: string; ownerId: string; projectData: string; agentData?: string } | undefined;
     if (team && JSON.parse(team.projectData).mode === "agents") {
       const agent = team.agentData ? JSON.parse(team.agentData) : null;
@@ -707,6 +716,8 @@ export function updateJob(
       | "cancellationCause"
       | "subagentAutoReview"
       | "providerRetryCount"
+      | "modelChain"
+      | "pendingModelChain"
       | "taskContinuationCount"
       | "researchContinuationState"
     >
@@ -1229,6 +1240,7 @@ export function requestJobModelSwitch(
   userId: string | undefined,
   modelId: string,
   modelParams?: Array<{ id: string; value: string }>,
+  modelChain?: AgentJob["modelChain"] | null,
 ) {
   return transaction(() => {
   const job = getActiveJob(chatId, userId);
@@ -1247,6 +1259,8 @@ export function requestJobModelSwitch(
     const resetWait = changedModel && job.status === "queued" && Boolean(job.providerRateLimit);
     const updated = updateJob(job.id, {
       modelId: nextModelId, modelParams,
+      ...(modelChain !== undefined || changedModel ? { modelChain: modelChain ?? undefined } : {}),
+      pendingModelChain: undefined,
       pendingModelId: undefined, pendingModelParams: undefined, modelSwitchRequestedAt: undefined,
       ...(resetWait ? {
         providerRateLimit: undefined,
@@ -1270,15 +1284,18 @@ export function requestJobModelSwitch(
   }
   const requestedParams = modelParams ?? job.modelParams;
   if (job.modelId === nextModelId && modelParamsEqual(job.modelParams, requestedParams)) {
-    if (!job.pendingModelId && !job.pendingModelParams && !job.modelSwitchRequestedAt) return job;
+    if (!job.pendingModelId && !job.pendingModelParams && !job.modelSwitchRequestedAt && modelChain === undefined) return job;
     return updateJob(job.id, {
       pendingModelId: undefined,
       pendingModelParams: undefined,
       modelSwitchRequestedAt: undefined,
-    }) || job;
+      pendingModelChain: undefined,
+      ...(modelChain !== undefined ? { modelChain: modelChain ?? undefined } : {}),
+    }, { control: true }) || job;
   }
   return updateJob(job.id, {
     pendingModelId: nextModelId,
+    pendingModelChain: modelChain === undefined && job.modelId === nextModelId ? job.modelChain ?? null : modelChain ?? null,
     pendingModelParams: modelParams,
     modelSwitchRequestedAt: iso(),
   }, { control: true });

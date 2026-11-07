@@ -1,4 +1,7 @@
 "use client";
+import { Link2 } from "lucide-react";
+import { useModelChains, useChatModelChain, notifyModelChainsChanged } from "@/components/use-model-chains";
+import type { ModelChain } from "@/lib/model-chain-types";
 import { useReferenceSearch } from "@/components/use-reference-search";
 import { ReferencePicker, referenceLabel, referenceIcon } from "@/components/reference-picker";
 import { MessageHistoryControl } from "@/components/message-history-control";
@@ -171,7 +174,8 @@ import { TeamAgentAvatar } from "@/components/team-agent-avatar";
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectAvatar } from "@/components/project-avatar";
 import { VoiceInput } from "@/components/voice-input";
-import { RichUserText } from "@/components/rich-user-text";
+import { VoiceTranscriptPreview } from "@/components/voice-transcript-preview";
+import { QuestionAnswerText } from "@/components/question-answer-text";
 import { BrowserSettingsControls } from "@/components/browser-settings-controls";
 import { BrowserPageEmpty, BrowserPageSkeleton } from "@/components/browser-page-skeleton";
 import { UpdateStatusProbe } from "@/components/update-channel-nav";
@@ -217,6 +221,7 @@ import {
 } from "@/lib/subagent-bar";
 import { ToolCallGroup, type ActivityEntry, type ToolCallData } from "@/components/tool-call-chip";
 import { RunEventDivider } from "@/components/run-event-divider";
+import { ProviderResetWaitBanner } from "@/components/provider-reset-wait-banner";
 import { parseRunControlEvent } from "@/lib/run-control-event";
 import type { ProviderRetryPart } from "@/lib/provider-retry";
 import { canvasFromToolPayload, classifyToolKind, isToolRunning, layoutAssistantParts, mergeChatMessages, planFromToolPayload, remoteClientHostnameMap, todosFromToolPayload, workspaceIdFromLink } from "@/lib/tool-call-display";
@@ -228,6 +233,7 @@ import {
   COMPOSER_STATE_COMMIT_MS,
   composerLiveText,
   composerTranscriptInsert,
+  composerTranscriptFinalizer,
   composerUserEditMeta,
   decideComposerSend,
   hasUnfinishedComposerUploads,
@@ -1722,6 +1728,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [customModelInputs, setCustomModelInputs] = useState<Record<string, string>>({});
   const [favoriteModelKeys, setFavoriteModelKeys] = useState<string[]>([]);
   const [modelProviderFilter, setModelProviderFilter] = useState("all");
+  const modelChains = useModelChains(Boolean(authed));
+  const chatModelChain = useChatModelChain(Boolean(authed), activeChatId, modelId);
+  const [chainSelectionBusy, setChainSelectionBusy] = useState(false);
+  const chainSelectionBusyRef = useRef(false);
   const [subagentModelEnabled, setSubagentModelEnabled] = useState(false);
   const [subagentModelId, setSubagentModelId] = useState("");
   const [subagentModelParams, setSubagentModelParams] = useState<ModelParamSelection[]>([]);
@@ -1852,6 +1862,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [voiceConnectionId, setVoiceConnectionId] = useState("");
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceState, setVoiceState] = useState("idle");
+  const [voiceLiveTranscript, setVoiceLiveTranscript] = useState("");
   const [voiceStopSignal, setVoiceStopSignal] = useState(0);
   const [voiceCancelSignal, setVoiceCancelSignal] = useState(0);
   const voiceWaveformRef = useRef<HTMLDivElement>(null);
@@ -1993,6 +2004,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [recoveryStatus, setRecoveryStatus] = useState<"restored" | "needs_attention" | "not_available" | null>(null);
   const [recoveryJobId, setRecoveryJobId] = useState<string | null>(null);
   const [recoveryCanResume, setRecoveryCanResume] = useState(false);
+  const [providerWaitRevision, setProviderWaitRevision] = useState(0);
+  const [providerWaitingChatId, setProviderWaitingChatId] = useState<string | null>(null);
+  const handleProviderWaitingChange = useCallback((chatId: string, waiting: boolean) => {
+    setProviderWaitingChatId(current => waiting ? chatId : current === chatId ? null : current);
+  }, []);
   const [questionAnswers, setQuestionAnswers] = useState<string[]>([]);
   const [questionCustom, setQuestionCustom] = useState<string[]>([]);
   const [questionCustomActive, setQuestionCustomActive] = useState<boolean[]>([]);
@@ -2220,6 +2236,13 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const swipeRef = useRef<{ x: number; y: number; ignored: boolean } | null>(null);
   const chatModelSettingsRef = useRef<ReturnType<typeof createChatModelSettingsQueue> | null>(null);
   if (!chatModelSettingsRef.current) chatModelSettingsRef.current = createChatModelSettingsQueue(async (chatId, selection, signal) => {
+    if (selection.modelChainId !== undefined) {
+      const response = await fetch(`/api/chats/${chatId}/model-chain`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chainId: selection.modelChainId, modelId: selection.modelId, modelParams: selection.modelParams }), signal });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not select model chain.");
+      notifyModelChainsChanged();
+      return data.selection;
+    }
     const response = await fetch(`/api/chats/${chatId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(selection), signal,
     });
@@ -2805,6 +2828,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const resetVoiceComposer = useCallback(() => {
     setVoiceRecording(false);
     setVoiceState("idle");
+    setVoiceLiveTranscript("");
     paintVoiceWaveform(voiceWaveformRef.current, 0);
     setVoiceCancelSignal((current) => current + 1);
   }, []);
@@ -3931,7 +3955,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }
 
   function applyModelParams(next: ModelParamSelection[]) {
-    if (projectModel || loadingChatId) return;
+    if (projectModel || chatModelChain.chain || loadingChatId) return;
     const chatId = activeChatIdRef.current;
     if (chatId) {
       const current = stateRef.current;
@@ -4855,15 +4879,29 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     persistModelParamsByModel({ ...modelParamsByModel, [subagentModelId]: next });
   }
 
+  async function selectChain(chain: ModelChain) {
+    if (projectModel || loadingChatId || chainSelectionBusyRef.current) return;
+    chainSelectionBusyRef.current = true; setChainSelectionBusy(true);
+    try {
+      const chatId = await ensureChatId();
+      if (!chatId) return;
+      const step = chain.steps[0];
+      await saveChatModelSelection(chatId, { ...step, modelChainId: chain.id }, { modelId: stateRef.current.modelId, modelParams: stateRef.current.modelParams });
+      chatModelChain.refresh();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not select model chain."); }
+    finally { chainSelectionBusyRef.current = false; setChainSelectionBusy(false); }
+  }
+
   async function selectModel(nextId: string) {
-    if (projectModel || loadingChatId) return;
-    if (!nextId || nextId === modelId) return;
+    if (projectModel || loadingChatId || chainSelectionBusyRef.current) return;
+    if (!nextId || nextId === modelId && !chatModelChain.chain) return;
     const selectedChatId = activeChatIdRef.current;
     if (selectedChatId) {
       const current = stateRef.current;
       await saveChatModelSelection(selectedChatId,
-        { modelId: nextId, modelParams: modelForSelection(models, nextId)?.defaultParams ?? [] },
+        { modelId: nextId, modelParams: modelForSelection(models, nextId)?.defaultParams ?? [], ...(chatModelChain.chain ? { modelChainId: null } : {}) },
         { modelId: current.modelId, modelParams: current.modelParams });
+      chatModelChain.refresh();
       return;
     }
     const chatId = activeChatIdRef.current;
@@ -7071,6 +7109,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     sendQueuedNow = false,
     queuedUploadIdsOverride?: string[],
   ) {
+    if (chainSelectionBusyRef.current) { e?.preventDefault(); return; }
     if (reverting || loadingChatId || activeChatIdRef.current !== activeChatId) return;
     if (
       e &&
@@ -8064,6 +8103,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               }));
             }
             const rawStatus = typeof payload.status === "string" ? payload.status : "";
+            if (rawStatus === "waiting_provider_limit" && activeChatIdRef.current === chatId) setProviderWaitRevision(value => value + 1);
             const statusLabel = ["retrying_provider", "waiting_memory", "queued"].includes(rawStatus) ? ""
               : rawStatus === "waiting_provider_limit" ? "Waiting for provider reset"
               : rawStatus.toLowerCase() === "running" ? "Agent running" : rawStatus;
@@ -8259,7 +8299,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       } satisfies ModelInfo;
     })();
   const selectedAccountLabel = modelAccountLabel(selectedModel, availableProviders);
-  const selectedModelLabel = modelDisplayName(selectedModel) + (selectedAccountLabel ? " · " + selectedAccountLabel : "");
+  const selectedModelLabel = (!projectModel && chatModelChain.chain ? chatModelChain.chain.name + " · " : "") + modelDisplayName(selectedModel) + (selectedAccountLabel ? " · " + selectedAccountLabel : "");
   const measuredRuns = [...messages]
     .reverse()
     .filter((message) =>
@@ -8339,7 +8379,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     availableProviders.some((provider) => provider.providerId === providerQueryMatch[1])
     ? providerQueryMatch[1]
     : null;
-  const effectiveProviderFilter = providerQuery || modelProviderFilter;
+  const effectiveProviderFilter = providerQuery || (modelProviderFilter === "chains" && !modelChains.chains.length ? "all" : modelProviderFilter);
+  const matchingChains = effectiveProviderFilter === "all" || effectiveProviderFilter === "chains"
+    ? modelChains.chains.filter(chain => (chain.name + " " + chain.steps.map(step => modelForSelection(models, step.modelId)?.displayName || step.modelId).join(" ")).toLowerCase().includes(normalizedModelSearch)) : [];
   const modelSearchTerm = providerQuery
     ? providerQueryMatch?.[2].trim() || ""
     : normalizedModelSearch;
@@ -8452,7 +8494,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     );
   }
 
-  const canSend = Boolean(input.trim() || pendingFiles.length);
+  const canSend = !chainSelectionBusy && Boolean(input.trim() || pendingFiles.length);
   const transcriptPinned = !showScrollDown;
   const transcriptMessages = useMemo(() => visibleTranscriptMessages(projectedTranscript, transcriptPinned), [projectedTranscript, transcriptPinned]);
   const hiddenTranscriptCount = hiddenTranscriptMessageCount(projectedTranscript.length, transcriptMessages.length);
@@ -8974,6 +9016,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                 <div className="flex gap-1 overflow-x-auto border-b border-border/60 px-1 pb-1">
                   {[
                     { value: "all", providerId: "", label: "All" },
+                    ...(modelChains.chains.length ? [{ value: "chains", providerId: "", label: "Chains" }] : []),
                     ...availableProviders,
                   ].map((provider) => (
                     <button
@@ -8989,7 +9032,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                       onClick={() => {
                         setModelProviderFilter(provider.value);
                         setModelSearch("");
-                        if (provider.value === "all") return;
+                        if (provider.value === "all" || provider.value === "chains") return;
                         const rememberedModelId = lastModelByProvider[provider.value];
                         if (
                           rememberedModelId &&
@@ -9001,12 +9044,15 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                         }
                       }}
                     >
-                      {provider.value === "all" ? null : <ProviderLogo providerId={provider.providerId} className="size-3" />}
+                      {provider.value === "all" ? null : provider.value === "chains" ? <Link2 className="size-3" aria-hidden="true"/> : <ProviderLogo providerId={provider.providerId} className="size-3" />}
                       {provider.label}
                     </button>
                   ))}
                 </div>
                 <div className="max-h-[min(52dvh,24rem)] overflow-y-auto sm:max-h-60">
+                  {matchingChains.length ? <div aria-label="Model chains"><p className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"><Link2 className="size-3"/>Chains</p>{matchingChains.map(chain => <DropdownMenuItem key={chain.id} disabled={chainSelectionBusy || Boolean(projectModel)} className="min-h-11 gap-2" onSelect={() => { setModelMenuOpen(false); setMobileModelMenuOpen(false); void selectChain(chain); }}><Check className={cn("size-3.5 shrink-0", chatModelChain.chain?.id === chain.id ? "opacity-100" : "opacity-0")}/><Link2 className="size-4 shrink-0"/><span className="min-w-0"><span className="block truncate text-xs">{chain.name}</span><span className="block truncate text-[10px] text-muted-foreground">{chain.steps.map(step => modelForSelection(models, step.modelId)?.displayName || step.modelId).join(" → ")}</span></span></DropdownMenuItem>)}</div> : null}
+                  {chatModelChain.error && <p role="alert" className="px-2.5 py-2 text-xs text-destructive">{chatModelChain.error}<button type="button" className="ml-2 underline" onClick={chatModelChain.refresh}>Retry</button></p>}
+                  {modelChains.error && <p role="alert" className="px-2.5 py-2 text-xs text-destructive">{modelChains.error}<button type="button" className="ml-2 underline" onClick={modelChains.refresh}>Retry</button></p>}
                   {favoriteEntries.length ? (
                     <div>
                       <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -9077,7 +9123,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                       </div>
                     );
                   })}
-                  {matchingModels.length === 0 && customPinnedEntries.length === 0 ? (
+                  {matchingModels.length === 0 && customPinnedEntries.length === 0 && matchingChains.length === 0 ? (
                     <p className="px-2.5 py-3 text-xs text-muted-foreground">
                       No models found.
                     </p>
@@ -9353,10 +9399,12 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             }
             }}
             placeholder="Message Metis…"
-            className={cn("max-sm:min-h-9 max-sm:px-3 max-sm:py-1.5 max-sm:text-[15px]", voiceRecording && voiceState === "recording" ? "opacity-0" : "dark:bg-transparent")}
+            className={cn("max-sm:min-h-9 max-sm:px-3 max-sm:py-1.5 max-sm:text-[15px]", voiceRecording && voiceState === "recording" ? voiceLiveTranscript ? "hidden" : "opacity-0" : "dark:bg-transparent")}
             aria-label="Message"
           />
-          {voiceRecording && voiceState === "recording" ? (
+          {voiceRecording && voiceState === "recording" && voiceLiveTranscript ? (
+            <VoiceTranscriptPreview text={voiceLiveTranscript} />
+          ) : voiceRecording && voiceState === "recording" ? (
             <div
               ref={voiceWaveformRef}
               className="pointer-events-none absolute inset-0 z-10 flex items-center justify-between overflow-hidden bg-transparent px-3"
@@ -9388,6 +9436,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             }}
             onRecordingChange={setVoiceRecording}
             onStateChange={setVoiceState}
+            onPreviewChange={setVoiceLiveTranscript}
             onWaveformLevelChange={handleVoiceWaveformLevelChange}
             stopSignal={voiceStopSignal}
             cancelSignal={voiceCancelSignal}
@@ -9395,9 +9444,21 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               const live = composerLiveText(textareaRef.current ? composerPlainText(textareaRef.current, "Message Metis…") : "", input);
               const next = composerTranscriptInsert(live, transcript);
               handleComposerInputChange(next, next.length);
+              if (inputCommitTimerRef.current) window.clearTimeout(inputCommitTimerRef.current);
+              inputCommitTimerRef.current = 0;
               setInput(next);
               setComposerSyncNonce((current) => current + 1);
               window.requestAnimationFrame(() => textareaRef.current?.focus());
+              return composerTranscriptFinalizer(live, () => ({
+                text: draftInputRef.current, chatId: activeChatIdRef.current,
+                epoch: inputEpochRef.current, editedAt: inputUpdatedAtRef.current,
+              }), (finalText) => {
+                handleComposerInputChange(finalText, finalText.length);
+                if (inputCommitTimerRef.current) window.clearTimeout(inputCommitTimerRef.current);
+                inputCommitTimerRef.current = 0;
+                setInput(finalText);
+                setComposerSyncNonce((current) => current + 1);
+              });
             }}
           />
           <Button
@@ -9537,7 +9598,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                 model={selectedModel}
                 modelParams={modelParams}
                 onModelParamsChange={applyModelParams}
-                modelLockReason={projectModelLock}
+                modelLockReason={projectModelLock || (chatModelChain.chain ? "Model options are set in Settings → Models → Model Chains." : undefined)}
                 mobileComposerControls={{
                   modes,
                   selectedModeId: selectedMode?.id,
@@ -10717,7 +10778,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                                     )}
                                   >
                                     <div className="whitespace-pre-wrap">
-                                      <RichUserText content={m.content} references={m.references} />
+                                      <QuestionAnswerText content={m.content} references={m.references} reference={m.questionAnswer || (m.id.startsWith("question-answer-") ? { questionId: m.id.slice("question-answer-".length) } : undefined)} />
                                     </div>
                                   </div>
                                   {longUserMessage && !fullyExpanded ? (
@@ -11105,7 +11166,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   </article>
                   );
                 })}
-                {activeChatIsRunning && (!latestAssistantHasRunningTool || Boolean(latestAssistantPreparingTool)) ? (
+                {activeChatIsRunning && providerWaitingChatId !== activeChatId && (!latestAssistantHasRunningTool || Boolean(latestAssistantPreparingTool)) ? (
                   <div
                     className="flex min-w-0 items-center gap-2 px-1 text-xs text-muted-foreground md:hidden"
                     role="status"
@@ -11194,7 +11255,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                       ) : null}
                     </Button>
                   ) : null}
-                  {activeChatIsRunning && (!latestAssistantHasRunningTool || Boolean(latestAssistantPreparingTool)) ? (
+                  {activeChatIsRunning && providerWaitingChatId !== activeChatId && (!latestAssistantHasRunningTool || Boolean(latestAssistantPreparingTool)) ? (
                     <div
                       className="mb-2 hidden items-center justify-center gap-2 text-xs text-muted-foreground md:flex"
                       role="status"
@@ -11257,6 +11318,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                     </div>
                   ) : null}
                   {composerEditedMessage ? <ComposerEditedFiles key={`${activeChatId}:${composerEditedMessage.id}`} files={composerEditedFiles} chatId={activeChatId || undefined} messageId={composerEditedMessage.id} tools={[...(composerEditedMessage.parts?.filter(part => part.type === "tool") || []) as ToolPart[], ...(composerEditedMessage.tools || [])]} /> : null}
+                  {activeChatId ? <ProviderResetWaitBanner key={activeChatId} chatId={activeChatId}
+                    refreshKey={`${providerWaitRevision}:${chats.find(chat => chat.id === activeChatId)?.runStatus || ""}`}
+                    onWaitingChange={handleProviderWaitingChange}
+                    onAction={() => { void refreshActiveChatFromServer(activeChatId); void loadChats(); }} /> : null}
                   {composer}
                 </div>
               </div>

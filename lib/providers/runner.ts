@@ -1,3 +1,4 @@
+import { requestModelChainFallback } from "@/lib/model-chain-runtime";
 import { deferProviderLimitedJob } from "@/lib/db-jobs";
 import { commitPendingModelSwitch } from "@/lib/model-switch";
 import { requestTaskContinuation } from "@/lib/task-continuation";
@@ -610,6 +611,7 @@ async function runAlternativeProviderAttempt(
     finalizeAlternativeTools(tools);
     if (!cancelled && !interrupted && abortCause !== "lease_lost") {
       checkpoint(true);
+      if (requestModelChainFallback(job.id, error, event => { parts.push(event); checkpoint(true); })) return true;
       if (deferProviderLimitedJob(job.id, error, event => { parts.push(event); checkpoint(true); })) return true;
       if (requestProviderRetry(job.id, error, event => {
         for (const tool of interruptedTools) emit("tool", {

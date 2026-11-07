@@ -3,6 +3,7 @@ import { memoryWorkingPrompt } from "@/lib/mcp-core/memory-instructions.mjs";
 import { projectModelOverride, validateProjectModelSelection } from "@/lib/project-model-server";
 import { payloadRecord, payloadText as asText } from "@/lib/agent-payload";
 import { isProviderUsageLimit } from "@/lib/provider-rate-limit";
+import { initializeJobModelChain, requestModelChainFallback } from "@/lib/model-chain-runtime";
 import { deferProviderLimitedJob } from "@/lib/db-jobs";
 import { commitPendingModelSwitch } from "@/lib/model-switch";
 import { requestTaskContinuation } from "@/lib/task-continuation";
@@ -528,7 +529,9 @@ async function resolveAutoModel(job: AgentJob, chat: Chat): Promise<string | nul
 }
 
 export async function runQueuedJob(job: AgentJob) {
-  return runWithProviderRetries(job, runQueuedJobAttempt);
+  const initialized = initializeJobModelChain(job);
+  if (!initialized) return;
+  return runWithProviderRetries(initialized, runQueuedJobAttempt);
 }
 
 async function runQueuedJobAttempt(job: AgentJob) {
@@ -1609,6 +1612,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
       });
     }
     checkpoint(true);
+    if (result.status === "error" && requestModelChainFallback(job.id, result.error, event => { parts.push(event); checkpoint(true); })) return;
     if (result.status === "error" && deferProviderLimitedJob(job.id, result.error, event => { parts.push(event); checkpoint(true); })) return;
     if (result.status === "error" && requestProviderRetry(job.id, result.error, event => {
       parts.push(event);
@@ -1830,6 +1834,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
   } catch (error) {
     if (handoffModelSwitch()) return;
     checkpoint(true);
+    if (requestModelChainFallback(job.id, error, event => { parts.push(event); checkpoint(true); })) return;
     if (deferProviderLimitedJob(job.id, error, event => { parts.push(event); checkpoint(true); })) return;
     if (requestProviderRetry(job.id, error, event => {
       const interruptedTools = tools.filter(tool => isActiveToolStatus(tool.status));

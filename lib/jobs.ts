@@ -19,6 +19,8 @@ export type JobStatus =
 export type AgentJob = {
   /** Automatic transient provider retries consumed by this logical run. */
   providerRetryCount?: number;
+  modelChain?: import("@/lib/model-chain-types").ModelChainRun;
+  pendingModelChain?: import("@/lib/model-chain-types").ModelChainRun | null;
   /** Bounded repairs of a successful provider exit with unfinished current Goal tasks. */
   taskContinuationCount?: number;
   /** Deep Research repairs without new persisted source/step/report progress. */

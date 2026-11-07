@@ -22,6 +22,7 @@ export type PendingChatQuestion = QuestionForm & {
   status?: "waiting_for_user" | "answered" | "cancelled" | "expired"; questions: AgentQuestion[];
 };
 export type QuestionAnswers = { answers: string[]; values: Record<string, QuestionValue> };
+export type QuestionAnswerDisplay = { summary: string; fields: Array<{ question: string; answer: string }> };
 export class QuestionValidationError extends Error {
   constructor(message: string, public fieldErrors: Record<string, string> = {}) { super(message); this.name = "QuestionValidationError"; }
 }
@@ -206,6 +207,17 @@ export function readableQuestionValue(question: AgentQuestion, value: QuestionVa
   const text = Array.isArray(value) ? value.map(display).join(", ") : display(value);
   return text && question.unit ? `${text} ${question.unit}` : text;
 }
+export function questionAnswerDisplay(questions: AgentQuestion[], values: Record<string, QuestionValue>, summary: string): QuestionAnswerDisplay {
+  return {
+    summary,
+    fields: questions.flatMap((question, index) => {
+      if (!isQuestionVisible(question, values)) return [];
+      const answer = readableQuestionValue(question, values[questionKey(question, index)] ?? null);
+      return answer ? [{ question: question.question, answer }] : [];
+    }),
+  };
+}
+
 export function questionSummary(form: QuestionForm, questions: AgentQuestion[], values: Record<string, QuestionValue>): string {
   const labels = Object.fromEntries(questions.map((q, i) => [questionKey(q, i), readableQuestionValue(q, values[questionKey(q, i)] ?? null)]));
   if (form.responseTemplate) return form.responseTemplate.replace(/\{\{\s*([A-Za-z][A-Za-z0-9_-]*)\s*\}\}/g, (_, key: string) => labels[key] ?? "").slice(0, 16000);

@@ -229,6 +229,22 @@ export function getDatabase(): DatabaseSync {
     );
     CREATE INDEX IF NOT EXISTS provider_oauth_flows_owner
       ON provider_oauth_flows(owner_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS model_chains (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      data TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS model_chains_owner ON model_chains(owner_id, created_at);
+    CREATE TABLE IF NOT EXISTS chat_model_chains (
+      chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      chain_id TEXT NOT NULL REFERENCES model_chains(id) ON DELETE CASCADE,
+      PRIMARY KEY(chat_id, owner_id)
+    );
     CREATE TABLE IF NOT EXISTS account_profiles (
       owner_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       data TEXT NOT NULL,
@@ -245,6 +261,14 @@ export function getDatabase(): DatabaseSync {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS profile_avatars_owner ON profile_avatars(owner_id);
+    CREATE TABLE IF NOT EXISTS profile_banners (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      mime_type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS profile_banners_owner ON profile_banners(owner_id);
     CREATE TABLE IF NOT EXISTS account_usage (
       owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       message_id TEXT NOT NULL,

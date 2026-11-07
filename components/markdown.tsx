@@ -44,6 +44,8 @@ import { StreamingText } from "@/components/streaming-text";
 import { appendStreamingArrival, initialStreamingArrival } from "@/lib/streaming-text";
 import type { PluggableList } from "unified";
 import { ChartBoard } from "@/components/chart-board";
+import { HtmlEmbed } from "@/components/html-embed";
+import { isHtmlEmbedLanguage } from "@/lib/html-embed";
 import { MermaidDiagram } from "@/components/mermaid-diagram";
 import { isChartSource } from "@/lib/chart-spec";
 import { isGraphSource } from "@/lib/graph-spec";
@@ -202,11 +204,12 @@ function CodeBlock({
   children,
   inline,
   editableFiles,
+  streaming,
   notesHeadings,
   publicShare,
   node,
   ...props
-}: HTMLAttributes<HTMLElement> & { inline?: boolean; editableFiles?: boolean; notesHeadings?:NotesHeading[]; publicShare?: PublicMarkdownShare; node?:{position?:{start?:{offset?:number}}} }) {
+}: HTMLAttributes<HTMLElement> & { inline?: boolean; editableFiles?: boolean; streaming?: boolean; notesHeadings?:NotesHeading[]; publicShare?: PublicMarkdownShare; node?:{position?:{start?:{offset?:number}}} }) {
   const code = String(children).replace(/\n$/, "");
   const isInline = inline ?? (!className && !code.includes("\n"));
   const fileRoot = useRef<HTMLDivElement>(null);
@@ -219,6 +222,7 @@ function CodeBlock({
     );
   }
   const declaredLanguage = className?.match(/language-([\w-]+)/)?.[1];
+  if (isHtmlEmbedLanguage(declaredLanguage)) return <HtmlEmbed source={code} streaming={streaming} />;
   if (declaredLanguage === "metis-block") return <NotesRichBlockPreview source={code} headings={notesHeadings} sourceOffset={node?.position?.start?.offset} publicShare={publicShare} />;
   const file = declaredLanguage === "file" ? parseFileEmbed(code) : null;
   if (file && publicShare) {
@@ -339,7 +343,7 @@ export const Markdown = memo(function Markdown({
     ...markdownComponents,
     ...(publicShare ? { a: ({href, children, title, className}: AnchorHTMLAttributes<HTMLAnchorElement>) => <PublicMarkdownLink href={href || ""} share={publicShare} title={title} className={className}>{children}</PublicMarkdownLink> } : {}),
     pre: ({ children }: HTMLAttributes<HTMLPreElement>) => <>{children}</>,
-    code: (props: HTMLAttributes<HTMLElement>) => <CodeBlock {...props} editableFiles={editableFiles && !publicShare} notesHeadings={noteHeadings} publicShare={publicShare}/>,
+    code: (props: HTMLAttributes<HTMLElement>) => <CodeBlock {...props} editableFiles={editableFiles && !publicShare} streaming={streaming} notesHeadings={noteHeadings} publicShare={publicShare}/>,
     h1: (props: HTMLAttributes<HTMLHeadingElement>) => <MarkdownHeading {...props} level={1} headings={noteHeadings}/>,
     h2: (props: HTMLAttributes<HTMLHeadingElement>) => <MarkdownHeading {...props} level={2} headings={noteHeadings}/>,
     h3: (props: HTMLAttributes<HTMLHeadingElement>) => <MarkdownHeading {...props} level={3} headings={noteHeadings}/>,
@@ -358,7 +362,7 @@ export const Markdown = memo(function Markdown({
     input: (props: InputHTMLAttributes<HTMLInputElement>) => (
       <TaskCheckbox {...props} interactive={interactiveTasks && !publicShare} />
     ),
-  }), [editableFiles, interactiveTasks, noteHeadings, publicShare]);
+  }), [editableFiles, interactiveTasks, noteHeadings, publicShare, streaming]);
   const [arrivalState, setArrivalState] = useState(() => initialStreamingArrival(source, Date.now(), initialBornAt));
   const arrival = appendStreamingArrival(arrivalState, source, Date.now());
   if (arrival !== arrivalState) setArrivalState(arrival);

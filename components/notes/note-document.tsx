@@ -2,7 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import Image from "next/image";
+import { BannerHeader } from "@/components/banner-image";
 import { Check, Loader2, RefreshCw, AlertCircle, Plus, ListTodo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NoteMedia } from "@/components/note-media";
@@ -219,7 +219,7 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
       else onOpenIssue(target.id);
     }}
   >
-    {document.cover && <div className="relative mb-7 h-36 overflow-hidden rounded-lg bg-muted"><Image src={document.cover} alt="Page banner" fill unoptimized sizes="100vw" className="object-cover" /></div>}
+    <BannerHeader value={document.cover} alt="Page banner" bannerClassName="h-36 rounded-lg">
     <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
       <div className="flex min-w-0 items-center gap-1" aria-label={document.issueId ? "Issue appearance" : "Note appearance"}>
         <NoteIconPicker value={document.icon} onChange={icon => update({ icon })} />
@@ -260,6 +260,7 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
         }}>Use saved version</Button>
       </div> : <Button className="mt-2" variant="outline" size="sm" onClick={() => void flushRef.current()}><RefreshCw className="size-3" />Retry save</Button>}
     </div>}
+    </BannerHeader>
     {afterHeader}
     {!headerOnly && <>
     {document.asset && <div className="mb-5"><NoteMedia note={document} /></div>}

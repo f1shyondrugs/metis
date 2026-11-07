@@ -44,7 +44,10 @@ test("typed submission persists values, emits one readable message and preserves
     const result = await response.json();
     assert.deepEqual(result.values, { hz: 60, enabled: false });
     assert.equal(result.summary, "Display 60 Hz. Enabled: No.");
-    assert.deepEqual(result.message.questionAnswer, { questionId: pending.questionId, assistantMessageId: "form-assistant", toolCallId: "ask-call", cursor: { partIndex: 2 } });
+    assert.deepEqual(result.message.questionAnswer, {
+      questionId: pending.questionId, assistantMessageId: "form-assistant", toolCallId: "ask-call", cursor: { partIndex: 2 },
+      display: { summary: "Display 60 Hz. Enabled: No.", fields: [{ question: "Refresh rate", answer: "60 Hz" }, { question: "Enabled?", answer: "No" }] },
+    });
     const firstAnswerMessage = result.message;
     assert.deepEqual(await pending.promise, ["60", "false"]);
     assert.equal(jobs.isJobLeaseActive(job.id, lease.leaseOwner!, lease.leaseToken!), true);
@@ -71,7 +74,10 @@ test("wrapped ask_user answers persist their exact transcript boundary before th
     const response = await submit(pending.questionId, { choice: "Keep this answer here" });
     assert.equal(response.status, 200);
     const result = await response.json();
-    assert.deepEqual(result.message.questionAnswer, { questionId: pending.questionId, assistantMessageId: "wrapped-assistant", toolCallId: "wrapped-ask", cursor: { partIndex: 2 } });
+    assert.deepEqual(result.message.questionAnswer, {
+      questionId: pending.questionId, assistantMessageId: "wrapped-assistant", toolCallId: "wrapped-ask", cursor: { partIndex: 2 },
+      display: { summary: "Choice: Keep this answer here", fields: [{ question: "Choice", answer: "Keep this answer here" }] },
+    });
     assert.deepEqual(await pending.promise, ["Keep this answer here"]);
     const restored = store.getChat(chat.id, owner.id)!;
     assert.deepEqual(restored.messages.at(-1)!.questionAnswer, result.message.questionAnswer);
@@ -96,6 +102,7 @@ test("opaque provider questions persist their submission cursor and stay before 
     assert.deepEqual(result.message.questionAnswer, {
       questionId: pending.questionId, assistantMessageId: "opaque-assistant",
       cursor: { partIndex: 0, textOffset: 7 },
+      display: { summary: "Choice: Accepted", fields: [{ question: "Choice", answer: "Accepted" }] },
     });
     assert.deepEqual(await pending.promise, ["Accepted"]);
     store.checkpointAssistantMessage(chat.id, {

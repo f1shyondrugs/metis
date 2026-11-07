@@ -1,4 +1,5 @@
 "use client";
+import { BannerHeader } from "@/components/banner-image";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, ListTodo, LockKeyhole, Menu, X } from "lucide-react";
@@ -138,7 +139,8 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
       </header>
       {error?<div role="alert" className="flex items-center gap-3 border-b border-border px-4 py-2 text-xs text-muted-foreground"><span className="min-w-0 flex-1">{error}</span><Button variant="ghost" size="sm" onClick={()=>setRetry(value=>value+1)}>Retry</Button></div>:null}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {coverColor?<div className="h-36 w-full sm:h-48" style={{backgroundColor:coverColor}}/>:coverUrl?/* eslint-disable-next-line @next/next/no-img-element */<img src={coverUrl} alt="" className="h-36 w-full object-cover sm:h-48" referrerPolicy="no-referrer"/>:null}
+        {coverColor?<div className="h-36 w-full sm:h-48" style={{backgroundColor:coverColor}}/>:null}
+        <BannerHeader value={coverUrl} alt="" bannerClassName="h-36 w-full sm:h-48" gapClassName="mt-0" referrerPolicy="no-referrer">
         <article key={note.id} className={cn("mx-auto px-5 py-8 sm:px-10",note.fullWidth?"max-w-none":"max-w-[920px]")}>
           {note.icon?<NoteIcon value={note.icon} className="mb-4 size-10 text-4xl" />:null}
           <h1 className="mb-2 break-words text-3xl font-semibold tracking-tight">{title(note)}</h1>
@@ -149,6 +151,7 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
           </section>:null}
           {note.content.trim()?<Markdown content={note.content} publicShare={publicShare}/>:!note.asset&&!note.todos?.length?<p className="text-sm text-muted-foreground">This page is empty.</p>:null}
         </article>
+        </BannerHeader>
       </div>
     </main>
   </div>;

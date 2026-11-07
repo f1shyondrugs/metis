@@ -12,7 +12,7 @@ export type ProviderRetryPart = {
   detail: string;
 };
 
-function errorEvidence(error: unknown): Array<Record<string, unknown>> {
+export function providerErrorEvidence(error: unknown): Array<Record<string, unknown>> {
   const evidence: Array<Record<string, unknown>> = [];
   const seen = new Set<unknown>();
   const visit = (value: unknown, depth: number) => {
@@ -36,7 +36,7 @@ function errorEvidence(error: unknown): Array<Record<string, unknown>> {
 
 /** Diagnostic classification only; the run retry policy accepts all run errors. */
 export function isTransientProviderError(error: unknown): boolean {
-  const evidence = errorEvidence(error);
+  const evidence = providerErrorEvidence(error);
   const messages = evidence.map(record => typeof record.message === "string" ? record.message : "").join("\n");
   if (/\b(?:MCP|Metis gateway|gateway tools|tool call|database|SQLite)\b/i.test(messages)) return false;
   if (evidence.some(record => typeof record.toolName === "string" || typeof record.toolCallId === "string"
@@ -52,7 +52,7 @@ export function isTransientProviderError(error: unknown): boolean {
 }
 
 export function providerRetryDetail(error: unknown): string {
-  const messages = errorEvidence(error).flatMap(record =>
+  const messages = providerErrorEvidence(error).flatMap(record =>
     typeof record.message === "string" && record.message.trim() ? [record.message.trim()] : []);
   return [...new Set(messages)].join("\n\n").slice(0, 8000) || "Run failed without error details.";
 }

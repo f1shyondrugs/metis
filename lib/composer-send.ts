@@ -31,6 +31,27 @@ export function composerTranscriptInsert(current: string, transcript: string) {
   return live ? `${live} ${spoken}` : spoken;
 }
 
+type VoiceDraftSnapshot = { text: string; chatId: string | null; epoch: number; editedAt: string };
+
+/** Final STT text may only replace the exact, still untouched insertion. */
+export function composerTranscriptFinalizer(
+  before: string,
+  read: () => VoiceDraftSnapshot,
+  apply: (text: string) => void,
+) {
+  const inserted = { ...read() };
+  let consumed = false;
+  return (transcript: string) => {
+    if (consumed) return;
+    consumed = true;
+    const current = read();
+    if (!transcript.trim() || current.chatId !== inserted.chatId || current.epoch !== inserted.epoch
+      || current.editedAt !== inserted.editedAt || current.text !== inserted.text) return;
+    const next = composerTranscriptInsert(before, transcript);
+    if (next !== current.text) apply(next);
+  };
+}
+
 export function shouldAcceptRemoteComposerInput(options: {
   dirtyUntil: number;
   now?: number;

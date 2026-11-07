@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
 import { METIS_SHARED_AGENT_CONTROL, METIS_SOURCES_PROMPT } from "../lib/agent-control";
+import { HTML_EMBED_PROMPT } from "../lib/html-embed";
 
 const dir = mkdtempSync(path.join(os.tmpdir(), "metis-sources-prompt-"));
 Object.assign(process.env,{CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"test.sqlite"),AI_CHAT_ROOT:dir,AGENT_CWD:dir});
@@ -20,6 +21,7 @@ test("actual provider prompts include the shared sources format in every mode an
   for(const modeId of ["agent","ask","deep-research"]) for(const incognito of [false,true]) {
     const prompt=buildProviderPrompt({job:{id:"sources-job",chatId:chat.id,userId,message:"Research this",modeId,incognito,status:"running",attempts:1,createdAt:now,updatedAt:now}});
     assert.equal(prompt.split(METIS_SOURCES_PROMPT).length-1,1);
+    assert.equal(prompt.split(HTML_EMBED_PROMPT).length-1,1, "HTML previews are documented in each actual provider prompt");
     assert.match(prompt,/inline links alone do not populate it/);
     assert.match(prompt,/If no verifiable web source was used, omit/);
   }

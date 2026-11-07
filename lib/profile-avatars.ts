@@ -8,6 +8,7 @@ import { config } from "@/lib/config";
 import { getDatabase } from "@/lib/sqlite";
 import { canViewProjectMemberProfile } from "@/lib/project-access";
 import { MAX_PROFILE_GIF_BYTES } from "@/lib/profile-avatar-limits";
+import { parseImageFraming } from "@/lib/image-framing";
 
 const root = path.join(config.dataDir, "profile-avatars");
 const prefix = "/api/profile/avatar/";
@@ -16,7 +17,8 @@ export class AvatarUploadError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
 export function avatarId(url: string): string | null {
-  const id = url.startsWith(prefix) ? url.slice(prefix.length) : "";
+  const parsed = parseImageFraming(url);
+  const id = parsed.valid && parsed.source.startsWith(prefix) ? parsed.source.slice(prefix.length) : "";
   return idPattern.test(id) ? id : null;
 }
 export function ownsAvatar(ownerId: string, url: string): boolean {
@@ -79,7 +81,7 @@ export function profileAvatarResponse(id: string, viewerId?: string, ifNoneMatch
   const headers = {"Cache-Control":"private, no-store", "Vary":"Cookie", "X-Content-Type-Options":"nosniff"};
   if (!idPattern.test(id)) return new Response(null,{status:404,headers});
   const row = getDatabase().prepare("SELECT a.owner_id,a.size,p.share_id,p.data FROM profile_avatars a LEFT JOIN account_profiles p ON p.owner_id=a.owner_id WHERE a.id=?").get(id) as {owner_id:string;size:number;share_id:string|null;data:string|null}|undefined;
-  const savedAvatar = !!row?.data && JSON.parse(row.data).avatar === prefix + id;
+  const savedAvatar = !!row?.data && avatarId(JSON.parse(row.data).avatar || "") === id;
   const publicAvatar = savedAvatar && !!row?.share_id;
   const projectAvatar = savedAvatar && !!row && viewerId !== row.owner_id && canViewProjectMemberProfile(row.owner_id, viewerId);
   if (!row || (viewerId !== row.owner_id && !publicAvatar && !projectAvatar)) return new Response(null,{status:404,headers});

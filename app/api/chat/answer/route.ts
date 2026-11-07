@@ -3,7 +3,7 @@ import { getPendingQuestion, resolveQuestion, cancelQuestionAsResponse } from "@
 import { queueUserInputResume, releaseUserInputWait } from "@/lib/db-jobs";
 import { appendMessage, getChat, updateChat } from "@/lib/db-store";
 
-import { normalizeQuestionAnswers, QuestionValidationError } from "@/lib/question-contract";
+import { normalizeQuestionAnswers, questionAnswerDisplay, QuestionValidationError } from "@/lib/question-contract";
 import { questionAnswerAnchor } from "@/lib/question-transcript";
 import { userInputProgress } from "@/lib/user-input-progress";
 import { transaction } from "@/lib/sqlite";
@@ -52,7 +52,11 @@ export async function POST(req: Request) {
     if (resolved.summary && !chat?.messages.some(message => message.id === answerId)) {
       appendMessage(resolved.chatId, {
         id: answerId, role: "user", content: resolved.summary,
-        questionAnswer: { questionId, ...questionAnswerAnchor(chat?.messages ?? [], questionId, { cursorFallback: true }) },
+        questionAnswer: {
+          questionId,
+          ...questionAnswerAnchor(chat?.messages ?? [], questionId, { cursorFallback: true }),
+          ...(!resolved.cancelled && resolved.values ? { display: questionAnswerDisplay(pending.questions, resolved.values, resolved.summary) } : {}),
+        },
       }, userId);
     }
     const answerMessage = getChat(resolved.chatId, userId)?.messages.find(message => message.id === answerId);

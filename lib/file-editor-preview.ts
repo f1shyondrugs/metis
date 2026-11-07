@@ -28,7 +28,8 @@ export function markdownPreviewAssetUrl(source: string, filePath: string) {
 }
 
 /** The iframe has an opaque origin; its content cannot access the application's session or DOM. */
-export function htmlPreviewDocument(content: string) {
-  const policy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: https:; media-src data: blob: https:; font-src data: https:; connect-src 'none'; form-action 'none'; base-uri 'none'";
+export function htmlPreviewDocument(content: string, options: { allowRemoteAssets?: boolean } = {}) {
+  const remote = options.allowRemoteAssets === false ? "" : " https:";
+  const policy = `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:${remote}; media-src data: blob:${remote}; font-src data:${remote}; connect-src 'none'; form-action 'none'; base-uri 'none'`;
   return '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="' + policy + '"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>' + content + '</body></html>';
 }

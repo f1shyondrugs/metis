@@ -11,6 +11,7 @@ export function commitPendingModelSwitch(
   fromModelId: string,
   checkpoint: (event: ModelSwitchPart) => void,
   activeAgentId?: string,
+  chainFallback?: Pick<ModelSwitchPart, "reason" | "chainName">,
 ): boolean {
   return transaction(() => {
     const current = getJob(jobId);
@@ -22,7 +23,7 @@ export function commitPendingModelSwitch(
       && source.connectionId === target.connectionId ? activeAgentId || current.agentId : undefined;
     const event: ModelSwitchPart = {
       type: "model-switch", id: `model-switch:${current.id}:${current.modelSwitchRequestedAt || timestamp}`,
-      fromModelId, toModelId, timestamp,
+      fromModelId, toModelId, timestamp, ...chainFallback,
     };
     // Checkpoints/events are written under the old writer lease, before releasing it.
     checkpoint(event);
@@ -38,7 +39,10 @@ export function commitPendingModelSwitch(
       status: "switching", error: undefined, agentId: nextAgentId,
       modelId: toModelId, modelParams: current.pendingModelParams,
       pendingModelId: undefined, pendingModelParams: undefined, modelSwitchRequestedAt: undefined,
-      resumePrompt: providerContinuationPrompt(current, `The user switched the active model from ${fromModelId} to ${toModelId}.`),
+      modelChain: current.pendingModelChain === undefined ? undefined : current.pendingModelChain ?? undefined,
+      pendingModelChain: undefined,
+      ...(chainFallback ? { providerRetryCount: 0 } : {}),
+      resumePrompt: providerContinuationPrompt(current, chainFallback ? `The model chain ${chainFallback.chainName || ""} switched from ${fromModelId} to ${toModelId} because ${chainFallback.reason === "chain-usage" ? "the provider usage was exhausted" : "the provider remained unavailable after three retries"}. Continue from the saved work and tool results; do not repeat completed actions.` : `The user switched the active model from ${fromModelId} to ${toModelId}.`),
       resumeRequestedAt: timestamp,
     }, { expectedRevision: current.revision ?? 0 });
     if (!updated) throw new Error("Model switch lost its job revision.");

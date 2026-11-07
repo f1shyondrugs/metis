@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { parseImageFraming, withImageFraming } from "@/lib/image-framing";
 import { signShareCredential, verifyShareCredential } from "@/lib/share-credential";
 import { hashSharePassword, verifySharePassword } from "@/lib/share-password";
 import { archiveMarkdownUrls } from "@/lib/note-archive-content";
@@ -256,7 +257,7 @@ export function getSharedNote(token: string, credential?: string): PublicNoteSha
   if (!scope || !canView(scope.share, credential)) return null;
   const sources = assetSources(scope);
   const assets: Record<string, string> = Object.create(null);
-  for (const original of sources.keys()) assets[original] = publicAssetUrl(token, original);
+  for (const original of sources.keys()) assets[original] = withImageFraming(publicAssetUrl(token, original), parseImageFraming(original).framing);
   const notes = scope.notes.map(note => {
     const page = publicPage(note, scope.root.id);
     if (note.cover && /^#[0-9a-f]{3,8}$/i.test(note.cover)) page.cover = note.cover;
@@ -268,7 +269,8 @@ export function getSharedNote(token: string, credential?: string): PublicNoteSha
     }
     return page;
   });
-  return { rootId: scope.root.id, notes, assets };
+  // React Server Components require plain objects at the client boundary.
+  return { rootId: scope.root.id, notes, assets: { ...assets } };
 }
 
 /** Every file request repeats grant, current membership, subtree and exact-reference checks. */

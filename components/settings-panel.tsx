@@ -55,9 +55,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RemotePermission } from "@/lib/remote-clients";
+import { ModelChainsPanel } from "@/components/model-chains-panel";
 import { ModelPicker } from "@/components/model-picker";
 import { ModelOptionsMenu } from "@/components/model-options-menu";
 import { ProviderLogo } from "@/components/provider-logo";
+import { ProviderSettingsLayout, ProviderSettingsRow, providerConnectionStatus } from "@/components/provider-settings-layout";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -116,6 +118,20 @@ type ProviderConnection = {
   lastCheckedAt?: string;
   lastError?: string;
 };
+
+function providerConnectionDraft(connection: ProviderConnection) {
+  return {
+    id: connection.id,
+    providerKey: connection.providerKey,
+    slug: connection.slug,
+    label: connection.label,
+    authType: connection.authType,
+    baseUrl: connection.baseUrl || "",
+    secret: "",
+    project: typeof connection.config?.project === "string" ? connection.config.project : "",
+    location: typeof connection.config?.location === "string" ? connection.config.location : "",
+  };
+}
 
 function preferredAuthType(provider: ProviderDefinition) {
   return provider.authTypes[0] || "api_key";
@@ -359,6 +375,7 @@ type SettingsPaneId =
   | "appearance"
   | "providers"
   | "versions"
+  | "model-chains"
   | "memories"
   | "agent-settings"
   | "dictionary"
@@ -381,6 +398,7 @@ const SETTINGS_SECTION_TO_PANE: Partial<Record<string, Exclude<SettingsPaneId, "
   "settings-browser-storage": "browser-storage",
   "settings-providers": "providers",
   "settings-versions": "versions",
+  "settings-model-chains": "model-chains",
   "settings-memories": "memories",
   "settings-agent-runtime": "agent-settings",
   "settings-dictionary": "dictionary",
@@ -863,6 +881,8 @@ export function SettingsPanel({
   const [providerDefinitions, setProviderDefinitions] = useState<ProviderDefinition[]>([]);
   const [providerConnections, setProviderConnections] = useState<ProviderConnection[]>([]);
   const [providersLoaded, setProvidersLoaded] = useState(false);
+  const [providersError, setProvidersError] = useState("");
+  const [providerAdding, setProviderAdding] = useState(false);
   const providerLoadVersionRef = useRef(0);
   const providerConnectionsRef = useRef<ProviderConnection[]>([]);
   const [providerDraft, setProviderDraft] = useState({
@@ -1163,6 +1183,7 @@ export function SettingsPanel({
   const loadProviders = useCallback(async () => {
     const loadVersion = ++providerLoadVersionRef.current;
     setProvidersLoaded(false);
+    setProvidersError("");
     try {
       const res = await fetch("/api/providers", { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to load providers");
@@ -1196,7 +1217,9 @@ export function SettingsPanel({
       }
     } catch (error) {
       if (loadVersion === providerLoadVersionRef.current) {
-        toast.error(error instanceof Error ? error.message : "Failed to load providers");
+        const message = error instanceof Error ? error.message : "Failed to load providers";
+        setProvidersError(message);
+        toast.error(message);
       }
     } finally {
       if (loadVersion === providerLoadVersionRef.current) setProvidersLoaded(true);
@@ -1293,6 +1316,7 @@ export function SettingsPanel({
   }
 
   function resetProviderDraft() {
+    setProviderAdding(true);
     setProviderDraft((current) => {
       const definition = providerDefinitions.find((provider) => provider.key === current.providerKey);
       return {
@@ -1323,22 +1347,10 @@ export function SettingsPanel({
   }
 
   function editProviderConnection(connection: ProviderConnection) {
-    setProviderDraft({
-      id: connection.id,
-      providerKey: connection.providerKey,
-      slug: connection.slug,
-      label: connection.label,
-      authType: connection.authType,
-      baseUrl: connection.baseUrl || "",
-      secret: "",
-      project: typeof connection.config?.project === "string" ? connection.config.project : "",
-      location: typeof connection.config?.location === "string" ? connection.config.location : "",
-    });
+    setProviderAdding(false);
+    setProviderDraft(providerConnectionDraft(connection));
     onSettingsTabChange("models");
     setSettingsPane("providers");
-    requestAnimationFrame(() => {
-      document.getElementById("provider-connection-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
   }
 
   async function saveProviderConnection() {
@@ -1386,7 +1398,7 @@ export function SettingsPanel({
       if (!res.ok) throw new Error(data.error || "Failed to save provider connection");
       await loadProviders();
       onModelsChanged?.();
-      resetProviderDraft();
+      if (data.connection) editProviderConnection(data.connection);
       toast.success("Provider connection saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save provider connection");
@@ -1444,8 +1456,9 @@ export function SettingsPanel({
         if (["completed", "error", "cancelled"].includes(nextFlow.status)) {
           await loadProviders();
           onModelsChanged?.();
-          resetProviderDraft();
           if (nextFlow.status === "completed") {
+            const connection = providerConnectionsRef.current.find(item => item.id === nextFlow.connectionId);
+            if (connection) editProviderConnection(connection);
             toast.success("OAuth connection completed");
           } else if (nextFlow.error) {
             toast.error(nextFlow.error);
@@ -1581,6 +1594,18 @@ export function SettingsPanel({
    return String(item.origin ?? "").toLowerCase().includes(query) || item.storageTypes.some((type) => String(type ?? "").toLowerCase().includes(query));
   });
 
+  useEffect(() => {
+    if (settingsPane !== "providers" || !providersLoaded || providerAdding || providerDraft.id) return;
+    const connection = [...providerConnections].sort((a, b) => {
+      const aName = providerDefinitions.find(provider => provider.key === a.providerKey)?.name || a.providerKey;
+      const bName = providerDefinitions.find(provider => provider.key === b.providerKey)?.name || b.providerKey;
+      return `${aName} ${a.label}`.localeCompare(`${bName} ${b.label}`);
+    })[0];
+    if (connection) setProviderDraft(providerConnectionDraft(connection));
+  }, [settingsPane, providersLoaded, providerAdding, providerDraft.id, providerConnections, providerDefinitions]);
+
+  const selectedProviderConnection = providerConnections.find(connection => connection.id === providerDraft.id);
+  const selectedProviderDefinition = providerDefinitions.find(provider => provider.key === providerDraft.providerKey);
   const selectableProviders = providerDefinitions;
   const sortedProviderConnections = [...providerConnections].sort((a, b) => {
     const aName = providerDefinitions.find((provider) => provider.key === a.providerKey)?.name || a.providerKey;
@@ -1590,13 +1615,8 @@ export function SettingsPanel({
 
   return (
     <>
-      <section aria-labelledby="settings-page-title" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="shrink-0 border-b border-border px-4 py-3 sm:px-8 sm:py-5 sm:pr-12">
-          <h1 id="settings-page-title" className="flex items-center gap-2 text-xl font-semibold sm:text-2xl">
-            <Settings2 className="size-5" />
-            Settings
-          </h1>
-          <p className="mt-1 hidden text-sm text-muted-foreground sm:block">Manage your workspace in one place.</p>
+      <section aria-label="Settings" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="shrink-0 border-b border-border px-4 py-3 sm:px-8 sm:py-4 sm:pr-12">
           <SettingsSearch key={String(open)} isHostAdmin={isHostAdmin} mobile={mobile} onSelect={openSettingsSearchResult} />
         </header>
 
@@ -1802,165 +1822,152 @@ export function SettingsPanel({
  })}
  </div>
  </div>
+ ) : settingsPane === "model-chains" ? (
+ <SettingsFeaturePane backLabel="Models" slot="model-chains-manager" onBack={() => backToSettings("settings-model-chains")}><ModelChainsPanel models={models}/></SettingsFeaturePane>
  ) : settingsPane === "providers" ? (
  <SettingsFeaturePane
  backLabel="Models"
  slot="providers-manager"
  onBack={() => backToSettings("settings-providers")}
  >
-<section className="flex flex-col gap-4">
-                <div>
-                  <h3 id="settings-providers" className="text-sm font-medium">AI providers and connections</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Credentials are stored encrypted on the server and are never returned to the browser.
-                    Configure API keys, OAuth, SDK, CLI, and local connections together in one list.
-                  </p>
-                </div>
-                <div id="provider-connection-form" className={`space-y-3 rounded-xl border p-4 ${providerDraft.id ? "border-primary/40 bg-primary/5" : "border-border/60 bg-muted/20"}`}>
-                  {providerDraft.id ? (
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-medium text-primary">
-                        Editing existing connection · {providerDraft.id.slice(0, 8)}…
-                      </p>
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost"
-                        onClick={resetProviderDraft}
-                        disabled={providerBusy || !providersLoaded}
-                      >
-                        New connection instead
-                      </Button>
-                    </div>
-                  ) : null}
-                  <div className="grid gap-2 sm:grid-cols-2">
-                  <CustomSelect
-                    value={providerDraft.providerKey}
-                    onValueChange={selectProvider}
-                    ariaLabel="Provider"
-                    disabled={Boolean(providerDraft.id)}
-                    className="w-full"
-                    options={selectableProviders.map((provider) => ({
-                      value: provider.key,
-                      label: provider.name,
-                      providerLogo: provider.key,
-                    }))}
-                  />
-                  <CustomSelect
-                    value={providerDraft.authType}
-                    onValueChange={(authType) => setProviderDraft((current) => ({ ...current, authType }))}
-                    ariaLabel="Authentication method"
-                    disabled={Boolean(providerDraft.id)}
-                    className="w-full"
-                    options={(providerDefinitions.find((provider) => provider.key === providerDraft.providerKey)?.authTypes || ["api_key"]).map((authType) => ({
-                      value: authType,
-                      label: authType === "api_key"
-                        ? (providerDraft.providerKey === "antigravity" ? "Gemini API key (SDK)" : "API key")
-                        : authType === "oauth"
-                          ? (providerDraft.providerKey === "antigravity" ? "OAuth (agy CLI)" : "OAuth")
-                          : authType === "vertex_adc"
-                            ? "Google Vertex / ADC"
-                            : authType === "account"
-                              ? "Official account credentials"
-                              : authType === "local" ? "CLI on this machine" : "Local endpoint",
-                    }))}
-                  />
-                  <Input
-                    value={providerDraft.slug}
-                    onChange={(event) => setProviderDraft((current) => ({ ...current, slug: event.target.value }))}
-                    placeholder="connection-id"
-                    aria-label="Connection ID"
-                    disabled={Boolean(providerDraft.id)}
-                  />
-                  <Input
-                    value={providerDraft.label}
-                    onChange={(event) => setProviderDraft((current) => ({ ...current, label: event.target.value }))}
-                    placeholder="Connection name"
-                    aria-label="Connection name"
-                  />
-                </div>
-                {providerDraft.authType === "vertex_adc" ||
-                (providerDraft.providerKey === "antigravity" && providerDraft.authType === "oauth") ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      value={providerDraft.project}
-                      onChange={(event) => setProviderDraft((current) => ({ ...current, project: event.target.value }))}
-                      placeholder={providerDraft.authType === "oauth" ? "Optional GCP project (workspace accounts need this)" : "GCP project"}
-                      aria-label="GCP project"
-                    />
-                    <Input
-                      value={providerDraft.location}
-                      onChange={(event) => setProviderDraft((current) => ({ ...current, location: event.target.value }))}
-                      placeholder="us-central1"
-                      aria-label="GCP location"
-                    />
-                  </div>
-                ) : providerDraft.providerKey !== "cursor" &&
-        providerDraft.providerKey !== "grok-build" &&
-        providerDraft.providerKey !== "opencode" &&
-        providerDraft.authType !== "oauth" &&
-        providerDraft.authType !== "local" ? (
-                  <Input
-                    value={providerDraft.baseUrl}
-                    onChange={(event) => setProviderDraft((current) => ({ ...current, baseUrl: event.target.value }))}
-                    placeholder="https://api.example.com/v1"
-                    aria-label="Provider base URL"
-                  />
-                ) : null}
-                {providerDraft.authType !== "local" &&
-                providerDraft.authType !== "vertex_adc" &&
-                providerDraft.authType !== "oauth" ? (
-                  <Input
-                    type="password"
-                    value={providerDraft.secret}
-                    onChange={(event) => setProviderDraft((current) => ({ ...current, secret: event.target.value }))}
-                    placeholder={providerDraft.authType === "account" ? "Paste official auth.json content" : "Secret is write-only"}
-                    aria-label="Provider credential"
-                    autoComplete="new-password"
-                  />
-                ) : null}
-                {providerDraft.authType === "api_key" && API_KEY_URLS[providerDraft.providerKey] ? (
-                  <a
-                    href={API_KEY_URLS[providerDraft.providerKey]}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-primary underline underline-offset-2"
-                  >
-                    Get {providerDefinitions.find((provider) => provider.key === providerDraft.providerKey)?.name || "provider"} API key
-                  </a>
-                ) : null}
-                {providerDefinitions.find((provider) => provider.key === providerDraft.providerKey)?.setupHint ? (
-                  <p className="text-xs text-muted-foreground">
-                    {providerDefinitions.find((provider) => provider.key === providerDraft.providerKey)?.setupHint}
-                  </p>
-                ) : null}
-                <div className="flex flex-wrap gap-2">
-                {providerDraft.authType === "oauth" ? (
-                  <>
-                    {providerDraft.id ? (
-                      <Button type="button" onClick={() => void saveProviderConnection()} disabled={providerBusy || !providersLoaded || !providerDraft.label.trim()}>
-                        {providerBusy ? "Saving…" : "Save changes"}
-                      </Button>
-                    ) : null}
-                    <Button type="button" variant={providerDraft.id ? "outline" : "default"} onClick={() => void connectProviderOAuth()} disabled={providerBusy || !providersLoaded}>
-                      {providerBusy ? "Connecting…" : providerDraft.id ? "Reconnect OAuth" : "Connect via OAuth"}
-                    </Button>
-                  </>
-                ) : (
-                    <Button type="button" onClick={() => void saveProviderConnection()} disabled={providerBusy || !providersLoaded || !providerDraft.label.trim()}>
-                      {providerBusy ? "Saving…" : providerDraft.id ? "Update connection" : "Save connection"}
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={resetProviderDraft}
-                    disabled={providerBusy || !providersLoaded}
-                  >
-                    Clear
-                  </Button>
-                </div>
-                </div>
+<div className="@container/providers min-w-0">
+   <ProviderSettingsLayout
+     connections={sortedProviderConnections}
+     definitions={providerDefinitions}
+     selectedId={providerDraft.id}
+     adding={providerAdding}
+     loaded={providersLoaded}
+     error={providersError}
+     busy={providerBusy}
+     onSelect={id => {
+       const connection = providerConnections.find(item => item.id === id);
+       if (connection) editProviderConnection(connection);
+     }}
+     onAdd={resetProviderDraft}
+     onRefresh={loadProviders}
+     onToggle={async id => {
+       const connection = providerConnections.find(item => item.id === id);
+       if (connection) await toggleProviderConnection(connection);
+     }}
+   >
+     {!providersLoaded && !providerConnections.length ? (
+       <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading provider settings…</p>
+     ) : !selectedProviderConnection && !providerAdding ? (
+       <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center">
+         <PlugZap aria-hidden="true" className="size-7 text-muted-foreground" />
+         <p className="text-sm font-medium">Connect your first provider</p>
+         <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">Add an API, account, CLI, or local connection.</p>
+         <Button type="button" variant="outline" disabled={!providersLoaded || !providerDefinitions.length} onClick={resetProviderDraft}><Plus aria-hidden="true" className="size-4" /> Add provider</Button>
+       </div>
+     ) : (
+       <div id="provider-connection-form" className="min-w-0">
+         <div className="flex min-w-0 items-start justify-between gap-3 border-b border-border/60 pb-4">
+           <div className="flex min-w-0 items-start gap-3">
+             <ProviderLogo providerId={providerDraft.providerKey} className="mt-0.5 size-5 shrink-0" />
+             <div className="min-w-0">
+               <h4 className="break-words text-sm font-semibold">{providerAdding ? "Add provider" : selectedProviderConnection?.label}</h4>
+               <p className="mt-1 text-xs text-muted-foreground">{selectedProviderDefinition?.name || providerDraft.providerKey}</p>
+             </div>
+           </div>
+           {selectedProviderConnection ? (
+             <Button type="button" size="sm" variant="outline" disabled={providerBusy || !providersLoaded} onClick={() => void testProviderConnection(selectedProviderConnection)}>
+               <PlugZap aria-hidden="true" className="size-3.5" /> Test
+             </Button>
+           ) : null}
+         </div>
+         {selectedProviderConnection ? (
+           <div className="border-b border-border/60 py-4">
+             <p className="text-sm font-medium">Status</p>
+             <p className={cn("mt-1 text-xs", selectedProviderConnection.enabled && selectedProviderConnection.lastError ? "text-destructive" : "text-muted-foreground")}>
+               {providerConnectionStatus(selectedProviderConnection)}
+               {selectedProviderConnection.lastCheckedAt ? ` · Checked ${new Date(selectedProviderConnection.lastCheckedAt).toLocaleString("en-GB")}` : ""}
+             </p>
+             {selectedProviderConnection.lastError ? <p className="mt-2 break-words text-xs text-destructive">{selectedProviderConnection.lastError}</p> : null}
+           </div>
+         ) : null}
+         <fieldset disabled={providerBusy || !providersLoaded} className="min-w-0 disabled:opacity-60">
+           <legend className="sr-only">Provider connection settings</legend>
+           {providerAdding ? (
+             <ProviderSettingsRow label="Provider">
+               <CustomSelect value={providerDraft.providerKey} onValueChange={selectProvider} ariaLabel="Provider" className="w-full"
+                 options={selectableProviders.map(provider => ({ value: provider.key, label: provider.name, providerLogo: provider.key }))} />
+             </ProviderSettingsRow>
+           ) : null}
+           <ProviderSettingsRow label="Display name" htmlFor="provider-display-name" description="The name shown in your model picker.">
+             <Input id="provider-display-name" value={providerDraft.label} onChange={event => setProviderDraft(current => ({ ...current, label: event.target.value }))} aria-label="Connection name" />
+           </ProviderSettingsRow>
+           <ProviderSettingsRow label="Connection ID" htmlFor="provider-connection-id" description="A unique identifier for this connection.">
+             <Input id="provider-connection-id" value={providerDraft.slug} onChange={event => setProviderDraft(current => ({ ...current, slug: event.target.value }))} disabled={Boolean(providerDraft.id)} aria-label="Connection ID" />
+           </ProviderSettingsRow>
+           <h5 className="pt-6 pb-1 text-sm font-semibold">Authentication</h5>
+           <ProviderSettingsRow label="Method">
+             <CustomSelect value={providerDraft.authType}
+               onValueChange={authType => setProviderDraft(current => ({ ...current, authType }))}
+               ariaLabel="Authentication method" disabled={Boolean(providerDraft.id)} className="w-full"
+               options={(selectedProviderDefinition?.authTypes || []).map(authType => ({
+                 value: authType,
+                 label: authType === "api_key"
+                   ? (providerDraft.providerKey === "antigravity" ? "Gemini API key (SDK)" : "API key")
+                   : authType === "oauth"
+                     ? (providerDraft.providerKey === "antigravity" ? "OAuth (agy CLI)" : "OAuth")
+                     : authType === "vertex_adc" ? "Google Vertex / ADC"
+                       : authType === "account" ? "Official account credentials"
+                         : authType === "local" ? "CLI on this machine" : "Local endpoint",
+               }))} />
+           </ProviderSettingsRow>
+           {providerDraft.authType !== "local" && providerDraft.authType !== "vertex_adc" && providerDraft.authType !== "oauth" ? (
+             <ProviderSettingsRow label={providerDraft.authType === "account" ? "Account credentials" : "API key"} htmlFor="provider-credential"
+               description={selectedProviderConnection?.hasSecret ? "Leave blank to keep your saved credentials." : "Stored securely. This value is write-only."}>
+               <Input id="provider-credential" type="password" value={providerDraft.secret}
+                 onChange={event => setProviderDraft(current => ({ ...current, secret: event.target.value }))}
+                 placeholder={providerDraft.authType === "account" ? "Paste auth.json content" : selectedProviderConnection?.hasSecret ? "Credentials saved" : "Enter API key"}
+                 aria-label="Provider credential" autoComplete="new-password" />
+               {providerDraft.authType === "api_key" && API_KEY_URLS[providerDraft.providerKey] ? (
+                 <a href={API_KEY_URLS[providerDraft.providerKey]} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-primary underline underline-offset-2">
+                   Get {selectedProviderDefinition?.name || "provider"} API key
+                 </a>
+               ) : null}
+             </ProviderSettingsRow>
+           ) : null}
+           {providerDraft.authType === "vertex_adc" || (providerDraft.providerKey === "antigravity" && providerDraft.authType === "oauth") ? (
+             <>
+               <h5 className="pt-6 pb-1 text-sm font-semibold">Google Cloud</h5>
+               <ProviderSettingsRow label="Project" htmlFor="provider-gcp-project" description={providerDraft.authType === "oauth" ? "Optional. Required for workspace accounts." : "Your Google Cloud project."}>
+                 <Input id="provider-gcp-project" value={providerDraft.project} onChange={event => setProviderDraft(current => ({ ...current, project: event.target.value }))} aria-label="GCP project" />
+               </ProviderSettingsRow>
+               {providerDraft.authType === "vertex_adc" ? (
+                 <ProviderSettingsRow label="Location" htmlFor="provider-gcp-location">
+                   <Input id="provider-gcp-location" value={providerDraft.location} onChange={event => setProviderDraft(current => ({ ...current, location: event.target.value }))} placeholder="us-central1" aria-label="GCP location" />
+                 </ProviderSettingsRow>
+               ) : null}
+             </>
+           ) : providerDraft.providerKey !== "cursor" && providerDraft.providerKey !== "grok-build" && providerDraft.providerKey !== "opencode" && providerDraft.authType !== "oauth" && providerDraft.authType !== "local" ? (
+             <>
+               <h5 className="pt-6 pb-1 text-sm font-semibold">Connection</h5>
+               <ProviderSettingsRow label="Base URL" htmlFor="provider-base-url" description="The API endpoint for this connection.">
+                 <Input id="provider-base-url" value={providerDraft.baseUrl} onChange={event => setProviderDraft(current => ({ ...current, baseUrl: event.target.value }))} placeholder="https://api.example.com/v1" aria-label="Provider base URL" />
+               </ProviderSettingsRow>
+             </>
+           ) : null}
+           {selectedProviderDefinition?.setupHint ? <p className="mt-4 text-xs leading-relaxed text-muted-foreground">{selectedProviderDefinition.setupHint}</p> : null}
+           <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
+             {providerDraft.authType === "oauth" ? (
+               <>
+                 {providerDraft.id ? <Button type="button" onClick={() => void saveProviderConnection()} disabled={providerBusy || !providersLoaded || !providerDraft.label.trim()}>{providerBusy ? "Saving…" : "Save changes"}</Button> : null}
+                 <Button type="button" variant={providerDraft.id ? "outline" : "default"} onClick={() => void connectProviderOAuth()} disabled={providerBusy || !providersLoaded || !providerDraft.label.trim()}>
+                   {providerBusy ? "Connecting…" : providerDraft.id ? "Reconnect OAuth" : "Connect via OAuth"}
+                 </Button>
+               </>
+             ) : (
+               <Button type="button" onClick={() => void saveProviderConnection()} disabled={providerBusy || !providersLoaded || !providerDraft.label.trim()}>
+                 {providerBusy ? "Saving…" : providerDraft.id ? "Save changes" : "Save connection"}
+               </Button>
+             )}
+             {providerAdding ? (
+               <Button type="button" variant="ghost" onClick={() => { setProviderAdding(false); setProviderDraft(current => ({ ...current, id: "", secret: "" })); }} disabled={providerBusy}>Cancel</Button>
+             ) : null}
+           </div>
+         </fieldset>
                 {oauthFlow ? (
                   <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
                     <div>
@@ -2021,45 +2028,21 @@ export function SettingsPanel({
                     ) : null}
                   </div>
                 ) : null}
-                {!providersLoaded ? (
-                  <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
-                    Loading provider connections…
-                  </div>
-                ) : providerConnections.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
-                    No provider connections configured yet.
-                  </div>
-                ) : (
-                  <ul className="flex flex-col gap-2">
-                    {sortedProviderConnections.map((connection) => {
-                      const definition = providerDefinitions.find((provider) => provider.key === connection.providerKey);
-                      return (
-                        <li key={connection.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border/60 bg-card/40 p-3">
-                          <ProviderLogo providerId={connection.providerKey} className="size-5" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">
-                              {connection.label}
-                              <span className="ml-2 text-xs font-normal text-muted-foreground">{definition?.name || connection.providerKey}</span>
-                            </p>
-                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                              {connection.slug} · {connection.authType} · {connection.enabled ? "enabled" : "disabled"}
-                              {connection.hasSecret ? " · credential set" : ""}
-                            </p>
-                            {connection.lastError ? <p className="mt-1 text-xs text-red-400">{connection.lastError}</p> : null}
-                          </div>
-                          <Button type="button" size="sm" variant={connection.enabled ? "outline" : "default"} onClick={() => void toggleProviderConnection(connection)}>
-                            {connection.enabled ? "Disable" : "Enable"}
-                          </Button>
-                          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Test ${connection.label}`} onClick={() => void testProviderConnection(connection)}><PlugZap className="size-3.5" /></Button>
-                          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Refresh models for ${connection.label}`} onClick={() => void discoverProviderModels(connection)}><RefreshCw className="size-3.5" /></Button>
-                          <Button type="button" size="sm" variant="ghost" onClick={() => editProviderConnection(connection)}>Edit</Button>
-                          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Delete ${connection.label}`} onClick={() => setDeleteTarget({ type: "provider", item: connection })}><Trash2 className="size-3.5" /></Button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </section>
+
+         {selectedProviderConnection ? (
+           <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-4">
+             <Button type="button" size="sm" variant="ghost" disabled={providerBusy || !providersLoaded} onClick={() => void discoverProviderModels(selectedProviderConnection)}>
+               <RefreshCw aria-hidden="true" className="size-3.5" /> Refresh models
+             </Button>
+             <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={providerBusy || !providersLoaded} onClick={() => setDeleteTarget({ type: "provider", item: selectedProviderConnection })}>
+               <Trash2 aria-hidden="true" className="size-3.5" /> Delete connection
+             </Button>
+           </div>
+         ) : null}
+       </div>
+     )}
+   </ProviderSettingsLayout>
+ </div>
  </SettingsFeaturePane>
  ) : settingsPane === "versions" ? (
  <SettingsFeaturePane
@@ -2750,6 +2733,7 @@ export function SettingsPanel({
  <SettingsOverview title="Models">
   <SettingsTile id="settings-usage" title="Usage" meta={usageSnapshot?.providers.length ? `${usageSnapshot.providers.length} providers · quotas and reset times` : "Provider quotas and reset times"} icon={Gauge} onOpen={() => openSettingsPane("usage")} />
   <SettingsTile id="settings-providers" title="AI providers and connections" meta={providersLoaded ? `${providerConnections.length} connection${providerConnections.length === 1 ? "" : "s"}` : "Loading…"} icon={KeyRound} onOpen={() => openSettingsPane("providers")} />
+  <SettingsTile id="settings-model-chains" title="Model Chains" meta="Ordered models with usage and availability fallback" icon={Link2} onOpen={() => openSettingsPane("model-chains")} />
   <SettingsTile id="settings-versions" title="CLI versions" meta="Installed agent CLI and SDK versions" icon={Download} onOpen={() => openSettingsPane("versions")} />
  </SettingsOverview>
 </TabsContent>

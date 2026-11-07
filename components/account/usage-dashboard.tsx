@@ -3,7 +3,7 @@ import { AnimatedNumber } from "@/components/animated-number";
 import { ChartBoundary } from "@/components/chart-boundary";
 import { useChartMotion } from "@/components/use-chart-motion";
 import { Fragment, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, Download, Info, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Coins, Download, Hash, Info, RefreshCw, Send } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ProviderLogo } from "@/components/provider-logo";
 import { ModelUsageDetails } from "@/components/account/model-usage-details";
@@ -119,8 +119,8 @@ export function UsageDashboard() {
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p>:null}
     <section aria-label="Usage overview" aria-busy={loading} className="rounded-xl border border-border/60">
       <div className="flex flex-wrap gap-1 border-b border-border/60 px-4 sm:px-6">
-        {([["costUsd","Cost"],["tokens","Tokens"],["requests","Requests"]] as const).filter(([key])=>showCosts || key!=="costUsd").map(([key,label])=><button key={key} type="button" aria-pressed={activeTab===key} onClick={()=>setMetric(key)}
-          className={"min-h-12 border-b-2 px-4 text-sm transition-colors "+(activeTab===key?"border-primary text-foreground":"border-transparent text-muted-foreground hover:text-foreground")}>{label}</button>)}
+        {([["costUsd","Cost",Coins],["tokens","Tokens",Hash],["requests","Requests",Send]] as const).filter(([key])=>showCosts || key!=="costUsd").map(([key,label,Icon])=><button key={key} type="button" aria-pressed={activeTab===key} onClick={()=>setMetric(key)}
+          className={"inline-flex min-h-12 items-center gap-2 border-b-2 px-3 text-sm transition-colors sm:px-4 "+(activeTab===key?"border-primary text-foreground":"border-transparent text-muted-foreground hover:text-foreground")}><Icon className="size-4 shrink-0" aria-hidden="true"/>{label}</button>)}
       </div>
       <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
         <div><p className="text-xs text-muted-foreground">{metricLabel}</p>
