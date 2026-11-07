@@ -42,6 +42,9 @@ test("real gateway heartbeats/auth stay responsive under writer lock and preserv
   await until(()=>db.prepare("SELECT status FROM remote_clients WHERE id='device'").get()!.status==="online" &&
     String(db.prepare("SELECT capabilities FROM remote_clients WHERE id='device'").get()!.capabilities).includes("desktop_gui") &&
     !!db.prepare("SELECT last_used_at FROM remote_client_credentials WHERE id='credential'").get()!.last_used_at);
+  // The first persisted heartbeat may already satisfy the values above. Wait
+  // for the coalesced newest sequence ACK before testing stale-write rejection.
+  await until(()=>!presence.getRemotePresence("device","owner"));
   const latest=String(db.prepare("SELECT last_seen_at FROM remote_clients WHERE id='device'").get()!.last_seen_at);
   presence.queueRemotePresence({clientId:"device",ownerId:"other",status:"offline",at:new Date().toISOString()});
   await until(()=>!presence.getRemotePresence("device","other"));

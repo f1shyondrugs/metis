@@ -67,8 +67,8 @@ before(async () => {
 });
 after(() => { mock.restoreAll(); rmSync(root, { recursive: true, force: true }); });
 
-test("real Cursor runner uses selected account, fresh secrets and native model ID at SDK boundary", async t => {
-  // Replace only MCP configuration assembly in the CJS dependency cache.
+test("real Cursor runner uses selected account, fresh secrets and native model ID at isolated adapter boundary", async t => {
+  // Replace only MCP assembly and isolated Cursor transport in the dependency cache.
   // The worker, DB, permissions and credential resolver run unchanged.
   const require = createRequire(import.meta.url);
   const mcpPath = require.resolve("../lib/mcp");
@@ -77,26 +77,41 @@ test("real Cursor runner uses selected account, fresh secrets and native model I
   const original = cached.exports;
   cached.exports = { ...mcp, getMcpServers: () => ({}) };
   t.after(() => { cached.exports = original; });
+  const cursorRuntimePath = require.resolve("../lib/providers/cursor-runtime");
+  const cursorRuntime = require(cursorRuntimePath) as typeof import("../lib/providers/cursor-runtime");
+  const runtimeModule = require.cache[cursorRuntimePath]!;
+  const originalRuntime = runtimeModule.exports;
+  const cursorBoundary = { ...cursorRuntime };
+  runtimeModule.exports = cursorBoundary;
+  t.after(() => { runtimeModule.exports = originalRuntime; });
   const [store, jobs, runner] = await Promise.all([
     import("../lib/db-store"), import("../lib/db-jobs"),
     import("../lib/worker-runner"),
   ]);
   mkdirSync(path.join(root, "agent-traces"), { recursive: true });
-  // Stop at SDK initialization: no session or paid turn is created.
+  // Stop at isolated adapter initialization: no SDK process or paid turn is created.
   const captured: Array<{ apiKey?: string; model?: { id: string } }> = [];
-  t.mock.method(sdk.Agent, "create", async (options: (typeof captured)[number]) => {
-    captured.push(options);
-    throw new Error("fixture SDK boundary stop");
-  });
-  t.mock.method(sdk.Agent, "resume", async () => {
-    throw new Error("unexpected cross-account legacy session resume");
+  t.mock.method(cursorBoundary, "isolatedCursor", (runtimeOwner: string, workspace: string) => {
+    assert.equal(runtimeOwner, owner, "selected accounts retain the same owner isolation boundary");
+    assert.ok(workspace.startsWith(root), "the adapter uses only the isolated test workspace");
+    return {
+      async create(options: (typeof captured)[number]) {
+        captured.push(options);
+        throw new Error("fixture isolated adapter boundary stop");
+      },
+      async resume() {
+        throw new Error("unexpected cross-account legacy session resume");
+      },
+    } as unknown as ReturnType<typeof cursorRuntime.isolatedCursor>;
   });
   const run = async (modelId: string, legacyAgent = false) => {
     const chat = store.createChat("Runner fixture", undefined, owner, { id: modelId });
     if (legacyAgent) store.updateChat(chat.id, { agentId: "legacy-other-account" }, owner);
     const job = jobs.enqueueJob({ chatId: chat.id, userId: owner, modelId, message: "fixture", incognito: true });
-    await runner.runQueuedJob(job);
-    assert.match(jobs.getJob(job.id)?.error || "", /fixture SDK boundary stop|not available|No enabled Cursor/);
+    const claimed = jobs.claimNextJob({workerId:"account-fixture-worker"});
+    assert.equal(claimed?.id, job.id);
+    await runner.runQueuedJob(claimed!);
+    assert.match(jobs.getJob(job.id)?.error || "", /fixture isolated adapter boundary stop|not available|No enabled Cursor/);
   };
   await run("cursor:" + first + ":" + shared, true);
   await run("cursor:" + second + ":" + shared);

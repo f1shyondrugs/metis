@@ -1,12 +1,14 @@
 "use client";
 import { Fragment, useState, type FormEvent } from "react";
-import { ArrowRight, ChevronDown, LoaderCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ChatIcon } from "@/components/chat-icon";
 import { TaskListInput } from "@/components/task-list-input";
+import { SecureBrowserLoginForm } from "@/components/secure-browser-login-form";
+import { QuestionFormFrame } from "@/components/question-form-frame";
+import { requiresProtectedCredentials } from "@/lib/mcp-core/credential-question-policy.mjs";
 import { cn } from "@/lib/utils";
 import {
   normalizeQuestionAnswers, previewQuestionValues, questionKey, questionType,
@@ -32,6 +34,11 @@ export function QuestionForm({
   onAnswersChange, onCustomChange, onCustomActiveChange, onSubmit, onCancel,
 }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
+  if(form.secureBrowserInput)return <SecureBrowserLoginForm form={form} disabled={disabled} error={error} onSubmit={onSubmit} onCancel={onCancel}/>;
+  if(requiresProtectedCredentials(form))return <div role="alert" className="my-4 rounded-xl border border-border bg-background p-4 text-sm">
+    <p>Enter credentials only in the protected login form. This older request is blocked. Start the login again.</p>
+    <button type="button" disabled={disabled} onClick={onCancel} className="mt-3 min-h-11 underline">Close blocked request</button>
+  </div>;
   const actual = form.questions.map((_, i) => customActive[i] ? custom[i] ?? "" : answers[i] ?? "");
   const values = previewQuestionValues(form.questions, actual);
   const previewReady = form.questions.every((q, i) => !isQuestionVisible(q, values) || q.required === false || (values[questionKey(q, i)] !== null && values[questionKey(q, i)] !== "" && (!Array.isArray(values[questionKey(q, i)]) || (values[questionKey(q, i)] as unknown[]).length > 0)));
@@ -56,14 +63,7 @@ export function QuestionForm({
     }
   }
   return (
-    <form onSubmit={submit} noValidate aria-label={form.title || "Agent needs your input"} className="my-4 min-w-0 scheme-light dark:scheme-dark rounded-xl border border-border bg-background p-4 sm:p-5">
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold leading-6">{form.title || "Agent needs your input"}</h3>
-          {form.description ? <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{form.description}</p> : null}
-        </div>
-        <Button type="button" variant="ghost" size="xs" disabled={disabled} onClick={onCancel} className="shrink-0 text-muted-foreground">Cancel</Button>
-      </div>
+    <QuestionFormFrame title={form.title} description={form.description} submitLabel={form.submitLabel} disabled={disabled} error={error} onSubmit={submit} onCancel={onCancel}>
       <div className={cn("grid min-w-0 grid-cols-1 gap-x-5 gap-y-5", form.columns === 2 && "sm:grid-cols-2")}>
         {form.questions.map((question, index) => {
           if (!isQuestionVisible(question, values)) return null;
@@ -147,12 +147,6 @@ export function QuestionForm({
         })}
       </div>
       {form.responseTemplate && previewReady ? <p className="mt-5 whitespace-pre-wrap border-t border-border pt-4 text-xs leading-relaxed text-muted-foreground" aria-label="Your response preview">{questionSummary(form, form.questions, values)}</p> : null}
-      {error ? <p role="alert" className="mt-4 text-sm text-destructive">{error}</p> : null}
-      <Button type="submit" disabled={disabled} className="mt-5 min-h-11 w-full gap-2">
-        {disabled ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}
-        {disabled ? "Sending…" : form.submitLabel || "Continue"}
-        {!disabled ? <ArrowRight className="size-4" aria-hidden="true" /> : null}
-      </Button>
-    </form>
+    </QuestionFormFrame>
   );
 }

@@ -25,7 +25,7 @@ const js = ts.transpileModule([initialization.getText(source), ...wanted.map(nam
 type Params = ProjectModelSelection["modelParams"];
 type ModelSelectionRequest = { version: number; chatId: string | null; chatVersion: number; pending: boolean; confirmed: ProjectModelSelection };
 function fixture(chatId: string | null = "chat") {
-  const calls: Array<{ url: string; body: ProjectModelSelection; resolve: (response: Response) => void; reject: (error: Error) => void }> = [];
+  const calls: Array<{ url: string; body: ProjectModelSelection & {chainId?:string|null}; resolve: (response: Response) => void; reject: (error: Error) => void }> = [];
   const errors: string[] = [];
   const preferenceWrites: unknown[] = [];
   const storage = new Map<string, string>();
@@ -33,6 +33,8 @@ function fixture(chatId: string | null = "chat") {
   const initial = { modelId: "p/a", modelParams: [{ id: "effort", value: "low" }] };
   const context = {
     Error, modelForSelection, createChatModelSettingsQueue,
+    chatModelChain: {chain:null as {id:string}|null,refresh:()=>{}},
+    chainSelectionBusyRef: {current:false}, notifyModelChainsChanged:()=>{},
     projectModel: null as ProjectModelSelection | null, modelId: initial.modelId, modelParams: initial.modelParams as Params,
     modelParamsByModel: {} as Record<string, Params>, lastModelByProvider: {} as Record<string, string>,
     models: ["p/b", "p/c"].map(id => ({ id, defaultParams: [{ id: "effort", value: "high" }] })),
@@ -76,6 +78,22 @@ function fixture(chatId: string | null = "chat") {
   return { context, select: functions.selectModel, applyParams: functions.applyModelParams, save: functions.saveChatModelSelection, calls, errors, storage, preferenceWrites, writtenSnapshots, switchTo, flush };
 }
 const success = (modelId: string, modelParams: Params = []) => Response.json({ chat: { modelId, modelParams } });
+
+test("chain selection locks per-step parameters and choosing a model explicitly leaves the chain", async () => {
+  const f=fixture();
+  f.context.chatModelChain.chain={id:"synthetic-chain"};
+  f.applyParams([{id:"effort",value:"unrelated"}]);
+  assert.equal(f.calls.length,0);
+  const pending=f.select("p/b");
+  assert.equal(f.calls[0].url,"/api/chats/chat/model-chain");
+  assert.equal(f.calls[0].body.chainId,null);
+  f.calls[0].resolve(Response.json({selection:{modelId:"p/b",modelParams:[],modelChainId:null}}));
+  await pending;
+  f.context.chatModelChain.chain=null;
+  f.context.chainSelectionBusyRef.current=true;
+  await f.select("p/c");
+  assert.equal(f.calls.length,1);
+});
 
 test("failed HTTP and network restore the confirmed chat model and params without changing account defaults", async () => {
   for (const failure of ["http", "network"]) {

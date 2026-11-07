@@ -18,6 +18,7 @@ export type AgentQuestion = Omit<QuestionInput, "options"> & { id: string; optio
 export type QuestionForm = { language?: string; title?: string; description?: string; submitLabel?: string; responseTemplate?: string; columns?: 1 | 2 };
 export type AskUserInput = QuestionForm & { questions: QuestionInput[] };
 export type PendingChatQuestion = QuestionForm & {
+  secureBrowserInput?: { requestId: string; origin: string; expiresAt: string; kind?:"console"; sessionId?:string;fields?:Array<"password"|"username"|"email"> };
   questionId: string; runId?: string; jobId?: string; version?: number; expiresAt?: string;
   status?: "waiting_for_user" | "answered" | "cancelled" | "expired"; questions: AgentQuestion[];
 };

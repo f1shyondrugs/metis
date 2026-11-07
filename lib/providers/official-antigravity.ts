@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync,realpathSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -12,6 +12,8 @@ import { classifyTranscriptTool } from "@/lib/agent-transcript";
 import { todosFromToolPayload } from "@/lib/tool-call-display";
 import type { McpServerMap } from "@/lib/mcp";
 import { providerProcessEnv } from "@/lib/providers/process-env";
+import {assertNativeMcpServers,nativeSandboxLaunch,nativeTemporaryHome,spawnNative,withNativeRuntime} from "./native-sandbox";
+import {ensureSafeDirectory,readSafeFile,writeSafeFile} from "@/lib/safe-file-read";
 import type { ToolPart } from "@/lib/store";
 import type { ModelParameterModel } from "@/lib/model-params";
 
@@ -95,17 +97,16 @@ export function antigravityCliSettings() {
 export async function writeAntigravitySessionFiles(tempHome: string, mcp?: McpServerMap) {
   const geminiConfig = path.join(tempHome, ".gemini", "config");
   const cliDir = path.join(tempHome, ".gemini", "antigravity-cli");
-  await mkdir(geminiConfig, { recursive: true, mode: 0o700 });
-  await mkdir(cliDir, { recursive: true, mode: 0o700 });
-  await writeFile(
+  ensureSafeDirectory(geminiConfig);
+  ensureSafeDirectory(cliDir);
+  writeSafeFile(
     path.join(cliDir, "settings.json"),
     `${JSON.stringify(antigravityCliSettings(), null, 2)}\n`,
-    { encoding: "utf8", mode: 0o600 },
   );
   if (!mcp) return;
   const payload = `${JSON.stringify(antigravityMcpConfig(mcp), null, 2)}\n`;
-  await writeFile(path.join(geminiConfig, "mcp_config.json"), payload, { encoding: "utf8", mode: 0o600 });
-  await writeFile(path.join(cliDir, "mcp_config.json"), payload, { encoding: "utf8", mode: 0o600 });
+  writeSafeFile(path.join(geminiConfig, "mcp_config.json"), payload);
+  writeSafeFile(path.join(cliDir, "mcp_config.json"), payload);
 }
 
 const TOOL_LINE = /(?:calling|called|using|ran)\s+(?:mcp\s+)?tool[:\s]+[`\"]?([A-Za-z0-9_./-]+)[`\"]?/i;
@@ -351,7 +352,10 @@ export async function runOfficialAntigravityOAuthFlow(input: {
   flowId: string;
   ownerId: string;
 }) {
-  const tempHome = await mkdtemp(path.join(os.tmpdir(), "ai-chat-agy-"));
+  return withNativeRuntime(input.ownerId,undefined,()=>runIsolatedAntigravityOAuth(input));
+}
+async function runIsolatedAntigravityOAuth(input:{flowId:string;ownerId:string}){
+  const tempHome = nativeTemporaryHome("agy-");
   const tokenFile = path.join(
     tempHome,
     ".gemini",
@@ -375,12 +379,13 @@ export async function runOfficialAntigravityOAuthFlow(input: {
     SSH_TTY: "/dev/pts/0",
   });
 
-  const terminal = pty.spawn(command, ["-i", "Authenticate this Antigravity session."], {
+  const launch=nativeSandboxLaunch(command,["-i","Authenticate this Antigravity session."],environment);
+  const terminal = pty.spawn(launch.command, launch.args, {
     name: "xterm-256color",
     cols: 1000,
     rows: 50,
-    cwd: config.agentCwd,
-    env: environment as Record<string, string>,
+    cwd: launch.cwd || config.agentCwd,
+    env: launch.env as Record<string, string>,
   });
   let output = "";
   let urlSent = false;
@@ -445,7 +450,7 @@ export async function runOfficialAntigravityOAuthFlow(input: {
   while (Date.now() < timeout && !stopped && !exited) {
     if (existsSync(tokenFile)) {
       try {
-        const tokenData = await readFile(tokenFile, "utf8");
+        const tokenData = readSafeFile(tokenFile).toString("utf8");
         if (isAuthTokenFile(JSON.parse(tokenData))) {
           finish();
           await exitPromise;
@@ -505,7 +510,7 @@ export async function runOfficialAntigravityJob(context: {
     connectionId: context.connectionId,
     chatId: context.chatId,
   });
-  await mkdir(sessionHome, { recursive: true, mode: 0o700 });
+  ensureSafeDirectory(sessionHome);
   const tokenFile = path.join(
     sessionHome,
     ".gemini",
@@ -516,14 +521,15 @@ export async function runOfficialAntigravityJob(context: {
   if (command !== "agy" && !existsSync(command)) {
     throw new Error(`Official Antigravity CLI was not found at ${command}.`);
   }
-  await mkdir(path.dirname(tokenFile), { recursive: true, mode: 0o700 });
+  ensureSafeDirectory(path.dirname(tokenFile));
   const secretLooksLikeOAuthJson = context.secret.trim().startsWith("{");
   if (secretLooksLikeOAuthJson) {
-    await writeFile(tokenFile, context.secret, { encoding: "utf8", mode: 0o600 });
+    writeSafeFile(tokenFile, context.secret);
   }
   await writeAntigravitySessionFiles(sessionHome, context.mcp);
 
-  const terminal = pty.spawn(
+  assertNativeMcpServers(context.mcp||{});
+  const launch=nativeSandboxLaunch(
     command,
     [
       "-p",
@@ -541,12 +547,7 @@ export async function runOfficialAntigravityJob(context: {
       "--print-timeout",
       "30m",
     ],
-    {
-      name: "xterm-256color",
-      cols: 1000,
-      rows: 50,
-      cwd: context.cwd || config.agentCwd,
-      env: providerProcessEnv({
+      providerProcessEnv({
         HOME: sessionHome,
         USERPROFILE: sessionHome,
         XDG_CONFIG_HOME: path.join(sessionHome, ".config"),
@@ -558,8 +559,8 @@ export async function runOfficialAntigravityJob(context: {
         SSH_TTY: "/dev/pts/0",
         ...(context.extraEnv || {}),
       }),
-    },
   );
+  const terminal=pty.spawn(launch.command,launch.args,{name:"xterm-256color",cols:1000,rows:50,cwd:launch.cwd || context.cwd || config.agentCwd,env:launch.env as Record<string,string>});
   let output = "";
   let jsonlBuffer = "";
   let conversationId = context.conversationId === "continue" ? undefined : context.conversationId;
@@ -613,7 +614,7 @@ export async function runOfficialAntigravityJob(context: {
       );
     }
     if (secretLooksLikeOAuthJson) {
-      const refreshed = await readFile(tokenFile, "utf8").catch(() => context.secret);
+      const refreshed = (()=>{try{return readSafeFile(tokenFile).toString("utf8");}catch{return context.secret;}})();
       if (refreshed !== context.secret) {
         updateProviderConnection(context.connectionId, context.userId, {
           secret: refreshed,
@@ -673,7 +674,9 @@ export async function runAntigravitySdkJob(context: {
   if (!existsSync(script)) {
     throw new Error(`Antigravity SDK bridge was not found at ${script}.`);
   }
-  const child = spawn(python, ["-u", script], {
+  if(context.sessionDir)ensureSafeDirectory(context.sessionDir);
+  assertNativeMcpServers(context.mcp||{});
+  const child = spawnNative(python, ["-u", realpathSync(script)], {
     cwd: context.cwd || config.agentCwd,
     env: providerProcessEnv({
       PYTHONUNBUFFERED: "1",
@@ -681,7 +684,7 @@ export async function runAntigravitySdkJob(context: {
       ...(context.extraEnv || {}),
     }),
     stdio: ["pipe", "pipe", "pipe"],
-  });
+  },context.sessionDir?[context.sessionDir]:[]);
   const payload = {
     prompt: context.prompt,
     model: context.modelId,

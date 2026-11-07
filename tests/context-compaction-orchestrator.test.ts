@@ -302,7 +302,7 @@ test("Cursor send includes native vision images and persists queued follow-ups s
   assert.match(worker, /getActiveParentJob\(chatId\)/);
   assert.match(worker, /drainPersistedChatQueues\(\);/);
   assert.match(shell, /function persistQueuedFollowUps/);
-  assert.match(shell, /keepalive: true/);
+  assert.match(shell, /persistQueuedFollowUps\(current\.chatId, current\.queuedMessages, true\)/);
   assert.match(shell, /pagehide/);
   assert.doesNotMatch(shell, /shouldAutoDrainQueue\(\{/);
 });

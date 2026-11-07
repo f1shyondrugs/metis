@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, linkSync, copyFileSync, statSync, createReadStream, openSync, closeSync } from "node:fs";
+import {ensureSafeDirectory,copySafeFile} from "@/lib/safe-file-read";
 import { open, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileResponse } from "@/lib/file-response";
@@ -28,7 +29,7 @@ export function createUpload(ownerId: string, input: { name: string; mimeType: s
   const mimeType = input.mimeType?.split(";")[0].trim().toLowerCase().replace(/[\r\n]/g, "").slice(0, 200) || "application/octet-stream";
   const upload: UploadSession = { id: randomUUID(), name: input.name.replace(/[\r\n]/g, "").slice(0, 255), mimeType, size: input.size, kind: isImageMime(mimeType) ? "image" : "file", offset: 0, complete: false, createdAt: Date.now() };
   const dir = directory(ownerId, upload.id);
-  mkdirSync(dir, { recursive: true });
+  ensureSafeDirectory(dir);
   closeSync(openSync(path.join(dir, "file"), "wx"));
   save(ownerId, upload);
   return upload;
@@ -101,17 +102,13 @@ export function materializeUploads(chatId: string, ids: string[], ownerId: strin
   if (ids.length > MAX_ATTACHMENTS || new Set(ids).size !== ids.length) throw new Error("Invalid upload count");
   const uploads = ids.map((id) => getCompletedUpload(ownerId, id));
   const dir = chatUploadDir(chatId, ownerId);
-  mkdirSync(dir, { recursive: true });
+  ensureSafeDirectory(dir,{mode:0o755});
   return uploads.map((upload) => {
     const storedName = `${upload.id}-${sanitizeFileName(upload.name)}`;
     const destination = path.join(dir, storedName);
     if (!existsSync(destination)) {
       const source = path.join(directory(ownerId, upload.id), "file");
-      try { linkSync(source, destination); }
-      catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
-        copyFileSync(source, destination);
-      }
+      copySafeFile(source,destination,{exclusive:true,mode:0o644});
     }
     return { ...upload, storedName };
   });

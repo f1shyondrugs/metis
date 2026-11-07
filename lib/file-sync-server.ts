@@ -1,9 +1,13 @@
+import { callNativeDevelopmentBroker } from "@/lib/native-development-broker";
 import { spawn } from "node:child_process";
 import { buildFileIOProgram } from "@/lib/file-io-program.mjs";
 export { buildFileIOProgram } from "@/lib/file-io-program.mjs";
 export type FileIORequest = { action: "snapshot" | "save"; path: string; root: string; revision?: string; content?: string };
 /** Fixed filesystem program, isolated OS identity; stdin avoids command argument limits. */
 export async function runFileIO(input: FileIORequest, identity: { uid?: number; gid?: number; home?: string }) {
+  if (process.env.METIS_DEVELOPMENT_BROKER) {
+    return callNativeDevelopmentBroker({ action: "file", uid: identity.uid, root: input.root, input });
+  }
   return new Promise<Record<string, unknown>>((resolve, reject) => {
     const child = spawn(process.execPath, ["-"], { stdio: ["pipe","pipe","pipe"], uid: identity.uid, gid: identity.gid,
       cwd: input.root, env: { NODE_ENV: process.env.NODE_ENV || "production", LANG: process.env.LANG || "C.UTF-8", ...(identity.home ? { HOME: identity.home } : {}), ...(process.platform === "win32" && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) } });

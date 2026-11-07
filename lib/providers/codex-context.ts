@@ -1,5 +1,6 @@
-import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import {closeSync,fstatSync,readSync,readdirSync} from "node:fs";
 import path from "node:path";
+import {openSafeDirectory,openSafeRead,readSafeFile} from "@/lib/safe-file-read";
 import { contextWindowOf } from "@/lib/context-window";
 
 export function codexSessionHome(dataDir: string, ownerId: string, connectionId: string) {
@@ -9,7 +10,7 @@ export function codexSessionHome(dataDir: string, ownerId: string, connectionId:
 /** The CLI cache is account-specific provider metadata, never a family guess. */
 export function codexCachedContextWindow(home: string, modelId: string): number | undefined {
   try {
-    const cache = JSON.parse(readFileSync(path.join(home, "models_cache.json"), "utf8"));
+    const cache = JSON.parse(readSafeFile(path.join(home, "models_cache.json")).toString("utf8"));
     if (!Array.isArray(cache.models)) return undefined;
     const model = cache.models.find((entry: { slug?: string; id?: string; model?: string }) =>
       (entry.slug || entry.model || entry.id) === modelId,
@@ -46,20 +47,34 @@ export function readCodexThreadRolloutTail(home: string, threadId: string): stri
   let fd: number | undefined;
   try {
     const root = path.join(home, "sessions");
-    const file = readdirSync(root, { recursive: true, encoding: "utf8" })
-      .find((entry) => path.basename(entry).endsWith(`-${threadId}.jsonl`));
+    const file = findRollout(root,`-${threadId}.jsonl`);
     if (!file) return undefined;
     const filename = path.join(root, file);
-    const size = statSync(filename).size;
+    fd = openSafeRead(filename);
+    const size = fstatSync(fd).size;
     const length = Math.min(size, 1024 * 1024);
     const buffer = Buffer.alloc(length);
-    fd = openSync(filename, "r");
     const bytesRead = readSync(fd, buffer, 0, length, size - length);
     return buffer.subarray(0, bytesRead).toString("utf8");
   } catch {
     return undefined;
   } finally {
     if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/** Bound metadata walking and never traverse a symlink supplied by the CLI. */
+function findRollout(root:string,suffix:string):string|undefined{
+  const pending=[{dir:root,relative:"",depth:0}];let budget=10000;
+  while(pending.length&&budget>0){const item=pending.pop()!;let directory:number|undefined;
+    try{directory=openSafeDirectory(item.dir);
+      const entries=readdirSync(process.platform==="linux"?`/proc/self/fd/${directory}`:item.dir,{withFileTypes:true});
+      for(const entry of entries){if(--budget<0)return;const relative=path.join(item.relative,entry.name);
+        if(entry.isFile()&&entry.name.endsWith(suffix))return relative;
+        if(entry.isDirectory()&&item.depth<5)pending.push({dir:path.join(root,relative),relative,depth:item.depth+1});
+      }
+    }catch{/* Unsafe or concurrently removed directories supply no telemetry. */}
+    finally{if(directory!==undefined)closeSync(directory);}
   }
 }
 

@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test, { after, before } from "node:test";
+import http from "node:http";
+import { randomUUID } from "node:crypto";
 const dir = mkdtempSync(path.join(os.tmpdir(), "metis-question-flow-"));
 Object.assign(process.env, { CHAT_DATA_DIR: dir, CHAT_DB_PATH: path.join(dir, "chat.sqlite"), AGENT_CWD: dir, AI_CHAT_ROOT: dir, MCP_BEARER_TOKEN: "question-test-token" });
 delete process.env.AI_CHAT_JOB_ID; delete process.env.AI_CHAT_WORKER_ID; delete process.env.AI_CHAT_JOB_LEASE_TOKEN;
@@ -23,6 +25,39 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 function submit(id: string, values: unknown, session = cookie, version?: number) {
   return answer.POST(new Request("http://localhost/api/chat/answer", { method: "POST", headers: { cookie: session, "content-type": "application/json" }, body: JSON.stringify({ questionId: id, values, version }) }));
 }
+test("plain credential forms cannot be created or answered through legacy endpoints", async () => {
+  const chat = store.createChat("Credential guard", undefined, owner.id);
+  const unsafe = {questions:[{question:"Passwort",key:"password",type:"text" as const}]};
+  assert.throws(()=>questions.createPendingQuestion(unsafe,chat.id,owner.id),/Protected credentials required/);
+  const pending=questions.createPendingQuestion({questions:[{question:"Normal input",key:"value",type:"text"}]},chat.id,owner.id);
+  try {
+    const row=sqlite.getDatabase().prepare("SELECT data FROM pending_questions WHERE question_id=?").get(pending.questionId) as {data:string};
+    const legacy=JSON.parse(row.data);legacy.questions=unsafe.questions.map(q=>({...q,id:"legacy"}));
+    sqlite.getDatabase().prepare("UPDATE pending_questions SET data=? WHERE question_id=?").run(JSON.stringify(legacy),pending.questionId);
+    const marker="SYNTHETIC-SECRET-MUST-NOT-PERSIST";
+    const response=await submit(pending.questionId,{password:marker});
+    assert.equal(response.status,409);assert.equal((await response.json()).code,"secure_credentials_required");
+    assert.equal(questions.resolveQuestion(pending.questionId,{password:marker},owner.id),false);
+    const stored=sqlite.getDatabase().prepare("SELECT data FROM pending_questions WHERE question_id=?").get(pending.questionId) as {data:string};
+    assert(!stored.data.includes(marker));assert.equal(JSON.parse(stored.data).status,"waiting_for_user");
+    assert(!JSON.stringify(store.getChat(chat.id,owner.id)?.messages).includes(marker));
+  } finally { questions.cancelQuestion(pending.questionId,owner.id);pending.stop(); }
+});
+test("internal tool endpoint rejects login identity requests before creating a question", async () => {
+  const chat=store.createChat("Login routing guard",undefined,owner.id);
+  const job=jobs.enqueueJob({chatId:chat.id,userId:owner.id,message:"login"});
+  const lease=jobs.claimNextJob({workerId:"credential-guard-worker"})!;
+  try {
+    const response=await internal.POST(new Request("http://localhost/api/internal/mcp-question",{
+      method:"POST",headers:{authorization:"Bearer question-test-token","content-type":"application/json",
+        "x-ai-chat-id":chat.id,"x-ai-chat-user-id":owner.id,"x-ai-chat-job-id":job.id,
+        "x-ai-chat-worker-id":lease.leaseOwner!,"x-ai-chat-lease-token":lease.leaseToken!},
+      body:JSON.stringify({title:"Login",questions:[{question:"Username",type:"text"}]}),
+    }));
+    assert.equal(response.status,400);assert.match((await response.json()).error,/browser_request_login/);
+    assert(!store.getChat(chat.id,owner.id)?.pendingQuestion);
+  } finally { jobs.updateJob(job.id,{status:"cancelled"}); }
+});
 test("typed submission persists values, emits one readable message and preserves the lease", async () => {
   const chat = store.createChat("Form flow", undefined, owner.id);
   const job = jobs.enqueueJob({ chatId: chat.id, userId: owner.id, message: "diagnose" });
@@ -180,6 +215,9 @@ test("gateway exposes only ask_user and forwards the complete shared form contra
     return Response.json({ questionId: "gateway-fixture", answers: ["60"], values: { hz: 60 }, summary: "Rate 60 Hz" });
   };
   try {
+    const rejected=await gateway.dispatchGatewayTool("ask_user",{questions:[{question:"Passwort",type:"text"}]},{auditCall:false,context:{chatId:"fixture",jobId:"fixture",runtimeMode:"auto"}});
+    assert.equal(rejected.isError,true);assert.equal(forwarded,undefined);
+    assert.match(rejected.content.find(item=>item.type==="text")!.text!,/browser_request_login/);
     const result = await gateway.dispatchGatewayTool("ask_user", input, { auditCall: false, context: { chatId: "fixture", jobId: "fixture", runtimeMode: "auto" } });
     assert.notEqual(result.isError, true);
     assert.deepEqual(forwarded, input);
@@ -187,4 +225,190 @@ test("gateway exposes only ask_user and forwards the complete shared form contra
   } finally { globalThis.fetch = originalFetch; }
   const compatible = await import("../lib/questions");
   assert.equal(compatible.createPendingQuestion, questions.createPendingQuestion);
+});
+
+function internalRequest(chatId: string, jobId: string, lease: { leaseOwner?: string; leaseToken?: string }, body: unknown) {
+  return new Request("http://localhost/api/internal/mcp-question", {
+    method: "POST", headers: {
+      authorization: "Bearer question-test-token", "content-type": "application/json",
+      "x-ai-chat-id": chatId, "x-ai-chat-user-id": owner.id, "x-ai-chat-job-id": jobId,
+      "x-ai-chat-worker-id": lease.leaseOwner!, "x-ai-chat-lease-token": lease.leaseToken!,
+    }, body: JSON.stringify(body),
+  });
+}
+
+test("private login readiness returns to the agent without opening a question or claiming credential fill", async () => {
+  const chat = store.createChat("Login school selection", undefined, owner.id);
+  const job = jobs.enqueueJob({ chatId: chat.id, userId: owner.id, message: "Read the assigned homework" });
+  const lease = jobs.claimNextJob({ workerId: "school-selection-worker" })!;
+  const originalFetch = globalThis.fetch;
+  const readiness = { status: "protected_browser_ready", code: "credential_fields_not_visible", missingFields: ["username", "password"] };
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(JSON.parse(String(init?.body)).action, "secure_input_prepare");
+    return Response.json(readiness);
+  };
+  try {
+    const response = await internal.POST(internalRequest(chat.id, job.id, lease, { browserLogin: { fields: ["username", "password"] } }));
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), readiness);
+    assert.equal(store.getChat(chat.id, owner.id)?.pendingQuestion, undefined);
+    assert.equal(jobs.getJob(job.id)?.status, "running");
+    const stored = sqlite.getDatabase().prepare("SELECT count(*) AS n FROM pending_questions WHERE job_id = ?").get(job.id) as { n: number };
+    assert.equal(stored.n, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    jobs.updateJob(job.id, { status: "cancelled" });
+  }
+});
+
+test("login preparation exposes fixed failure codes while malformed requests remain validation errors", async () => {
+  const chat = store.createChat("Login diagnostic boundary", undefined, owner.id);
+  const job = jobs.enqueueJob({ chatId: chat.id, userId: owner.id, message: "Read homework" });
+  const lease = jobs.claimNextJob({ workerId: "login-error-worker" })!;
+  const originalFetch = globalThis.fetch;
+  let reply: unknown;
+  globalThis.fetch = async () => Response.json(reply, { status: 403 });
+  try {
+    for (const [payload, expected] of [
+      [{ code: "unsafe_target", error: "TEST-PRIVATE-RAW-DIAGNOSTIC" }, "unsafe_target"],
+      [{ code: "TEST-PRIVATE-RAW-CODE", error: "TEST-PRIVATE-RAW-DIAGNOSTIC" }, "protected_login_unavailable"],
+      [null, "protected_login_unavailable"],
+    ] as const) {
+      reply = payload;
+      const response = await internal.POST(internalRequest(chat.id, job.id, lease, { browserLogin: { fields: ["password"] } }));
+      assert.equal(response.status, 502);
+      const body = await response.json();
+      assert.equal(body.code, expected);
+      assert(!JSON.stringify(body).includes("TEST-PRIVATE"));
+    }
+    const invalid = await internal.POST(internalRequest(chat.id, job.id, lease, { browserLogin: { fields: ["not-a-credential"] } }));
+    assert.equal(invalid.status, 400);
+    assert.equal(store.getChat(chat.id, owner.id)?.pendingQuestion, undefined);
+    assert.equal(jobs.getJob(job.id)?.status, "running");
+  } finally {
+    globalThis.fetch = originalFetch;
+    jobs.updateJob(job.id, { status: "cancelled" });
+  }
+});
+
+test("secure completion resumes the original run using only broker-confirmed status", async () => {
+  const chat = store.createChat("Read homework after login", undefined, owner.id);
+  const job = jobs.enqueueJob({ chatId: chat.id, userId: owner.id, message: "Read homework without changing portal data" });
+  const lease = jobs.claimNextJob({ workerId: "secure-resume-worker" })!;
+  const requestId = randomUUID();
+  const previousSocket = process.env.METIS_BROWSER_LOGIN_SOCKET;
+  const previousIsolation = process.env.METIS_NATIVE_ISOLATION;
+  process.env.METIS_NATIVE_ISOLATION = "1";
+  const socket = path.join(dir, "secure-status.sock");
+  const brokerRequests: Array<Record<string, unknown>> = [];
+  const server = http.createServer(async (req, res) => {
+    let body = ""; for await (const chunk of req) body += chunk;
+    brokerRequests.push(JSON.parse(body));
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ filled: true, scope: "permanent" }));
+  });
+  await new Promise<void>(resolve => server.listen(socket, resolve));
+  process.env.METIS_BROWSER_LOGIN_SOCKET = socket;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    status: "input_required",
+    secureInput: { requestId, origin: "https://portal.example", expiresAt: new Date(Date.now() + 60000).toISOString(), fields: ["username", "password"] },
+  });
+  const running = internal.POST(internalRequest(chat.id, job.id, lease, { browserLogin: { fields: ["username", "password"] } }));
+  let pendingId: string | undefined;
+  try {
+    for (let i = 0; i < 50 && !pendingId; i++) {
+      pendingId = store.getChat(chat.id, owner.id)?.pendingQuestion?.questionId;
+      if (!pendingId) await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.ok(pendingId);
+    assert.equal(jobs.getJob(job.id)?.status, "waiting_input");
+    const clientSecret = "TEST-ACCIDENTAL-CLIENT-SECRET";
+    const response = await answer.POST(new Request("http://localhost/api/chat/answer", {
+      method: "POST", headers: { cookie, host: "localhost", origin: "http://localhost", "content-type": "application/json" },
+      body: JSON.stringify({ questionId: pendingId, values: { secure_login: clientSecret }, answers: [clientSecret] }),
+    }));
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.summary, "Credentials entered securely.");
+    assert.match(result.values.secure_login, /entered securely and saved permanently/);
+    const resumed = await running;
+    assert.equal(resumed.status, 200);
+    assert(!JSON.stringify(await resumed.json()).includes(clientSecret));
+    assert.equal(jobs.getJob(job.id)?.status, "running");
+    assert.equal(jobs.getJob(job.id)?.message, "Read homework without changing portal data");
+    assert.match(jobs.getJob(job.id)?.resumePrompt ?? "", /entered securely/);
+    assert(!JSON.stringify(store.getChat(chat.id, owner.id)).includes(clientSecret));
+    assert(!jobs.getJob(job.id)?.resumePrompt?.includes(clientSecret));
+    assert.deepEqual(brokerRequests, [{ owner: owner.id, chat: chat.id, operation: "status", input: { requestId }, management: true }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (pendingId) questions.cancelQuestion(pendingId, owner.id);
+    await running.catch(() => undefined);
+    if (previousIsolation === undefined) delete process.env.METIS_NATIVE_ISOLATION;
+    else process.env.METIS_NATIVE_ISOLATION = previousIsolation;
+    if (previousSocket === undefined) delete process.env.METIS_BROWSER_LOGIN_SOCKET;
+    else process.env.METIS_BROWSER_LOGIN_SOCKET = previousSocket;
+    await new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); });
+    jobs.updateJob(job.id, { status: "cancelled" });
+  }
+});
+
+test("ordinary credential forms are rejected before MCP transmission and API/database persistence", async () => {
+  // @ts-expect-error The gateway entrypoint is JavaScript.
+  const gateway = await import("../packages/mcp-gateway/index.mjs") as {
+    dispatchGatewayTool: (name: string, input: unknown, options: unknown) => Promise<{ isError?: boolean; content: Array<{ type: string; text?: string }> }>;
+  };
+  const marker = "TEST-PRIVATE-FORM-MARKER";
+  const unsafe = { questions: [{ question: "Password", key: "password", type: "text", default: marker }] };
+  const originalFetch = globalThis.fetch;
+  let transmitted = false;
+  globalThis.fetch = async () => { transmitted = true; throw Error("An unsafe question reached transport"); };
+  try {
+    const result = await gateway.dispatchGatewayTool("ask_user", unsafe, { auditCall: false, context: { chatId: "fixture", jobId: "fixture", runtimeMode: "auto" } });
+    assert.equal(result.isError, true);
+    assert.equal(transmitted, false);
+    assert.match(result.content[0].text ?? "", /browser_request_login/);
+    assert(!JSON.stringify(result).includes(marker));
+  } finally { globalThis.fetch = originalFetch; }
+
+  const chat = store.createChat("Credential-form guards", undefined, owner.id);
+  const job = jobs.enqueueJob({ chatId: chat.id, userId: owner.id, message: "Read homework" });
+  const lease = jobs.claimNextJob({ workerId: "credential-form-guard-worker" })!;
+  try {
+    const response = await internal.POST(internalRequest(chat.id, job.id, lease, unsafe));
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(body.code, "protected_credentials_required");
+    assert(!JSON.stringify(body).includes(marker));
+    assert.equal(store.getChat(chat.id, owner.id)?.pendingQuestion, undefined);
+    assert.throws(() => questions.createPendingQuestion(unsafe as Parameters<typeof questions.createPendingQuestion>[0], chat.id, owner.id), /protected input/);
+    const row = sqlite.getDatabase().prepare("SELECT count(*) AS n FROM pending_questions WHERE chat_id = ?").get(chat.id) as { n: number };
+    assert.equal(row.n, 0);
+  } finally { jobs.updateJob(job.id, { status: "cancelled" }); }
+});
+
+test("legacy ordinary credential forms cannot persist direct answers; protected metadata remains usable", async () => {
+  const chat = store.createChat("Legacy form boundary", undefined, owner.id);
+  const pending = questions.createPendingQuestion({ questions: [{ question: "Which school?", key: "value", type: "text" }] }, chat.id, owner.id);
+  const db = sqlite.getDatabase();
+  const original = db.prepare("SELECT data FROM pending_questions WHERE question_id = ?").get(pending.questionId) as { data: string };
+  const legacy = JSON.parse(original.data);
+  legacy.questions[0].question = "Password";
+  db.prepare("UPDATE pending_questions SET data = ? WHERE question_id = ?").run(JSON.stringify(legacy), pending.questionId);
+  const marker = "TEST-ACCIDENTAL-LEGACY-ANSWER";
+  try {
+    const response = await submit(pending.questionId, { value: marker });
+    assert.equal(response.status, 409);
+    const stored = db.prepare("SELECT data FROM pending_questions WHERE question_id = ?").get(pending.questionId) as { data: string };
+    assert(!stored.data.includes(marker));
+    assert.equal(questions.getPendingQuestion(pending.questionId, owner.id)?.status, "waiting_for_user");
+    assert.equal(store.getChat(chat.id, owner.id)?.messages.length, 0);
+  } finally { pending.stop(); }
+  const protectedQuestion = questions.createPendingQuestion({
+    questions: [{ question: "Password", key: "password", type: "text" }],
+  }, chat.id, owner.id, { secureBrowserInput: {
+    requestId: randomUUID(), origin: "https://portal.example", expiresAt: new Date(Date.now() + 60000).toISOString(),
+  } });
+  protectedQuestion.stop();
 });

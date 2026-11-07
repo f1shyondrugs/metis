@@ -329,6 +329,7 @@ function claudeAdapterOptions(mode: (typeof RUNTIME_MODES)[number], uid: number 
   let approvals = 0;
   const options = vm.runInNewContext(js, {
     agentCwd: "/isolated-workspace", modelParams: [], previousId: undefined,
+    nativeMcp:{[gatewayName]:{}},nativeEnv:{},
     claudePermissionPolicy, runtimeMode: mode, process: { geteuid: () => uid, getuid: () => uid }, abortController: new AbortController(),
     context: { modelId: "test-model", job: { userId: "test-owner" }, chat: { approvedPatterns: [] }, connection: { secret: "" } },
     resolveClaudeAgentModelId: () => "test-model", inheritedEnv: () => ({}), claudeOAuthEnv: () => ({}),

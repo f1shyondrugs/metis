@@ -101,7 +101,9 @@ test("model switching hands off buffered generation within the existing poll int
   assert.equal(f.context.signal!.aborted, true);
   assert.equal(f.getJob(f.job.id)?.status, "switching");
   assert.equal(f.getJob(f.job.id)?.modelId, nextModelId);
-  assert.match(f.getJob(f.job.id)?.resumePrompt || "", /Do not repeat completed work/);
+  const continuation = f.getJob(f.job.id)?.resumePrompt || "";
+  assert.match(continuation, /Continue only unfinished work/);
+  assert.match(continuation, /Do not repeat completed (?:work|tools)/);
 });
 
 test("user cancellation interrupts buffered generation within the existing poll interval", async (t) => {

@@ -70,6 +70,7 @@ type BrowserFormControl = {
   value?: string;
   checked?: boolean;
   disabled?: boolean;
+  visible?: boolean;
   options?: Array<{ value: string; text: string; selected: boolean }>;
   frame?: string;
   frameUrl?: string;
@@ -522,7 +523,23 @@ async function waitForLocatorAcrossFrames(
   }
 }
 
-async function collectFrameText(page: Page, mode: "text" | "snapshot") {
+export const BROWSER_SENSITIVE_SELECTOR = 'input[type="password"], input[type="hidden"], input[autocomplete*="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"], input[name*="token" i], input[name*="secret" i], input[name*="pass" i], input[id*="pass" i]';
+
+async function redactBrowserText(page: Page, text: string) {
+  return (await browserTextRedactor(page))(text);
+}
+
+async function browserTextRedactor(page: Page) {
+  const secrets:string[]=[];
+  for (const frame of page.frames()) {
+    try {
+      secrets.push(...await frame.locator(BROWSER_SENSITIVE_SELECTOR).evaluateAll(elements=>elements.map(el=>(el as HTMLInputElement).value).filter(Boolean)));
+    } catch { throw new Error('Browser content unavailable'); }
+  }
+  return (text:string)=>secrets.sort((a,b)=>b.length-a.length).reduce((clean,secret)=>clean.split(secret).join('[REDACTED]'),text);
+}
+
+export async function collectFrameText(page: Page, mode: "text" | "snapshot") {
   const chunks: string[] = [];
   let remaining = MAX_SNAPSHOT_LENGTH;
   const frames = page.frames();
@@ -531,9 +548,9 @@ async function collectFrameText(page: Page, mode: "text" | "snapshot") {
     const text = mode === "snapshot"
       ? await frame.locator("body").ariaSnapshot().catch(() => frame.locator("body").innerText().catch(() => ""))
       : await frame.locator("body").innerText().catch(() => "");
-    const clean = text.trim();
+    const clean = (await redactBrowserText(page, text)).trim();
     if (!clean) continue;
-    const header = frames.length > 1 ? `--- frame ${index}: ${frameUrlLabel(frame)} ---\n` : "";
+    const header = frames.length > 1 ? `--- frame ${index}: ${await redactBrowserText(page,frameUrlLabel(frame))} ---\n` : "";
     const chunk = `${header}${clean}`.slice(0, remaining);
     chunks.push(chunk);
     remaining -= chunk.length + 2;
@@ -541,7 +558,7 @@ async function collectFrameText(page: Page, mode: "text" | "snapshot") {
   return chunks.join("\n\n").slice(0, MAX_SNAPSHOT_LENGTH);
 }
 
-const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
+export const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
   const cssPath = (element) => {
     if (element.id) return '#' + CSS.escape(element.id);
     const parts = [];
@@ -571,8 +588,13 @@ const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
   const elements = Array.from(document.querySelectorAll(
     'input, textarea, select, button, a[href], [role="radio"], [role="checkbox"], [role="button"], [contenteditable="true"], [draggable="true"], [tabindex]:not([tabindex="-1"])'
   )).slice(0, 500);
+  const sensitive = (element) => element.type === 'password' || element.type === 'hidden' ||
+    /password|passwd|secret|token|authorization|one-time-code|cc-number|cc-csc/i.test([element.name, element.id, element.autocomplete].join(' '));
+  // Inspect every input, even when the interactive control list is truncated.
+  const secrets = Array.from(document.querySelectorAll('input, textarea')).filter(sensitive).map(element => String(element.value || '')).filter(Boolean);
+  const redact = (text) => secrets.reduce((result, secret) => result.split(secret).join('[REDACTED]'), text);
   return {
-    text: (document.body && document.body.innerText || '').slice(0, 60000),
+    text: redact((document.body && document.body.innerText || '').slice(0, 60000)),
     controls: elements.map((element) => {
       const id = element.id || undefined;
       const name = element.name || undefined;
@@ -587,22 +609,23 @@ const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
         tag: element.tagName.toLowerCase(),
         type: element.type || undefined,
         role: element.getAttribute('role') || undefined,
-        id,
-        name,
-        selector: cssPath(element),
-        label: explicitLabel || closestLabel || (element.innerText || '').trim().slice(0, 500) || undefined,
-        placeholder: element.placeholder || undefined,
-        ariaLabel: element.getAttribute('aria-label') || undefined,
-        value: 'value' in element ? String(element.value ?? '') : undefined,
+        id: id ? redact(id) : undefined,
+        name: name ? redact(name) : undefined,
+        selector: redact(cssPath(element)),
+        label: redact(explicitLabel || closestLabel || (element.innerText || '').trim().slice(0, 500)) || undefined,
+        placeholder: redact(element.placeholder || '') || undefined,
+        ariaLabel: redact(element.getAttribute('aria-label') || '') || undefined,
+        value: sensitive(element) ? '[REDACTED]' : ('value' in element ? redact(String(element.value ?? '')) : undefined),
         checked: typeof element.checked === 'boolean' ? element.checked : undefined,
         disabled: 'disabled' in element ? Boolean(element.disabled) : undefined,
-        options,
+        visible: element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0 && !['hidden', 'collapse'].includes(getComputedStyle(element).visibility),
+        options: options?.map(option => ({...option, value:redact(option.value), text:redact(option.text)})),
       };
     }),
   };
 })()`;
 
-async function collectFormState(page: Page): Promise<{ text: string; controls: BrowserFormControl[] }> {
+export async function collectFormState(page: Page): Promise<{ text: string; controls: BrowserFormControl[] }> {
   const controls: BrowserFormControl[] = [];
   const textChunks: string[] = [];
   const frames = page.frames();
@@ -626,11 +649,22 @@ async function collectFormState(page: Page): Promise<{ text: string; controls: B
       });
     }
   }
-  return { text: textChunks.join('\n\n').slice(0, 60_000), controls };
+  // A frame may echo a password from another frame. Redact the whole serialized
+  // result against every frame, including labels, selectors and frame URLs.
+  const redact=await browserTextRedactor(page);
+  const scrub=(value:unknown):unknown=>typeof value==='string'?redact(value):Array.isArray(value)?value.map(scrub):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,scrub(item)])):value;
+  return scrub({text:textChunks.join('\n\n').slice(0,60_000),controls}) as {text:string;controls:BrowserFormControl[]};
 }
 
-async function screenshotPage(page: Page, options: { type: "png" } | { type: "jpeg"; quality: number }) {
-  return page.screenshot({ ...options, timeout: 15_000 });
+export async function screenshotPage(page: Page, options: { type: "png" } | { type: "jpeg"; quality: number }) {
+  for(const frame of page.frames()) {
+    const containsSecret=await frame.locator(BROWSER_SENSITIVE_SELECTOR).evaluateAll(elements=>elements.some(el=>'value' in el && Boolean((el as HTMLInputElement).value))).catch(()=>true);
+    // Field masks cannot cover a reflected value in surrounding DOM/canvas.
+    if(containsSecret) throw new Error("Screenshot unavailable while sensitive form values are present");
+  }
+  // Mask all editable controls, including revealed-password fields, in every frame.
+  const mask = page.frames().map(frame => frame.locator('input, textarea, [contenteditable="true"]'));
+  return page.screenshot({ ...options, mask, maskColor: "#222222", timeout: 15_000 });
 }
 
 async function pageInfo(state: BrowserContextState, tabId: string) {
@@ -653,9 +687,9 @@ async function pageInfo(state: BrowserContextState, tabId: string) {
   }
   return {
     id: tabId,
-    url,
-    title: await withTimeout(page.title(), 5_000, "Timed out reading browser page title").catch(() => "New tab"),
-    favicon,
+    url: await redactBrowserText(page,url),
+    title: await redactBrowserText(page,await withTimeout(page.title(), 5_000, "Timed out reading browser page title").catch(() => "New tab")),
+    favicon: favicon ? await redactBrowserText(page,favicon) : undefined,
   };
 }
 
@@ -671,6 +705,15 @@ async function resultFor(state: BrowserContextState, tabId: string): Promise<Bro
     tabs: await Promise.all([...state.tabs.keys()].map((id) => pageInfo(state, id))),
     viewport: state.context.pages().find((candidate) => candidate === page)?.viewportSize() || { width: 1280, height: 800 },
   };
+}
+
+// Trusted server-to-broker routing only. Agent-visible pageInfo stays redacted.
+export function getBrowserLoginTarget(ownerId: string, chatId: string, requestedTabId?: string) {
+  if (!ownerId || !chatId) throw new Error("Browser session required");
+  const state = sessions.get(sessionKey(ownerId, chatId));
+  const page = state?.tabs.get(requestedTabId || state.activeTabId);
+  if (!page || page.isClosed()) throw new Error("Browser login target unavailable");
+  return page.url();
 }
 
 export async function captureBrowserFrame(
@@ -973,6 +1016,8 @@ export async function performBrowserAction(ownerId: string, chatId: string, acti
       BROWSER_ACTION_TIMEOUT_MS,
       "Browser action exceeded the execution time limit.",
     );
+  } catch {
+    throw new Error("Browser action failed");
   } finally {
     release();
     if (actionLocks.get(key) === queued) actionLocks.delete(key);

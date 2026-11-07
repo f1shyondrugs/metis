@@ -173,6 +173,7 @@ test("the actual Claude run loop forwards SDK tool lifecycle into UI parts witho
     getUserAgentCwd: () => "/isolated", runtimeModeForChat: () => "full-access",
     claudePermissionPolicy: () => ({ permissionMode: "bypassPermissions", canUseToolRequired: false }),
     effectiveModelParams: () => [], getMcpServers: () => ({}), providerMcpContext: () => ({}),
+    assertNativeMcpServers: () => {},
     resolveClaudeAgentModelId: () => "fixture-model", inheritedEnv: () => ({}), providerPrompt: () => "fixture",
     nativeRecoveryPrompt: () => "fixture", USER_INPUT_TRANSPORT_TIMEOUT_MS: 1000,
   });

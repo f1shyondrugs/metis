@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { assertOrdinaryQuestionSafe, requiresProtectedCredentials } from "@/lib/mcp-core/credential-question-policy.mjs";
 import { getDatabase, transaction } from "@/lib/sqlite";
 import { normalizeAskUserInput, normalizeQuestionAnswers, questionSummary, type AgentQuestion, type QuestionInput, type AskUserInput, type QuestionForm, type QuestionValue } from "@/lib/question-contract";
 
 type QuestionStatus = "waiting_for_user" | "answered" | "cancelled" | "expired";
 
 type StoredQuestion = QuestionForm & {
+  secureBrowserInput?: {requestId:string;origin:string;expiresAt:string;kind?:"console";sessionId?:string;fields?:Array<"password"|"username"|"email">};
   questionId: string;
   runId?: string;
   jobId?: string;
@@ -47,8 +49,9 @@ export function createPendingQuestion(
   input: QuestionInput[] | AskUserInput,
   chatId: string,
   userId?: string,
-  context: { jobId?: string; runId?: string } = {},
+  context: { jobId?: string; runId?: string; secureBrowserInput?: StoredQuestion["secureBrowserInput"] } = {},
 ) {
+  if (!context.secureBrowserInput) assertOrdinaryQuestionSafe(input);
   const normalized = normalizeAskUserInput(Array.isArray(input) ? { questions: input } : input);
   const { questions: fields, ...form } = normalized;
   const questions: AgentQuestion[] = fields.map((item) => ({ ...item, id: randomUUID(), options: item.options as AgentQuestion["options"] }));
@@ -57,6 +60,7 @@ export function createPendingQuestion(
   const stored: StoredQuestion = {
     ...form,
     questionId,
+    ...(context.secureBrowserInput ? {secureBrowserInput:context.secureBrowserInput} : {}),
     ...(context.jobId ? { jobId: context.jobId } : {}),
     ...(context.runId ? { runId: context.runId } : {}),
     version,
@@ -148,6 +152,7 @@ export function resolveQuestion(
     if (!row?.data || (userId && row.userId !== userId)) return false;
     const data = parseStored({ data: row.data });
     if (!data || !row.chatId) return false;
+    if (!data.secureBrowserInput && requiresProtectedCredentials(data)) return false;
     if (data.status === "answered" && data.answers) {
       return { questionId, chatId: row.chatId, ...(data.jobId ? { jobId: data.jobId } : {}), ...(data.runId ? { runId: data.runId } : {}), version: data.version, status: data.status, answers: data.answers, values: data.values, summary: data.summary, heartbeatAt: row.heartbeatAt };
     }

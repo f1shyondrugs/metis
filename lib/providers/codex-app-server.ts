@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
 import { codexCliExecutable } from "@/lib/providers/codex-cli";
 import { providerProcessEnv } from "@/lib/providers/process-env";
+import {createNativeRuntimeScope,spawnNative} from "./native-sandbox";
 
 export type AppServerNotification = { method: string; params: Record<string, unknown> };
 
@@ -15,15 +16,15 @@ export class CodexAppServer {
   onNotification?: (notification: AppServerNotification) => void;
   onExit?: (error: Error) => void;
 
-  constructor(input: { home: string; cwd: string; mcpToken?: string }) {
-    this.child = spawn(codexCliExecutable(), ["app-server", "--stdio"], {
+  constructor(input: { home: string; cwd: string; mcpToken?: string;ownerId:string }) {
+    this.child = spawnNative(codexCliExecutable(), ["app-server", "--stdio"], {
       cwd: input.cwd,
       env: providerProcessEnv({
         CODEX_HOME: input.home,
         ...(input.mcpToken ? { METIS_MCP_SESSION_TOKEN: input.mcpToken } : {}),
       }),
       stdio: ["pipe", "pipe", "pipe"],
-    });
+    },[input.home],createNativeRuntimeScope(input.ownerId,input.cwd));
     this.lines = createInterface({ input: this.child.stdout });
     this.child.stderr.on("data", () => {});
     this.child.stdin.on("error", (error) => this.fail(error));

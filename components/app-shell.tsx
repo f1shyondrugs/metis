@@ -7943,6 +7943,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   responseTemplate: typeof payload.responseTemplate === "string" ? payload.responseTemplate : undefined,
                   columns: payload.columns === 2 ? 2 : 1,
                   questionId: payload.questionId,
+                  secureBrowserInput: payload.secureBrowserInput && typeof payload.secureBrowserInput === "object" ? payload.secureBrowserInput as PendingQuestion["secureBrowserInput"] : undefined,
                   runId: typeof payload.runId === "string" ? payload.runId : undefined,
                   jobId: typeof payload.jobId === "string" ? payload.jobId : undefined,
                   version: typeof payload.version === "number" ? payload.version : undefined,
