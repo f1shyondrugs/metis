@@ -43,18 +43,31 @@ program already running in a terminal.
 
 ## Deployment prerequisites
 
-This feature requires a reviewed Linux service deployment; copying the UI alone
-is insufficient. Existing installations keep their previous native execution
-until an operator explicitly sets `METIS_NATIVE_ISOLATION=1`. Protected login
-requests and the credential engine refuse to run without this opt-in on Linux.
-This is a deployment mode, never a per-request override or automatic fallback. The templates under `services/browser-login/` and
+This feature requires configured Linux credential services; copying the UI alone
+is insufficient. Operators can choose either deployment mode:
+
+- **Trusted root:** set `METIS_PROTECTED_LOGIN_MODE=trusted-root` on the app,
+  worker and browser-login service. Leave `METIS_NATIVE_ISOLATION` unset or
+  `0` to retain existing root execution, HOME workspaces and provider sessions.
+  Root access is a supported operator choice. This mode preserves encrypted
+  storage, account and target binding, protected forms and the peer-PID broker;
+  it does not isolate a root-capable agent from host processes or local keys.
+- **Isolated native execution:** set `METIS_NATIVE_ISOLATION=1` after completing
+  the separate workspace and service-identity setup below. Explicit isolation
+  remains authoritative and never falls back to trusted root after a failure.
+
+Without an explicit deployment mode, protected login requests and the credential
+engine remain unavailable. Modes are operator configuration, never chat-request
+overrides. The templates under `services/browser-login/` and
 `services/secure-console/` document the service topology. Adapt their Node,
 release, browser-runtime, working-directory and unit paths to the installation.
 They are templates for operator installation, not an automatic installer step.
 
 - Run the browser engine as a dedicated non-root `metis-browser-login` identity.
   Give the console service its separate `metis-console` identity. Keep their
-  state directories private and application/release code immutable to agents.
+  state directories private and application/release code immutable to these
+  service identities. The dedicated browser identity also keeps Chromium's
+  sandbox usable when the main Metis app and its agents deliberately run as root.
 - Provision a 32-byte master key through systemd `LoadCredential=login.key:...`.
   A fresh installation needs a new key; upgrades and rollbacks must retain the
   existing key and encrypted database. Never regenerate an existing key.
@@ -69,9 +82,8 @@ They are templates for operator installation, not an automatic installer step.
   `METIS_BROWSER_LOGIN_SOCKET` for the app. Only the broker may access the
   private engine socket and encrypted SQLite state.
 
-Native provider isolation is part of this contribution because a provider child
-sharing the application's identity must not read its secrets or request a
-privileged parent file read. See [NATIVE-RUNTIME-ISOLATION.md](NATIVE-RUNTIME-ISOLATION.md)
+For operators selecting isolated native execution, provider children must not
+read application secrets or request a privileged parent file read. See [NATIVE-RUNTIME-ISOLATION.md](NATIVE-RUNTIME-ISOLATION.md)
 for Bubblewrap, immutable code, per-owner writable mounts, gateway edit receipts
 and systemd hardening requirements. Linux native execution fails closed when
 that boundary cannot be established. This does not establish an equivalent OS
@@ -80,9 +92,14 @@ enabling protected credential use. Provision Bubblewrap, user namespaces, an
 unprivileged service identity, immutable code and a separate writable workspace
 first. Set `METIS_NATIVE_ISOLATION=1` on app, worker and credential services
 together, restart the worker only when idle, and verify all native providers
-before allowing protected logins. Do not enable the mode on an old HOME workspace
-without migrating that workspace. Once enabled, isolation failures stop execution;
-they never retry outside the namespace.
+before allowing protected logins in isolated mode. Do not enable isolated mode
+on an old HOME workspace without migrating that workspace. Once enabled,
+isolation failures stop execution; they never retry outside the namespace.
+Trusted-root mode does not require that native-workspace migration.
+
+Set `METIS_BROWSER_LOGIN_NODE` to the installation's Node.js 22+ executable if
+`node` is not on the credential service's PATH. The launcher resolves that
+configured executable instead of assuming a machine-specific toolchain path.
 
 ## Navigation and SSO
 

@@ -1,14 +1,18 @@
 import os
 from pathlib import Path
 import runpy
+import shutil
 import subprocess
 import time
 
-if os.environ.get("METIS_NATIVE_ISOLATION") != "1":
-    raise SystemExit("Protected logins require an explicitly enabled isolation deployment")
+if os.environ.get("METIS_NATIVE_ISOLATION") != "1" and os.environ.get("METIS_PROTECTED_LOGIN_MODE") != "trusted-root":
+    raise SystemExit("Protected logins require an explicitly enabled Linux credential deployment")
 
 root = Path(__file__).resolve().parents[2]
-engine = subprocess.Popen(["/srv/metis/toolchain/bin/node", "--import", "tsx", str(root / "services/browser-login/server.ts")], cwd=root)
+node = os.environ.get("METIS_BROWSER_LOGIN_NODE") or shutil.which("node")
+if not node:
+    raise SystemExit("Set METIS_BROWSER_LOGIN_NODE to a Node.js 22 or newer executable")
+engine = subprocess.Popen([node, "--disable-sigusr1", "--import", "tsx", str(root / "services/browser-login/server.ts")], cwd=root)
 try:
     socket = Path(os.environ.get("STATE_DIRECTORY", "/var/lib/metis-browser-login")) / "engine.sock"
     for _ in range(100):
