@@ -108,7 +108,9 @@ test("real Cursor runner uses selected account, fresh secrets and native model I
     const chat = store.createChat("Runner fixture", undefined, owner, { id: modelId });
     if (legacyAgent) store.updateChat(chat.id, { agentId: "legacy-other-account" }, owner);
     const job = jobs.enqueueJob({ chatId: chat.id, userId: owner, modelId, message: "fixture", incognito: true });
-    await runner.runQueuedJob(job);
+    const claimed = jobs.claimNextJob({workerId:"account-fixture-worker"});
+    assert.equal(claimed?.id, job.id);
+    await runner.runQueuedJob(claimed!);
     assert.match(jobs.getJob(job.id)?.error || "", /fixture isolated adapter boundary stop|not available|No enabled Cursor/);
   };
   await run("cursor:" + first + ":" + shared, true);

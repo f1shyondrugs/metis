@@ -54,9 +54,11 @@ test("ACP permission requests are rejected instead of approving native tools", (
   );
 });
 
-test("runAcpStdioAgent drives a real isolated ACP child and surfaces tools + text",{skip:process.platform==="linux"&&process.getuid?.()===0}, async () => {
+test("runAcpStdioAgent drives a real isolated ACP child and surfaces tools + text",{skip:process.platform!=="linux"||process.getuid?.()===0}, async () => {
+ const previousIsolation=process.env.METIS_NATIVE_ISOLATION;
+ process.env.METIS_NATIVE_ISOLATION="1";
  const owner="acp-test-"+randomUUID();
- await withNativeRuntime(owner,undefined,async()=>{
+ try { await withNativeRuntime(owner,undefined,async()=>{
   const scope=nativeRuntimeScope()!,fixture=path.join(scope.home,"fake-acp.cjs");
   copyFileSync(fileURLToPath(new URL("./fixtures/fake-acp.cjs", import.meta.url)),fixture);
   try{
@@ -76,5 +78,5 @@ test("runAcpStdioAgent drives a real isolated ACP child and surfaces tools + tex
   assert.deepEqual(tools, ["list_directory"]);
   assert.match(text, /listed \/tmp/);
   }finally{rmSync(scope.state,{recursive:true,force:true});}
- });
+ }); } finally { if(previousIsolation===undefined)delete process.env.METIS_NATIVE_ISOLATION;else process.env.METIS_NATIVE_ISOLATION=previousIsolation; }
 });

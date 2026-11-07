@@ -39,7 +39,7 @@ test("mobile composer footer always shows context and provider usage beside comp
 
 test("running tool activity replaces the redundant generic agent-running row", () => {
   assert.match(shell, /const latestAssistantHasRunningTool = Boolean\([\s\S]*?isLiveTool\(part\)/);
-  const guardedStatuses = shell.match(/activeChatIsRunning && \(!latestAssistantHasRunningTool \|\| Boolean\(latestAssistantPreparingTool\)\)/g) || [];
+  const guardedStatuses = shell.match(/activeChatIsRunning && providerWaitingChatId !== activeChatId && \(!latestAssistantHasRunningTool \|\| Boolean\(latestAssistantPreparingTool\)\)/g) || [];
   assert.equal(guardedStatuses.length >= 2, true);
 });
 
@@ -51,7 +51,7 @@ test("intermediate progress narration is visually quieter than the final answer"
 test("assistant response footer copies the raw Markdown beside run metadata", () => {
   assert.match(shell, /mt-2\.5 flex flex-wrap items-center gap-1\.5 text-\[11px\] tabular-nums/);
   assert.match(shell, /aria-label="Copy raw Markdown response"/);
-  assert.match(shell, /await navigator\.clipboard\.writeText\(raw\)/);
+  assert.match(shell, /await copyText\(raw\)/);
   const rawMessageCopyHandlers = shell.match(/copyRawMessage\(m\.content \|\| ""\)/g) || [];
   assert.equal(rawMessageCopyHandlers.length, 2);
 });
