@@ -4,6 +4,8 @@ import {DatabaseSync} from "node:sqlite";
 import {randomBytes} from "node:crypto";
 import {ScopedCredentials} from "../services/browser-login/scoped-credentials";
 
+type TemporaryEntry={owner:string;chat:string;kind:string;target:string;envelope:string;expires:number};
+function temporarySlots(store:ScopedCredentials){return (store as unknown as {temporary:Map<string,TemporaryEntry>}).temporary;}
 function fixture(){const db=new DatabaseSync(":memory:");db.exec("CREATE TABLE website_logins(owner TEXT,origin TEXT,envelope TEXT,PRIMARY KEY(owner,origin));");const key=randomBytes(32);return {db,key,store:new ScopedCredentials(key,db)};}
 test("unchecked credentials are memory-only, chat/owner/target-bound and never global",()=>{
   const {db,store}=fixture();
@@ -13,7 +15,7 @@ test("unchecked credentials are memory-only, chat/owner/target-bound and never g
     for(const [owner,chat,kind,target]of [["alice","chat-b","browser","https://portal.example"],["bob","chat-a","browser","https://portal.example"],["alice","chat-a","browser","https://other.example"],["alice","chat-a","console","https://portal.example"]]as const)assert.equal(store.get(owner,chat,kind,target),null);
     assert.deepEqual(store.list("alice"),[]);
     assert.equal((db.prepare("SELECT count(*) AS n FROM website_logins").get() as {n:number}).n,0);
-    assert(!JSON.stringify([...(store as any).temporary.values()]).includes("TEST-CHAT-PASSWORD"));
+    assert(!JSON.stringify([...temporarySlots(store).values()]).includes("TEST-CHAT-PASSWORD"));
     store.forgetChat("alice","chat-a");assert.equal(store.get("alice","chat-a","browser","https://portal.example"),null);
   }finally{db.close();}
 });
@@ -42,7 +44,7 @@ test("console credentials include host, user, auth method and SSH key in their s
 test("temporary values expire and transplanted ciphertext fails chat AAD authentication",()=>{
   const {db,store}=fixture();try{
     store.save("alice","chat-a","browser","https://portal.example","TEST-SECRET",false);
-    const slots=(store as any).temporary as Map<string,any>;
+    const slots=temporarySlots(store);
     const entry=[...slots.values()][0];slots.set(JSON.stringify(["alice","chat-b","browser","https://portal.example"]),{...entry,chat:"chat-b"});
     assert.throws(()=>store.get("alice","chat-b","browser","https://portal.example"));
     entry.expires=Date.now()-1;assert.equal(store.get("alice","chat-a","browser","https://portal.example"),null);

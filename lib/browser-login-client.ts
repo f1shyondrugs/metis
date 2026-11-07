@@ -1,4 +1,5 @@
 import http from "node:http";
+import {parseProtectedLoginReply,type ProtectedLoginReply} from "./protected-login-contract";
 import {requireProtectedLoginIsolation} from "./native-isolation-policy";
 import { ProtectedLoginError } from "./protected-login-errors";
 
@@ -14,7 +15,7 @@ export function browserLoginSameOrigin(req:Request) {
   }catch{return false;}
 }
 
-export function browserLoginRequest(owner: string, chat: string | undefined, operation: string, input: unknown={}, management=false): Promise<any> {
+export function browserLoginRequest(owner: string, chat: string | undefined, operation: string, input: unknown={}, management=false): Promise<ProtectedLoginReply> {
   try { requireProtectedLoginIsolation(); }
   catch { return Promise.reject(new ProtectedLoginError("isolation_required")); }
   return new Promise((resolve,reject)=>{
@@ -25,8 +26,8 @@ export function browserLoginRequest(owner: string, chat: string | undefined, ope
       response.on("data",chunk=>{size+=chunk.length;if(size>1024*1024)response.destroy();else chunks.push(chunk);});
       response.on("error",()=>reject(new ProtectedLoginError()));
       response.on("end",()=>{
-        let result: any;
-        try { result = JSON.parse(Buffer.concat(chunks).toString()); }
+        let result: ProtectedLoginReply;
+        try { result = parseProtectedLoginReply(JSON.parse(Buffer.concat(chunks).toString())); }
         catch { return reject(new ProtectedLoginError()); }
         if(response.statusCode!==200)return reject(new ProtectedLoginError(result?.code));
         resolve(result);

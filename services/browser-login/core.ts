@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import {parseProtectedLoginReply,requireProtectedInput,type ProtectedLoginReply} from "../../lib/protected-login-contract";
 import { randomUUID } from "node:crypto";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { SecureBrowserInputs, CredentialFieldsNotVisible, browserInputSecrets, browserHasSecureInput, retainBrowserSecrets,type CredentialField } from "../../lib/browser-secure-input";
@@ -13,7 +14,18 @@ import { installProtectedRedirectGuard } from "./redirect-guard";
 type PublicResource={body:Buffer;headers:Record<string,string>};
 function publicResourceKey(value:string){const url=new URL(value);if(/^\d+$/.test(url.searchParams.get("_")||""))url.searchParams.delete("_");return url.href;}
 type Session = { browser: Browser; context: BrowserContext; page: Page; origin: string; navigationOrigins:Set<string>; declaredOrigins:ReadonlySet<string>; publicResources:Map<string,PublicResource>;resourceBytes:number; used: number };
-type Payload = { owner: string; chat?: string; operation: string; input?: Record<string, any> };
+type LoginInput = Record<string, unknown> & {
+  kind?:string; origin?:string; password?:string; username?:string; email?:string;
+  requestId?:string; persist?:boolean; replace?:boolean; url?:string; fields?:CredentialField[];
+  selector?:string; usernameSelector?:string; emailSelector?:string; action?:string;
+  text?:string; key?:string; value?:string|string[]; includeSnapshot?:boolean;
+  deltaY?:number; width?:number; height?:number;
+};
+type Payload = { owner: string; chat?: string; operation: string; input?: LoginInput };
+function requiredText(value:unknown):string {
+  if(typeof value!=="string")throw Error("Missing protected login field");
+  return value;
+}
 
 export class SavedBrowserLogins {
   private db: DatabaseSync;
@@ -32,18 +44,18 @@ export class SavedBrowserLogins {
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS website_logins(owner TEXT NOT NULL, origin TEXT NOT NULL, envelope TEXT NOT NULL, PRIMARY KEY(owner,origin));");
     this.credentials=new ScopedCredentials(key,this.db);
   }
-  private site(value: string) {
+  private site(value: string | undefined) {
     let url: URL;
-    try { url = new URL(value); } catch { throw new ProtectedLoginError("https_required"); }
+    try { url = new URL(requiredText(value)); } catch { throw new ProtectedLoginError("https_required"); }
     if (url.protocol !== "https:" || url.username || url.password || url.port && url.port !== "443") throw new ProtectedLoginError("https_required");
     return url;
   }
-  private scrub(page: Page, value: unknown): any {
+  private scrub<T>(page: Page, value: T): T {
     const secrets = browserInputSecrets(page);
     const variants = secrets.flatMap(browserSecretRepresentations).sort((a,b) => b.length-a.length);
-    if (typeof value === "string") return variants.reduce((text, secret) => text.split(secret).join("[REDACTED]"), value);
-    if (Array.isArray(value)) return value.map(item => this.scrub(page,item));
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key,item]) => [key,this.scrub(page,item)]));
+    if (typeof value === "string") return variants.reduce((text, secret) => text.split(secret).join("[REDACTED]"), value) as T;
+    if (Array.isArray(value)) return value.map(item => this.scrub(page,item)) as T;
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key,item]) => [key,this.scrub(page,item)])) as T;
     return value;
   }
   private async session(owner: string, chat: string, url?: string) {
@@ -111,7 +123,7 @@ export class SavedBrowserLogins {
     // must preserve school selection, identifier steps and authenticated state.
     session.used = Date.now(); return session;
   }
-  private async state(session: Session) {
+  private async state(session: Session):Promise<ProtectedLoginReply> {
     const {page} = session;
     retainBrowserSecrets(page,(await session.context.cookies()).map(cookie=>cookie.value));
     retainBrowserSecrets(page,await page.locator('input[type="hidden"]').evaluateAll(elements=>elements.map(el=>(el as HTMLInputElement).value)).catch(()=>[]));
@@ -131,8 +143,8 @@ export class SavedBrowserLogins {
     this.locks.set(lock,next);
     try { return await next; } finally { if (this.locks.get(lock)===next) this.locks.delete(lock); }
   }
-  private async perform({owner,chat,operation,input={}}: Payload, management: boolean): Promise<any> {
-    if (operation === "list" && management) return {credentials:this.credentials.list(owner)};
+  private async perform({owner,chat,operation,input={}}: Payload, management: boolean): Promise<ProtectedLoginReply> {
+    if (operation === "list" && management) return parseProtectedLoginReply({credentials:this.credentials.list(owner)});
     if (operation === "delete" && management) {
       if(input.kind==="console"){
         this.credentials.delete(owner,"console",String(input.origin));
@@ -148,7 +160,7 @@ export class SavedBrowserLogins {
         const target=String(input.origin);
         const existing=this.db.prepare("SELECT label FROM console_logins WHERE owner=? AND target=?").get(owner,target) as {label:string}|undefined;
         if(!existing)throw Error("Credential unavailable");
-        this.credentials.save(owner,"","console",target,input.password,true,existing.label);
+        this.credentials.save(owner,"","console",target,requiredText(input.password),true,existing.label);
         this.credentials.clearTemporary(owner,"console",target);input.password="";
         return {status:"updated"};
       }
@@ -167,20 +179,21 @@ export class SavedBrowserLogins {
       const prepared=await secureConsole(owner,chat,operation==="console_elevate"?"elevate":"prepare",input);
       if(prepared.status!=="input_required")return prepared;
       if(this.consoleRequests.size>=100)this.consoleRequests.delete(this.consoleRequests.keys().next().value!);
-      this.consoleRequests.set(prepared.secureInput.requestId,{owner,chat,target:prepared.target,label:prepared.label});
-      const saved=this.credentials.get(owner,chat,"console",prepared.target);
-      if(saved&&!input.replace){await secureConsole(owner,chat,"fill",{requestId:prepared.secureInput.requestId,password:saved.password});return {status:"console_password_entered",sessionId:prepared.sessionId};}
+      const secureInput=requireProtectedInput(prepared),target=requiredText(prepared.target),label=requiredText(prepared.label);
+      this.consoleRequests.set(secureInput.requestId,{owner,chat,target,label});
+      const saved=this.credentials.get(owner,chat,"console",target);
+      if(saved&&!input.replace){await secureConsole(owner,chat,"fill",{requestId:secureInput.requestId,password:saved.password});return {status:"console_password_entered",sessionId:prepared.sessionId};}
       return prepared;
     }
     if(operation==="console_fill"&&management){
-      const request=this.consoleRequests.get(input.requestId);
+      const request=this.consoleRequests.get(input.requestId ?? "");
       if(!request||request.owner!==owner||request.chat!==chat)throw Error("Request unavailable");
       await secureConsole(owner,chat,"fill",{requestId:input.requestId,password:input.password});
-      this.credentials.save(owner,chat,"console",request.target,input.password,input.persist===true,request.label);
+      this.credentials.save(owner,chat,"console",request.target,requiredText(input.password),input.persist===true,request.label);
       request.persist=input.persist===true;
       input.password="";return {status:input.persist===true?"filled_and_saved":"filled_for_chat"};
     }
-    if(operation==="console_status"&&management){const result=await secureConsole(owner,chat,"status",input);const saved=this.consoleRequests.get(input.requestId);return {filled:result.filled&&saved?.persist!==undefined,scope:saved?.persist?"permanent":"chat"};}
+    if(operation==="console_status"&&management){const result=await secureConsole(owner,chat,"status",input);const saved=this.consoleRequests.get(input.requestId ?? "");return {filled:result.filled&&saved?.persist!==undefined,scope:saved?.persist?"permanent":"chat"};}
     if(["console_read","console_input","console_close"].includes(operation))return secureConsole(owner,chat,operation.slice(8),input);
     if(operation==="forget_chat"){
       this.credentials.forgetChat(owner,chat);
@@ -191,16 +204,16 @@ export class SavedBrowserLogins {
       const key=`${owner}:${chat}`, s=this.sessions.get(key);this.sessions.delete(key);await s?.browser.close();return {closed:true};
     }
     if (operation === "fill" && management) {
-      const request=this.requests.get(input.requestId);
+      const request=this.requests.get(input.requestId ?? "");
       if (!request || request.owner!==owner || request.chat!==chat) throw Error("Request unavailable");
       const supplied=Object.fromEntries(["password","username","email"].filter(key=>input[key]!==undefined).map(key=>[key,input[key]]));
       const values={...this.credentials.get(owner,chat,"browser",request.origin),...supplied} as Partial<Record<CredentialField,string>>;
-      await this.inputs.fillValues(owner,chat,input.requestId,values);
+      await this.inputs.fillValues(owner,chat,requiredText(input.requestId),values);
       this.credentials.saveValues(owner,chat,"browser",request.origin,supplied,input.persist===true);
       request.persist=input.persist===true;
       input.password="";input.username="";input.email="";return {status:input.persist===true?"filled_and_saved":"filled_for_chat"};
     }
-    if (operation === "status" && management) {const saved=this.requests.get(input.requestId);return {filled:this.inputs.status(owner,chat,input.requestId)&&saved?.persist!==undefined,scope:saved?.persist?"permanent":"chat"};}
+    if (operation === "status" && management) {const saved=this.requests.get(input.requestId ?? "");return {filled:this.inputs.status(owner,chat,requiredText(input.requestId))&&saved?.persist!==undefined,scope:saved?.persist?"permanent":"chat"};}
     if (operation === "prepare") {
       const session=await this.session(owner,chat,input.url);
       const origin=this.site(session.page.url()).origin;
@@ -246,16 +259,16 @@ export class SavedBrowserLogins {
       const target=page.locator(input.selector);
       if (await target.evaluate((el: Element)=>el instanceof HTMLInputElement && el.type==="password")) throw Error("Use browser_request_login for passwords");
       await target.fill(String(input.text ?? ""));
-    } else if (action === "press") await (input.selector?page.locator(input.selector):page.locator("body")).press(input.key);
+    } else if (action === "press") await (input.selector?page.locator(input.selector):page.locator("body")).press(requiredText(input.key));
     else if (action === "back") await page.goBack();
     else if (action === "forward") await page.goForward();
     else if (action === "reload") await page.reload();
-    else if (action === "select_option") await page.locator(input.selector).selectOption(input.value);
-    else if (action === "wait_for") await page.locator(input.selector).waitFor();
+    else if (action === "select_option") await page.locator(requiredText(input.selector)).selectOption(input.value ?? "");
+    else if (action === "wait_for") await page.locator(requiredText(input.selector)).waitFor();
     else if (action === "scroll") await page.evaluate(y=>scrollBy(0,y),Number(input.deltaY)||600);
     else if (action === "resize") await page.setViewportSize({width:Math.max(320,Math.min(2560,Number(input.width)||1280)),height:Math.max(240,Math.min(1600,Number(input.height)||800))});
     else if (action === "screenshot" || action === "download" || action === "batch" || action === "upload_file" || action === "upload_files" || action === "drop_files") throw Error("This operation is unavailable in a protected login; use DOM tools and individual actions");
-    else if (!["snapshot","extract_text","form_state","select_tab"].includes(action)) throw Error("Unsupported protected-browser action");
+    else if (!["snapshot","extract_text","form_state","select_tab"].includes(action ?? "")) throw Error("Unsupported protected-browser action");
     if(action==="click"||action==="press")await page.waitForLoadState("domcontentloaded",{timeout:8000});
     const result=await this.state(session);
     if (action==="form_state") {
@@ -263,7 +276,7 @@ export class SavedBrowserLogins {
       const controls = await page.locator("input,textarea,select,button,a[href]").evaluateAll((elements, prefix) => elements.slice(0,300).map((el,index) => {
         el.setAttribute("data-metis-login-ref", `${prefix}-${index}`);
         return {
-          index, tag:el.tagName.toLowerCase(), type:(el as HTMLInputElement).type,
+          index, selector:"", tag:el.tagName.toLowerCase(), type:(el as HTMLInputElement).type,
           visible:el.getBoundingClientRect().width>0 && el.getBoundingClientRect().height>0 && !["hidden","collapse"].includes(getComputedStyle(el).visibility),
           id:el.id, name:(el as HTMLInputElement).name, label:(el.textContent||"").slice(0,200),
           value:el instanceof HTMLInputElement && el.type==="password" ? "[REDACTED]" : (el as HTMLInputElement).value,
@@ -273,11 +286,11 @@ export class SavedBrowserLogins {
       result.form = this.scrub(page,{text:await page.locator("body").innerText(),controls});
       // Only these engine-generated selectors bypass value redaction. Raw DOM
       // ids/names/options remain scrubbed, including secrets that are very short.
-      result.form.controls.forEach((control:Record<string,unknown>, index:number) => {
+      result.form!.controls.forEach((control:Record<string,unknown>, index:number) => {
         control.selector = `[data-metis-login-ref="${reference}-${index}"]`;
       });
     }
-    if (["snapshot","extract_text"].includes(action) || input.includeSnapshot) result.snapshot=this.scrub(page,(await page.locator("body").innerText()).slice(0,120000));
+    if (["snapshot","extract_text"].includes(action ?? "") || input.includeSnapshot) result.snapshot=this.scrub(page,(await page.locator("body").innerText()).slice(0,120000));
     return result;
   }
   async close() { for(const s of this.sessions.values())await s.browser.close();this.sessions.clear();this.credentials.clear();this.proxy?.close();this.db.close(); }

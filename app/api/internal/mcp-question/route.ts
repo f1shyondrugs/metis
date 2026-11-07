@@ -10,6 +10,7 @@ import { normalizeAskUserInput, QuestionValidationError, type AskUserInput } fro
 import { bearerTokenMatches } from "@/lib/security";
 import { performSharedBrowserAction } from "@/lib/shared-browser-client";
 import { z } from "zod";
+import {parseProtectedLoginReply,type ProtectedLoginReply} from "@/lib/protected-login-contract";
 import {browserLoginRequest} from "@/lib/browser-login-client";
 import { protectedLoginFailure } from "@/lib/protected-login-errors";
 import { assertOrdinaryQuestionSafe, CredentialQuestionError } from "@/lib/mcp-core/credential-question-policy.mjs";
@@ -47,9 +48,9 @@ export async function POST(req: Request) {
       input=normalizeAskUserInput({title:"Enter console password securely",description:secureBrowserInput?.origin,questions:[{key:"secure_login",type:"text",question:"Protected login",required:false}],responseTemplate:"Password entered securely in the console."});
     }else if(raw.browserLogin) {
       const login=z.object({browserLogin:z.object({tabId:z.string().max(200).optional(),selector:z.string().max(500).optional(),usernameSelector:z.string().max(500).optional(),emailSelector:z.string().max(500).optional(),fields:z.array(z.enum(["password","username","email"])).min(1).max(3).optional(),replace:z.boolean().optional()}).strict()}).strict().parse(raw).browserLogin;
-      let prepared: any;
+      let prepared: ProtectedLoginReply;
       try {
-        prepared=await performSharedBrowserAction(userId!,chatId,{action:"secure_input_prepare",...login,source:"agent",includeScreenshot:false} as Parameters<typeof performSharedBrowserAction>[2]);
+        prepared=parseProtectedLoginReply(await performSharedBrowserAction(userId!,chatId,{action:"secure_input_prepare",...login,source:"agent",includeScreenshot:false}));
       } catch (error) {
         return Response.json(protectedLoginFailure(error), { status: 502 });
       }

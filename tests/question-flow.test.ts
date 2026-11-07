@@ -300,7 +300,7 @@ test("secure completion resumes the original run using only broker-confirmed sta
   const previousIsolation = process.env.METIS_NATIVE_ISOLATION;
   process.env.METIS_NATIVE_ISOLATION = "1";
   const socket = path.join(dir, "secure-status.sock");
-  const brokerRequests: Array<Record<string, any>> = [];
+  const brokerRequests: Array<Record<string, unknown>> = [];
   const server = http.createServer(async (req, res) => {
     let body = ""; for await (const chunk of req) body += chunk;
     brokerRequests.push(JSON.parse(body));

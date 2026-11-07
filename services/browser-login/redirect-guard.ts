@@ -1,17 +1,30 @@
-import type { BrowserContext, Page } from "playwright";
+import type { BrowserContext, Page, CDPSession } from "playwright";
 import { browserHasSecureInput } from "../../lib/browser-secure-input";
 import { protectedRequestAllowed } from "./navigation-policy";
 
 type Policy = { credentialOrigin: string; origins: ReadonlySet<string> };
-type Listener = (params: any) => void;
-type Protocol = { send(method: string, params?: any): Promise<any>; on(event: string, listener: Listener): void };
+type Events = {
+  "Target.receivedMessageFromTarget": {sessionId:string;message:string};
+  "Target.detachedFromTarget": {sessionId:string};
+  "Target.attachedToTarget": {sessionId:string;targetInfo:{type:string;targetId:string}};
+  "Fetch.requestPaused": {
+    requestId:string;responseStatusCode?:number;responseHeaders?:Array<{name:string;value:string}>;
+    request:{url:string;method:string;postData?:string;hasPostData?:boolean;
+      headers?:Record<string,string>;postDataEntries?:Array<{bytes?:string}>};
+  };
+};
+type Listener = (params: unknown) => void;
+type Protocol = {
+  send(method:Parameters<CDPSession["send"]>[0],params?:Parameters<CDPSession["send"]>[1]):Promise<void>;
+  on<K extends keyof Events>(event:K,listener:(params:Events[K])=>void):void;
+};
 
 // A child target's non-flattened transport lets us install interception before
 // Chromium resumes an out-of-process iframe or worker. Every child recursively
 // installs the same guard; page-only interception would leave those targets out.
 function childProtocol(parent: Protocol, sessionId: string): Protocol & { receive(message: string): void; close(): void } {
   let sequence = 0;
-  const pending = new Map<number, { resolve(value: any): void; reject(error: Error): void }>();
+  const pending = new Map<number, { resolve(): void; reject(error: Error): void }>();
   const listeners = new Map<string, Listener[]>();
   return {
     send(method, params = {}) {
@@ -22,14 +35,14 @@ function childProtocol(parent: Protocol, sessionId: string): Protocol & { receiv
           .catch(() => { pending.delete(id); reject(Error("Protected redirect interception unavailable")); });
       });
     },
-    on(event, listener) { listeners.set(event, [...(listeners.get(event) || []), listener]); },
+    on(event, listener) { listeners.set(event, [...(listeners.get(event) || []), value => listener(value as Events[typeof event])]); },
     receive(message) {
       const event = JSON.parse(message);
       if (event.id) {
         const request = pending.get(event.id);
         pending.delete(event.id);
         if (event.error) request?.reject(Error("Protected redirect interception unavailable"));
-        else request?.resolve(event.result);
+        else request?.resolve();
       } else for (const listener of listeners.get(event.method) || []) listener(event.params);
     },
     close() {
@@ -44,7 +57,10 @@ export async function installProtectedRedirectGuard(context: BrowserContext, pag
   if (!browser) throw Error("Protected redirect interception unavailable");
   const browserSession = await browser.newBrowserCDPSession();
   const session = await context.newCDPSession(page);
-  const root: Protocol = { send: (method, params) => session.send(method as any, params), on: (event, listener) => session.on(event as any, listener) };
+  const root: Protocol = {
+    send: async (method, params) => { await session.send(method, params); },
+    on: (event, listener) => { session.on(event, value => listener(value as Events[typeof event])); },
+  };
   let closed = false;
   context.on("close", () => { closed = true; });
   const failClosed = () => { if (!closed) void context.close().catch(() => {}); };
@@ -76,7 +92,7 @@ export async function installProtectedRedirectGuard(context: BrowserContext, pag
       void (async () => {
         let allowed = true;
         const status = event.responseStatusCode;
-        if ([301, 302, 303, 307, 308].includes(status)) {
+        if (status !== undefined && [301, 302, 303, 307, 308].includes(status)) {
           const locations = (event.responseHeaders || []).filter((header: { name: string }) => header.name.toLowerCase() === "location");
           if (locations.length) {
             if (locations.length !== 1) allowed = false;

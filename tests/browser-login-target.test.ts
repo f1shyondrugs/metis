@@ -28,7 +28,7 @@ test("trusted HTTPS target preserves query and fragment while form metadata dist
   const launch=chromium.launchPersistentContext.bind(chromium);
   const contexts:BrowserContext[]=[];
   const pages:Page[]=[];
-  t.mock.method(chromium,"launchPersistentContext",async(profile:string,options:any)=>{
+  t.mock.method(chromium,"launchPersistentContext",async(...[profile,options]:Parameters<typeof launch>)=>{
     const context=await launch(profile,options);
     contexts.push(context);
     const newPage=context.newPage.bind(context);

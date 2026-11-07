@@ -1,3 +1,4 @@
+import {requireProtectedForm,requireProtectedInput} from "../lib/protected-login-contract";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -108,10 +109,10 @@ async function fixture(t: TestContext, enteredPassword = secret) {
     core.dispatch({ owner: "redirect-owner", chat: "redirect-chat", operation, input }, management);
   const prepare = async (destination: string) => {
     const login = await call("prepare", { url: origin + "/login?case=" + destination + "&return_url=" + encodeURIComponent("https://return.test/"), selector: "#password" });
-    await call("fill", { requestId: login.secureInput.requestId, password: enteredPassword, persist: false }, true);
+    await call("fill", { requestId: requireProtectedInput(login).requestId, password: enteredPassword, persist: false }, true);
   };
   const submit = async (destination: string) => { await prepare(destination); return call("action", { action: "click", selector: "#submit" }); };
-  return { arrivals, submit, prepare, call, hasSession: () => (core as any).sessions.size > 0, page: () => (core as any).sessions.values().next().value.page as Page };
+  return { arrivals, submit, prepare, call, hasSession: () => (core as unknown as {sessions:Map<string,{page:Page}>}).sessions.size > 0, page: () => [...(core as unknown as {sessions:Map<string,{page:Page}>}).sessions.values()][0].page };
 }
 
 for (const destination of ["return302", "return303"]) {
@@ -121,7 +122,7 @@ for (const destination of ["return302", "return303"]) {
     assert.equal(state.url, "https://return.test/final");
     await call("action", { action: "wait_for", selector: "#task-ready" });
     const task = await call("action", { action: "extract_text" });
-    assert(task.snapshot.includes("SYNTHETIC_TASK_READY"));
+    assert(task.snapshot?.includes("SYNTHETIC_TASK_READY"));
     assert.equal(arrivals.filter(request => request.method === "POST").length, 1, "credential POST must execute once");
     const final = arrivals.find(request => request.path === "/final");
     assert.equal(final?.method, "GET");
@@ -239,6 +240,6 @@ test("model-visible state and text redact the same encoded secrets as outbound c
     for(const value of [password,...encodings])assert(!serialized.includes(value));
     assert(serialized.includes("[REDACTED]"));
   }
-  assert(form.form.controls[0].selector.startsWith("[data-metis-login-ref="));
-  await call("action",{action:"wait_for",selector:form.form.controls[0].selector});
+  assert(requireProtectedForm(form).controls[0].selector.startsWith("[data-metis-login-ref="));
+  await call("action",{action:"wait_for",selector:requireProtectedForm(form).controls[0].selector});
 });

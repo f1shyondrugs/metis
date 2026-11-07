@@ -4,11 +4,11 @@ import { ProtectedBrowserRouting } from "../lib/protected-browser-routing";
 import { ProtectedLoginError } from "../lib/protected-login-errors";
 
 test("readiness routes school selection privately and repeated prepare never reads the stale ordinary tab", async () => {
-  const calls: Array<{owner:string;chat:string;operation:string;input:any}> = [];
+  const calls: Array<{owner:string;chat:string;operation:string;input:Record<string,unknown>}> = [];
   let targetReads = 0;
   const trustedUrl = "https://portal.test/login?campus=example";
   const router = new ProtectedBrowserRouting(async (owner,chat,operation,input) => {
-    calls.push({owner,chat,operation,input});
+    calls.push({owner,chat,operation,input:input??{}});
     return operation === "prepare" ? {status:"protected_browser_ready", missingFields:["username","password"]} : {tabId:"protected"};
   }, async (owner,chat,tabId) => {
     targetReads++;

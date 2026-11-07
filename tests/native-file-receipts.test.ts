@@ -53,7 +53,10 @@ test("only exact owner/chat/job gateway receipts restore canonical diffs",t=>{
 });
 
 test("dedicated shared receipts retain group read under a hardened 0077 umask",t=>{
- const root=fixture(t),shared=path.join(root,"shared");fs.mkdirSync(shared,{mode:0o2770});fs.chmodSync(shared,0o2770);
+ // SGID provisioning belongs to the operator, outside the hardened service.
+ // This fixture tests group-readable receipts and the absence of mkdir calls;
+ // it needs only the existing test group, not an SGID directory creation.
+ const root=fixture(t),shared=path.join(root,"shared");fs.mkdirSync(shared,{mode:0o770});fs.chmodSync(shared,0o770);
  const previous=process.env.AI_CHAT_FILE_SNAPSHOT_DIR,mask=process.umask(0o077);process.env.AI_CHAT_FILE_SNAPSHOT_DIR=shared;
  t.mock.method(fs,"mkdirSync",(()=>{throw Object.assign(Error("Service denies SGID mkdir"),{code:"EPERM"});}) as typeof fs.mkdirSync);
  try{

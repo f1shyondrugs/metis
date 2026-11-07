@@ -1,3 +1,4 @@
+import {payloadRecord} from "@/lib/agent-payload";
 import {AsyncLocalStorage} from "node:async_hooks";
 import {existsSync,realpathSync,statSync} from "node:fs";
 import {randomUUID} from "node:crypto";
@@ -95,11 +96,11 @@ export function codexNativeExecutable(command:string,environment:NativeEnv){
   const launch=nativeSandboxLaunch(command,[],environment);
   return {executable:canonical(path.join(config.root,"services/native-runtime/codex-entry.py")),env:{...launch.env,METIS_NATIVE_POLICY:launch.args[3],METIS_NATIVE_EXECUTABLE:launch.args[4]}};
 }
-export function assertNativeMcpServers(servers:Record<string,any>,owner=nativeRuntimeScope()?.owner){
+export function assertNativeMcpServers(servers:unknown,owner=nativeRuntimeScope()?.owner){
   if(!nativeIsolationEnabled())return;
   if (process.platform !== "linux") throw Error("Native isolation requires Linux");
-  const gateway=servers.gateway;
-  const bearer=gateway?.headers?.Authorization;
+  const gateway=payloadRecord(payloadRecord(servers)?.gateway);
+  const bearer=payloadRecord(gateway?.headers)?.Authorization;
   if(!owner||gateway?.type!=="http"||typeof bearer!=="string"||!bearer.startsWith("Bearer metis-v1."))throw Error("Isolated native agents require the signed HTTP MCP gateway");
   try{if(JSON.parse(Buffer.from(bearer.split(".")[1],"base64url").toString()).userId!==owner)throw Error();}
   catch{throw Error("Native MCP account mismatch");}

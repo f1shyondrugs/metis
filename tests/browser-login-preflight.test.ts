@@ -1,3 +1,7 @@
+import {requireProtectedForm,type ProtectedFormControl,type ProtectedLoginReply} from "../lib/protected-login-contract";
+function controlMatching(reply:ProtectedLoginReply,predicate:(control:ProtectedFormControl)=>boolean){const control=requireProtectedForm(reply).controls.find(predicate);assert(control,"Expected protected form control");return control;}
+function controlById(reply:ProtectedLoginReply,id:string){return controlMatching(reply,control=>control.id===id);}
+import {requireProtectedInput} from "../lib/protected-login-contract";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -96,43 +100,43 @@ test("protected login preflight keeps school selection and credentials in the pr
   const chooser = await call("prepare", { url: `${origin}/choose`, ...selectors });
   assert.equal(chooser.status, "protected_browser_ready");
   assert.equal(chooser.code, "credential_fields_not_visible");
-  assert.deepEqual([...chooser.missingFields].sort(), [...fields].sort());
+  assert.deepEqual([...(chooser.missingFields ?? [])].sort(), [...fields].sort());
   assert.equal(chooser.secureInput, undefined);
 
   const before = await call("action", { action: "form_state" });
-  assert.equal(before.form.controls.find((control: { id: string }) => control.id === "username2").visible, false);
-  assert.equal(before.form.controls.find((control: { id: string }) => control.id === "password").visible, false);
-  const school = before.form.controls.find((control: { id: string }) => control.id === "school");
+  assert.equal(controlById(before, "username2").visible, false);
+  assert.equal(controlById(before, "password").visible, false);
+  const school = controlById(before, "school");
   assert.equal(school.visible, true);
-  const campus = school.options.find((option: { text: string }) => option.text === "Test campus A");
+  const campus = school.options?.find((option: { text: string }) => option.text === "Test campus A");
   assert(campus && !campus.disabled);
-  const continueButton = before.form.controls.find((control: { tag: string; label: string; visible: boolean }) => control.tag === "button" && control.label === "Continue" && control.visible);
+  const continueButton = controlMatching(before, (control: { tag: string; label: string; visible: boolean }) => control.tag === "button" && control.label === "Continue" && control.visible);
   assert(continueButton?.selector, "No-ID chooser controls must have a usable selector");
   await call("action", { action: "select_option", selector: school.selector, value: campus.value });
   await call("action", { action: "click", selector: continueButton.selector });
   const selected = await call("action", { action: "form_state" });
-  assert.equal(selected.form.controls.find((control: { id: string }) => control.id === "username2").visible, true);
-  assert.equal(new URL(selected.url).pathname, "/login");
+  assert.equal(controlById(selected, "username2").visible, true);
+  assert.equal(new URL(selected.url ?? "").pathname, "/login");
 
   // The ordinary browser can still be at /choose. Preparing again must keep
   // private school selection instead of reloading that stale handoff URL.
   const prepared = await call("prepare", { url: `${origin}/choose`, ...selectors });
   assert.equal(prepared.status, "input_required");
-  assert.deepEqual(prepared.secureInput.fields, fields);
-  assert.equal(prepared.secureInput.origin, origin);
+  assert.deepEqual(requireProtectedInput(prepared).fields, fields);
+  assert.equal(requireProtectedInput(prepared).origin, origin);
   // These isolated fixture credentials intentionally collide with raw field
   // IDs/types to exercise redaction without breaking safe generated references.
   const identity = { username: "username2", password: "password" };
-  const usernameIndex = selected.form.controls.find((control: { id: string }) => control.id === "username2").index;
-  const passwordIndex = selected.form.controls.find((control: { id: string }) => control.id === "password").index;
-  await assert.rejects(call("fill", { requestId: prepared.secureInput.requestId, ...identity }, true, "other-owner"));
-  await assert.rejects(call("fill", { requestId: prepared.secureInput.requestId, ...identity }, true, "test-owner", "other-chat"));
-  assert.equal((await call("fill", { requestId: prepared.secureInput.requestId, ...identity, persist: false }, true)).status, "filled_for_chat");
+  const usernameIndex = controlById(selected, "username2").index;
+  const passwordIndex = controlById(selected, "password").index;
+  await assert.rejects(call("fill", { requestId: requireProtectedInput(prepared).requestId, ...identity }, true, "other-owner"));
+  await assert.rejects(call("fill", { requestId: requireProtectedInput(prepared).requestId, ...identity }, true, "test-owner", "other-chat"));
+  assert.equal((await call("fill", { requestId: requireProtectedInput(prepared).requestId, ...identity, persist: false }, true)).status, "filled_for_chat");
   const filled = await call("action", { action: "form_state" });
-  assert.equal(new URL(filled.url).pathname, "/login");
+  assert.equal(new URL(filled.url ?? "").pathname, "/login");
   for (const secret of Object.values(identity)) assert(!JSON.stringify(filled).includes(secret));
-  const usernameControl = filled.form.controls.find((control: { index: number }) => control.index === usernameIndex);
-  const passwordControl = filled.form.controls.find((control: { index: number }) => control.index === passwordIndex);
+  const usernameControl = controlMatching(filled, (control: { index: number }) => control.index === usernameIndex);
+  const passwordControl = controlMatching(filled, (control: { index: number }) => control.index === passwordIndex);
   assert.equal(usernameControl.id, "[REDACTED]");
   assert.equal(passwordControl.id, "[REDACTED]");
   for (const control of [usernameControl, passwordControl]) {
@@ -147,7 +151,7 @@ test("protected login waits for dynamically displayed credential fields", async 
   const { call } = await fixture(t);
   const prepared = await call("prepare", { url: `${origin}/delayed`, ...selectors });
   assert.equal(prepared.status, "input_required");
-  assert.deepEqual(prepared.secureInput.fields, fields);
+  assert.deepEqual(requireProtectedInput(prepared).fields, fields);
 });
 
 test("private school selection can also be corrected through explicit same-origin navigation", async t => {
@@ -157,10 +161,10 @@ test("private school selection can also be corrected through explicit same-origi
   const prepared = await call("prepare", { url: `${origin}/choose`, ...selectors });
   assert.equal(prepared.status, "input_required");
   const state = await call("action", { action: "form_state" });
-  assert.equal(new URL(state.url).pathname, "/login");
+  assert.equal(new URL(state.url ?? "").pathname, "/login");
   // Protected state deliberately strips URL queries; prove the selected
   // campus through a public DOM marker instead.
-  assert(state.form.text.includes("Test campus B selected"));
+  assert(requireProtectedForm(state).text.includes("Test campus B selected"));
   await assert.rejects(call("action", { action: "navigate", url: "https://other.test/login" }));
 });
 
@@ -168,7 +172,7 @@ test("hidden credential fields never trigger saved-credential reuse before schoo
   const { call, inputEvents } = await fixture(t);
   const identity = { username: "TEST-SAVED-PREFLIGHT-USER", password: "TEST-SAVED-PREFLIGHT-PASSWORD" };
   const initial = await call("prepare", { url: `${origin}/login`, ...selectors });
-  await call("fill", { requestId: initial.secureInput.requestId, ...identity, persist: true }, true);
+  await call("fill", { requestId: requireProtectedInput(initial).requestId, ...identity, persist: true }, true);
   await call("close");
   const eventsBefore = inputEvents();
   const chooser = await call("prepare", { url: `${origin}/choose`, ...selectors });
@@ -177,11 +181,11 @@ test("hidden credential fields never trigger saved-credential reuse before schoo
   assert.equal(chooser.secureInput, undefined);
   assert.equal(inputEvents(), eventsBefore);
   const form = await call("action", { action: "form_state" });
-  assert.equal(form.form.controls.find((control: { id: string }) => control.id === "username2").value, "");
-  const school = form.form.controls.find((control: { id: string }) => control.id === "school");
-  const campus = school.options.find((option: { text: string }) => option.text === "Test campus A");
+  assert.equal(controlById(form, "username2").value, "");
+  const school = controlById(form, "school");
+  const campus = school.options?.find((option: { text: string }) => option.text === "Test campus A");
   assert(campus && !campus.disabled);
-  const continueButton = form.form.controls.find((control: { tag: string; label: string }) => control.tag === "button" && control.label === "Continue");
+  const continueButton = controlMatching(form, (control: { tag: string; label: string }) => control.tag === "button" && control.label === "Continue");
   assert(continueButton?.selector);
   await call("action", { action: "select_option", selector: school.selector, value: campus.value });
   await call("action", { action: "click", selector: continueButton.selector });
@@ -212,9 +216,9 @@ test("operator return grants allow fresh task assets without granting credential
   operatorReturns[origin].push("https://later.test"); // mutation cannot change this service snapshot
   const prepared=await call("prepare",{url:`${origin}/login`,...selectors});
   const identity={username:"SYNTHETIC-CONFIGURED-USER",password:"SYNTHETIC-CONFIGURED-PASSWORD:/+"};
-  await assert.rejects(call("fill",{requestId:prepared.secureInput.requestId,...identity},true,"other-owner"));
-  await assert.rejects(call("fill",{requestId:prepared.secureInput.requestId,...identity},true,"test-owner","other-chat"));
-  await call("fill",{requestId:prepared.secureInput.requestId,...identity,persist:true},true);
+  await assert.rejects(call("fill",{requestId:requireProtectedInput(prepared).requestId,...identity},true,"other-owner"));
+  await assert.rejects(call("fill",{requestId:requireProtectedInput(prepared).requestId,...identity},true,"test-owner","other-chat"));
+  await call("fill",{requestId:requireProtectedInput(prepared).requestId,...identity,persist:true},true);
   await call("action",{action:"click",selector:"#attempt-credential-leaks"});
   await call("action",{action:"wait_for",selector:"#credential-leaks-finished"});
   assert.equal(credentialLeaks(),0,"configured return origins must never receive raw or encoded passwords");
@@ -222,7 +226,7 @@ test("operator return grants allow fresh task assets without granting credential
   await call("action",{action:"wait_for",selector:"#task-menu-ready"});
   const task=await call("action",{action:"extract_text"});
   assert.equal(task.url,"https://other.test/sso-task");
-  assert(task.snapshot.includes("Configured task menu ready"));
+  assert(task.snapshot?.includes("Configured task menu ready"));
   for(const value of Object.values(identity))assert(!JSON.stringify(task).includes(value));
   await assert.rejects(call("action",{action:"navigate",url:"https://later.test/"}));
   await call("close");
@@ -237,14 +241,14 @@ test("operator return grants allow fresh task assets without granting credential
 test("MCP input and a public redirect cannot grant another credential origin's configured returns",async t=>{
   const {call}=await fixture(t,{[origin]:["https://task.test"]});
   const prepared=await call("prepare",{url:`${origin}/public-redirect`,...selectors,operatorReturnOrigins:{"https://other.test":["https://task.test"]},navigationOrigins:["https://task.test"]});
-  assert.equal(prepared.secureInput.origin,"https://other.test");
+  assert.equal(requireProtectedInput(prepared).origin,"https://other.test");
   await assert.rejects(call("action",{action:"navigate",url:"https://task.test/"}));
 });
 
 test("unconfigured task origins remain unavailable after protected fill",async t=>{
   const {call}=await fixture(t);
   const prepared=await call("prepare",{url:`${origin}/login`,...selectors,returnOrigins:["https://other.test"]});
-  await call("fill",{requestId:prepared.secureInput.requestId,username:"SYNTHETIC-DENIED-USER",password:"SYNTHETIC-DENIED-PASSWORD"},true);
+  await call("fill",{requestId:requireProtectedInput(prepared).requestId,username:"SYNTHETIC-DENIED-USER",password:"SYNTHETIC-DENIED-PASSWORD"},true);
   await assert.rejects(call("action",{action:"navigate",url:"https://other.test/sso-task"}));
 });
 
@@ -252,9 +256,9 @@ test("unconfigured task origins remain unavailable after protected fill",async t
 test("a public redirect binds actual credential origin and that origin's configured task return",async t=>{
   const {call,credentialPosts}=await fixture(t,{"https://other.test":["https://task.test"]});
   const prepared=await call("prepare",{url:`${origin}/public-redirect`,...selectors});
-  assert.equal(prepared.secureInput.origin,"https://other.test");
+  assert.equal(requireProtectedInput(prepared).origin,"https://other.test");
   const password="SYNTHETIC-REDIRECTED-CREDENTIAL";
-  await call("fill",{requestId:prepared.secureInput.requestId,username:"SYNTHETIC-USER",password},true);
+  await call("fill",{requestId:requireProtectedInput(prepared).requestId,username:"SYNTHETIC-USER",password},true);
   await call("action",{action:"click",selector:"#submit"});
   assert.equal(credentialPosts.length,1);
   assert.equal(credentialPosts[0].host,"other.test");

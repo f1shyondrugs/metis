@@ -1,6 +1,8 @@
+import type {SharedBrowserAction} from "./shared-browser-client";
+import type {ProtectedLoginReply} from "./protected-login-contract";
 import { ProtectedLoginError } from "./protected-login-errors";
 
-type LoginRequest = (owner: string, chat: string, operation: string, input?: Record<string, unknown>) => Promise<any>;
+type LoginRequest = (owner: string, chat: string, operation: string, input?: Record<string, unknown>) => Promise<ProtectedLoginReply>;
 type LoginTarget = (owner: string, chat: string, tabId?: string) => string | Promise<string>;
 
 // Own the transition from the ordinary tab to the chat's private login browser.
@@ -9,7 +11,7 @@ export class ProtectedBrowserRouting {
   private chats = new Set<string>();
   constructor(private request: LoginRequest, private target: LoginTarget) {}
   has(owner: string, chat: string) { return this.chats.has(`${owner}:${chat}`); }
-  async prepare(owner: string, chat: string, action: Record<string, any>) {
+  async prepare(owner: string, chat: string, action: Partial<SharedBrowserAction>) {
     const key = `${owner}:${chat}`;
     const active = this.chats.has(key) || action.tabId === "protected";
     const url = active ? undefined : await this.target(owner, chat, action.tabId);
@@ -28,7 +30,7 @@ export class ProtectedBrowserRouting {
       throw error;
     }
   }
-  async action(owner: string, chat: string, action: Record<string, any>) {
+  async action(owner: string, chat: string, action: Partial<SharedBrowserAction>) {
     const key = `${owner}:${chat}`;
     // An explicit protected tab also restores routing after an app restart.
     this.chats.add(key);
