@@ -47,9 +47,7 @@ export function desktopUnavailableReason(client: RemoteClient): string | null {
   return null;
 }
 
-export function chooseDesktopClient(clients: RemoteClient[], selectedId: string | null, agentId?: string | null) {
-  return clients.find(client => client.id === agentId)
-    ?? clients.find(client => client.id === selectedId)
-    ?? clients.find(client => desktopUnavailableReason(client) === null)
-    ?? clients[0] ?? null;
+/** A desktop is opened only after an explicit device selection. */
+export function chooseDesktopClient(clients: RemoteClient[], selectedId: string | null) {
+  return clients.find(client => client.id === selectedId) ?? null;
 }
