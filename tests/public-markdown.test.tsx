@@ -69,7 +69,7 @@ test("shared Markdown renders scoped media and leaves private references inert",
     "<script>alert(1)</script>",
   ].join("\n\n");
   const html = renderToStaticMarkup(<Markdown content={content} publicShare={share} editableFiles interactiveTasks />);
-  assert.match(html, /<h1>Shared document<\/h1>/);
+  assert.match(html, /<h1[^>]*>[\s\S]*?Shared document<\/h1>/);
   assert.match(html, /href="#note-child"/);
   assert.doesNotMatch(html, /href="(?:note:|#note-sibling|\/root\/private)/);
   assert.match(html, /<span>Sibling<\/span>/);
@@ -100,7 +100,7 @@ test("rich containers apply the same share boundary to images, marks, pages and 
   assert.match(html, /<aside/);
   assert.match(html, /src="\/api\/shared-notes\/share-token\/assets\?url=/);
   assert.match(html, /href="#note-child"/);
-  assert.match(html, /<span>↗ Private sibling<\/span>/);
+  assert.match(html, /<span>Private sibling<\/span>/);
   assert.match(html, /<span>Private embed<\/span>/);
   assert.doesNotMatch(html, /(?:href|src)="(?:\/api\/private|\/api\/notes\/sibling|#note-sibling|issue:)/);
   assert.match(html, /href="https:\/\/example.org\/report"[^>]*rel="noopener noreferrer"/);

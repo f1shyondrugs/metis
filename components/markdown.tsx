@@ -36,6 +36,7 @@ import { publicMarkdownAssetUrl, publicMarkdownImageUrl, publicMarkdownLinkTarge
 import { parseFileEmbed, isFileUrl, mimeTypeFromFileName } from "@/lib/file-types";
 import { normalizeMath, splitStreamingMath } from "@/lib/math";
 import { protectMathTablePipes, remarkMathTablePipes } from "@/lib/markdown-math-tables";
+import { LinkIcon } from "@/components/link-icon";
 import { LinkPreview } from "@/components/link-preview";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { GraphBoard } from "@/components/graph-board";
@@ -51,6 +52,7 @@ import { isChartSource } from "@/lib/chart-spec";
 import { isGraphSource } from "@/lib/graph-spec";
 import { isMermaidSource, wrapBareMermaid } from "@/lib/mermaid";
 import { ExternalLink, Link2 } from "lucide-react";
+import { decodeNotesSection, findNotesSection, scrollNotesSection } from "@/lib/notes-section-navigation";
 import { cn } from "@/lib/utils";
 import { STREAMING_RENDER_INTERVAL_MS, shouldFlushStreamingRender } from "@/lib/streaming-render";
 
@@ -96,6 +98,7 @@ function MarkdownLink({
       )}
       title={props.title}
       onClick={(event) => {
+        if(href?.startsWith("#")){const id=decodeNotesSection(href);if(!id){event.preventDefault();return;}const target=findNotesSection(event.currentTarget.closest(".markdown-body") || event.currentTarget.closest("article") || document,id);if(target){event.preventDefault();scrollNotesSection(target);return;}}
         const reference=parseReferenceLink(href);
         if(reference){event.preventDefault();event.stopPropagation();window.dispatchEvent(new CustomEvent("ai-chat:open-reference",{detail:reference}));return;}
         if (navigation) {
@@ -133,6 +136,7 @@ function MarkdownLink({
         props.onMouseLeave?.(event);
       }}
     >
+      {!sourceTitle && <LinkIcon href={href} />}
       {sourceTitle ? (
         <>
           <Link2 className="size-3 shrink-0" aria-hidden="true" />
@@ -242,7 +246,7 @@ function CodeBlock({
     return <GraphBoard code={code} language={declaredLanguage} readOnly={Boolean(publicShare)} />;
   }
   if (isMermaidSource(declaredLanguage, code)) {
-    return <MermaidDiagram code={code} language={declaredLanguage} publicShare={Boolean(publicShare)} />;
+    return <MermaidDiagram code={code} language={declaredLanguage} publicShare={Boolean(publicShare)} readOnly={!editableFiles} />;
   }
   const detectedLanguage =
     declaredLanguage && hljs.getLanguage(declaredLanguage)
@@ -309,9 +313,11 @@ function TaskCheckbox({
   );
 }
 
+const EMPTY_NOTE_HEADINGS: NotesHeading[] = [];
+
 function MarkdownHeading({ level, headings, node, children, ...props }: HTMLAttributes<HTMLHeadingElement> & {level:number;headings:NotesHeading[];node?:{position?:{start?:{offset?:number}}}}) {
-  const id = headings.find((heading) => heading.path === undefined && heading.sourceOffset === node?.position?.start?.offset)?.id;
-  return createElement("h" + level,{...props,id},children);
+  const heading = headings.find((heading) => heading.path === undefined && heading.sourceOffset === node?.position?.start?.offset);
+  return createElement("h" + level,{...props,id:heading?.id,"data-section-slug":heading?.slug},heading?.slug ? createElement("span",{id:heading.slug,"aria-hidden":true}) : null,children);
 }
 
 export const Markdown = memo(function Markdown({
@@ -338,7 +344,7 @@ export const Markdown = memo(function Markdown({
   const { ready, pending } = streaming ? splitStreamingMath(content) : { ready: normalizeMath(content), pending: "" };
   const protectedMath = useMemo(() => protectMathTablePipes(wrapBareMermaid(ready)), [ready]);
   const source = protectedMath.source;
-  const noteHeadings = useMemo(() => source.includes("tableOfContents") && source.includes("metis-block") ? collectNotesMarkdownHeadings(source) : [], [source]);
+  const noteHeadings = useMemo(() => { const headings = collectNotesMarkdownHeadings(source); return headings.length ? headings : EMPTY_NOTE_HEADINGS; }, [source]);
   const markdownComponentsWithCode = useMemo(() => ({
     ...markdownComponents,
     ...(publicShare ? { a: ({href, children, title, className}: AnchorHTMLAttributes<HTMLAnchorElement>) => <PublicMarkdownLink href={href || ""} share={publicShare} title={title} className={className}>{children}</PublicMarkdownLink> } : {}),

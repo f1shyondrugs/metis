@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fitMermaidSvg, isMermaidErrorSvg, isMermaidSource, prepareMermaidSource, wrapBareMermaid } from "../lib/mermaid";
+import { mermaidSvgDimensions, fitMermaidSvg, isMermaidErrorSvg, isMermaidSource, prepareMermaidSource, wrapBareMermaid } from "../lib/mermaid";
 
 test("mermaid fences and flowchart sources are detected", () => {
   assert.equal(isMermaidSource("mermaid", "flowchart TD\n  a-->b"), true);
@@ -63,6 +63,13 @@ test("fitMermaidSvg adds responsive sizing without changing child-only styles", 
   const fitted = fitMermaidSvg(`<svg width='800' height='1200' viewBox="0 0 800 1200">${child}</svg>`);
   assert.ok(fitted.includes(child));
   assert.match(fitted, /^<svg viewBox="0 0 800 1200" style="width:800px;max-width:100%;height:auto">/);
+});
+
+test("natural dimensions support wide diagrams and reject unusable SVG viewports", () => {
+  assert.deepEqual(mermaidSvgDimensions('<svg viewBox="-40 -20 20000 300"><rect width="1"/></svg>'), {width:20000,height:300});
+  for (const box of ["0 0 0 20", "0 0 20 -1", "0 0 NaN 20", "0 0 Infinity 20", "0 0 20"]) {
+    assert.equal(mermaidSvgDimensions('<svg viewBox="' + box + '"></svg>'), null);
+  }
 });
 
 test("isMermaidErrorSvg ignores mermaid CSS and catches the bomb SVG", () => {

@@ -22,8 +22,9 @@ export function viewAfterZoom(
   anchorX: number,
   anchorY: number,
   nextZoom: number,
+  minimumZoom = 0.2,
 ): NotesView {
-  const zoom = Math.max(0.2, Math.min(3, nextZoom));
+  const zoom = Math.max(minimumZoom, Math.min(3, nextZoom));
   const contentX = (anchorX - current.x) / current.zoom;
   const contentY = (anchorY - current.y) / current.zoom;
   return {

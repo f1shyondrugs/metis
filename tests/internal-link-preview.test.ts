@@ -45,7 +45,7 @@ before(async () => {
   ];
   saveChat(chat);
   noteId = createNote({
-    ownerId: owner.id, chatId: chat.id, scope: "chat", title: "Project note", content: "N".repeat(10_000),
+    ownerId: owner.id, chatId: chat.id, scope: "chat", title: "Project note", content: "N".repeat(10_000), icon: "lucide:rocket:#ef4444",
     todos: [{ id: "done", content: "Completed task", status: "completed" }, { id: "next", content: "Next task", status: "in_progress" }],
   }).id;
   const automationChat = createChat("Automation source", undefined, owner.id);
@@ -75,7 +75,7 @@ async function getPreview(kind: string, id: string, chatId?: string) {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Cache-Control"), "private, no-store");
   const data = await response.json() as InternalLinkPreview;
-  assert.deepEqual(Object.keys(data).sort(), ["description", "details", "id", "kind", "title"]);
+  assert.deepEqual(Object.keys(data).sort(), ["description", "details", ...(kind === "note" ? ["icon"] : []), "id", "kind", "title"].sort());
   assert.ok(data.title.length <= 200);
   assert.ok(data.description.length <= 600);
   assert.ok(data.details.length <= 5);
@@ -115,6 +115,7 @@ test("owned targets project bounded metadata with actual task progress", async (
   assert.equal(canvas.description.length, 600);
   const note = await getPreview("note", noteId);
   assert.equal(note.title, "Project note");
+  assert.equal(note.icon, "lucide:rocket:#ef4444");
   assert.equal(note.description.length, 600);
   assert.deepEqual(note.details.find(item => item.label === "Tasks"), { label: "Tasks", value: "1/2 completed" });
   assert.deepEqual(note.details.find(item => item.label === "Scope"), { label: "Scope", value: "Chat" });
@@ -123,6 +124,30 @@ test("owned targets project bounded metadata with actual task progress", async (
   assert.deepEqual(automation.details.find(item => item.label === "Status"), { label: "Status", value: "Active" });
   assert.deepEqual(automation.details.find(item => item.label === "Schedule"), { label: "Schedule", value: "Every day" });
   assert.deepEqual(automation.details.find(item => item.label === "Timezone"), { label: "Timezone", value: "Europe/Berlin" });
+});
+
+test("icon projection is owner-scoped and contains no note content", async () => {
+  const { GET } = modules[5];
+  const iconRequest = (session: string) => {
+    const req = request("note", noteId, session);
+    return new Request(req.url + "&view=icon", { headers: req.headers });
+  };
+  const response = await GET(iconRequest(token));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { icon: "lucide:rocket:#ef4444" });
+  assert.equal((await GET(iconRequest(foreignToken))).status, 404);
+  assert.equal((await GET(iconRequest(""))).status, 401);
+});
+
+test("summaries read rich block text without leaking serialized envelopes or code", async () => {
+  const { createNote } = modules[2];
+  const fence = String.fromCharCode(96).repeat(3);
+  const rich = { type: "callout", content: [{ type: "paragraph", content: [{ type: "text", text: "Readable callout" }] }] };
+  const note = createNote({ ownerId, scope: "global", title: "Rich preview",
+    content: ["Start", fence + "metis-block", JSON.stringify(rich), fence, fence + "json", '{"hidden":"technical-data"}', fence, "Finish"].join("\n\n") });
+  const result = await getPreview("note", note.id);
+  assert.equal(result.description, "Start Readable callout Finish");
+  assert.doesNotMatch(result.description, /type|content|hidden|technical-data/);
 });
 
 test("foreign, missing and mismatched IDs all return the same unavailable response", async () => {

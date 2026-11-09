@@ -1,10 +1,9 @@
 import http from "node:http";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { WebSocketServer } from "ws";
-import { browserLoginRequest } from "./lib/browser-login-client.ts";
-import { ProtectedBrowserRouting } from "./lib/protected-browser-routing.ts";
-import { ProtectedLoginError, protectedLoginFailure } from "./lib/protected-login-errors.ts";
-import { verifyBrowserUserAction } from "./lib/browser-user-capability.ts";
+import { importWorkerModule } from "./lib/worker-module.mjs";
+// Normalize TypeScript CJS/ESM exports through one registered module graph.
+const importServerModule = specifier => importWorkerModule(new URL(specifier, import.meta.url).href);
 
 // Next's custom-server entrypoint expects this Node primitive to be exposed
 // globally. The regular `next start` launcher does this during its bootstrap,
@@ -12,13 +11,18 @@ import { verifyBrowserUserAction } from "./lib/browser-user-capability.ts";
 if (!globalThis.AsyncLocalStorage) {
   globalThis.AsyncLocalStorage = AsyncLocalStorage;
 }
+const { browserLoginRequest } = await importServerModule("./lib/browser-login-client.ts");
+const { ProtectedBrowserRouting } = await importServerModule("./lib/protected-browser-routing.ts");
+const { ProtectedLoginError, protectedLoginFailure } = await importServerModule("./lib/protected-login-errors.ts");
+const { createNoteCollaborationServer, handleNoteCollaborationConnection } = await importServerModule("./lib/note-collaboration-server.ts");
+const { verifyBrowserUserAction } = await importServerModule("./lib/browser-user-capability.ts");
 const {
   initializeRequestNetwork, stampRequestNetwork, browserStreamOriginAllowed,
-} = await import("./lib/request-network.ts");
+} = await importServerModule("./lib/request-network.ts");
 initializeRequestNetwork();
 const { default: next } = await import("next");
-const { getAuthenticatedUser } = await import("./lib/auth.ts");
-const { updateChatOffThread } = await import("./lib/chat-page-loader.ts");
+const { getAuthenticatedUser } = await importServerModule("./lib/auth.ts");
+const { updateChatOffThread } = await importServerModule("./lib/chat-page-loader.ts");
 const {
   captureBrowserFrame,
   closeBrowserSession,
@@ -27,14 +31,14 @@ const {
   getBrowserLoginTarget,
   setBrowserViewport,
   browserEvents,
-} = await import("./lib/server-browser.ts");
+} = await importServerModule("./lib/server-browser.ts");
 const {
   authenticateClientMessage,
   attachRemoteClient,
-} = await import("./lib/remote-client-gateway.ts");
-const { logError } = await import("./lib/error-logs.ts");
-const { startUpdateScheduler } = await import("./lib/update-schedule.ts");
-const { startNotificationObserver } = await import("./lib/notification-observer-thread.ts");
+} = await importServerModule("./lib/remote-client-gateway.ts");
+const { logError } = await importServerModule("./lib/error-logs.ts");
+const { startUpdateScheduler } = await importServerModule("./lib/update-schedule.ts");
+const { startNotificationObserver } = await importServerModule("./lib/notification-observer-thread.ts");
 
 const port = Number(process.env.PORT || 3100);
 const host = process.env.AI_CHAT_HOST?.trim() || "127.0.0.1";
@@ -59,6 +63,9 @@ remoteClientWebsocketServer.on("error", (error) => {
     stack: error.stack,
   });
 });
+const noteCollaboration = createNoteCollaborationServer();
+const noteWebsocketServer = new WebSocketServer({noServer:true,maxPayload:2*1024*1024});
+noteWebsocketServer.on("error",error=>logError({level:"error",source:"ws",message:"Note collaboration WebSocket error: "+error.message,stack:error.stack}));
 const browserStreamSubscribers = new Map();
 const browserContextSignatures = new Map();
 const MAX_BROWSER_CONTEXT_SIGNATURES = 2_000;
@@ -465,7 +472,7 @@ remoteClientWebsocketServer.on("connection", (socket, request) => {
   socket.on("error", () => clearTimeout(timer));
 });
 
-const { initializeSetupToken } = await import("./lib/setup-token.ts");
+const { initializeSetupToken } = await importServerModule("./lib/setup-token.ts");
 const setupAccess = initializeSetupToken();
 if (setupAccess.required) {
   console.log(setupAccess.tokenFile
@@ -512,6 +519,10 @@ const server = http.createServer(async (request, response) => {
 });
 server.on("upgrade", async (request, socket, head) => {
   const url = streamUrl(request);
+  if(url.pathname === "/ws/notes") {
+    if(!browserStreamOriginAllowed(request)){socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");socket.destroy();return;}
+    noteWebsocketServer.handleUpgrade(request,socket,head,client=>handleNoteCollaborationConnection(noteCollaboration,client,request));return;
+  }
   if (url.pathname === "/ws/remote-client") {
     remoteClientWebsocketServer.handleUpgrade(request, socket, head, (client) => {
       remoteClientWebsocketServer.emit("connection", client, request);

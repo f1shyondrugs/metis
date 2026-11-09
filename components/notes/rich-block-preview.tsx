@@ -1,5 +1,8 @@
 "use client";
 
+import { LinkIcon } from "@/components/link-icon";
+import { noteBlockStyle } from "@/lib/notes-block-style";
+import { scrollNotesSection } from "@/lib/notes-section-navigation";
 import { Fragment, type ReactNode } from "react";
 import katex from "katex";
 import { type EditorNode, readNotesRichBlock } from "@/lib/notes-editor-format";
@@ -18,15 +21,16 @@ function RichLink({ href, children, publicShare }: { href: string; children: Rea
   return <a href={navigation?.href || safe} onClick={(event) => {
     if (navigation) { event.preventDefault(); event.stopPropagation(); window.dispatchEvent(new CustomEvent(navigation.event, { detail: navigation.detail })); }
     else if (/^https?:\/\//i.test(safe) && !event.ctrlKey && !event.metaKey) { event.preventDefault(); window.dispatchEvent(new CustomEvent("ai-chat:open-browser", { detail: safe })); }
-  }}>{children}</a>;
+  }}><LinkIcon href={safe} />{children}</a>;
 }
 function safeColor(value: unknown) { return typeof value === "string" && /^(#[\da-f]{3,8}|(?:rgb|hsl)a?\([\d.,% /-]+\)|[a-z]{3,20})$/i.test(value) ? value : undefined; }
 function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [], publicShare }: { node: EditorNode; depth?: number; headings?: NotesHeading[]; sourceOffset?:number; path?:number[]; publicShare?: PublicMarkdownShare }) {
   if (depth > 50) return <span>Nested content limit reached.</span>;
   const children = (node.content || []).map((child, index) => <RichNode key={index} node={child} depth={depth + 1} headings={headings} sourceOffset={sourceOffset} path={[...path,index]} publicShare={publicShare}/>);
   const attrs = node.attrs || {}, blockId = stringAttr(node, "blockId");
-  const headingId = node.type === "heading" ? headings.find((heading) => heading.sourceOffset === sourceOffset && heading.path === path.join("."))?.id : undefined;
-  const common = blockId ? { id: "block-" + blockId } : headingId ? { id: headingId } : {};
+  const heading = node.type === "heading" ? headings.find((heading) => heading.sourceOffset === sourceOffset && heading.path === path.join(".")) : undefined;
+  const headingId=heading?.id;
+  const common = { ...(blockId ? { id: "block-" + blockId } : headingId ? { id: headingId } : {}), ...(noteBlockStyle(attrs.blockColor) ? {style:noteBlockStyle(attrs.blockColor)} : {}) };
   if (node.type === "text") {
     let value: ReactNode = node.text || "";
     for (const mark of node.marks || []) {
@@ -44,6 +48,7 @@ function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [],
   switch (node.type) {
     case "paragraph": return <p {...common}>{children.length ? children : <br/>}</p>;
     case "heading": {
+      if(heading?.slug)children.unshift(<span key="section-anchor" id={heading.slug} aria-hidden="true"/>);
       const level = Math.max(1, Math.min(6, Number(attrs.level) || 1));
       if (level === 1) return <h1 {...common}>{children}</h1>;
       if (level === 2) return <h2 {...common}>{children}</h2>;
@@ -71,12 +76,12 @@ function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [],
       const rendered = katex.renderToString(stringAttr(node,"latex"), { throwOnError:false, trust:false, displayMode:node.type === "mathBlock" });
       return node.type === "mathBlock" ? <div {...common} className="my-3 overflow-x-auto" dangerouslySetInnerHTML={{__html:rendered}}/> : <span dangerouslySetInnerHTML={{__html:rendered}}/>;
     }
-    case "tableOfContents": return <nav {...common} aria-label="Table of contents" className="my-3 border-y border-border py-3 text-sm"><strong className="mb-2 block text-xs text-muted-foreground">Table of contents</strong>{headings.length ? headings.map((heading) => <a key={heading.id} href={"#" + heading.id} className="block py-1 text-muted-foreground hover:text-foreground" style={{paddingLeft:(heading.level - 1) * 14}} onClick={(event) => {event.preventDefault(); const container = event.currentTarget.closest(".markdown-body"); const target = container?.querySelector("#" + CSS.escape(heading.id)) || document.getElementById(heading.id); target?.scrollIntoView({block:"start",behavior:"smooth"});}}>{heading.title || "Untitled heading"}</a>) : <p className="text-xs text-muted-foreground">Add headings to build a table of contents.</p>}</nav>;
+    case "tableOfContents": return <nav {...common} aria-label="Table of contents" className="my-3 border-y border-border py-3 text-sm"><strong className="mb-2 block text-xs text-muted-foreground">Table of contents</strong>{headings.length ? headings.map((heading) => <a key={heading.id} href={"#" + heading.id} className="block py-1 text-muted-foreground hover:text-foreground" style={{paddingLeft:(heading.level - 1) * 14}} onClick={(event) => {event.preventDefault(); const container = event.currentTarget.closest(".markdown-body"); const target = container?.querySelector("#" + CSS.escape(heading.id)) || document.getElementById(heading.id); if(target instanceof HTMLElement)scrollNotesSection(target);}}>{heading.title || "Untitled heading"}</a>) : <p className="text-xs text-muted-foreground">Add headings to build a table of contents.</p>}</nav>;
     case "callout": return <aside {...common} className="my-3 rounded border-l-2 border-foreground/30 bg-secondary/70 px-4 py-2">{children}</aside>;
     case "toggleBlock": return <details {...common} open={attrs.open !== false} className="my-2"><summary className="cursor-pointer font-medium">{stringAttr(node,"title") || "Details"}</summary><div className="pl-5">{children}</div></details>;
     case "columns": return <div {...common} className="my-3 flex flex-col gap-5 sm:flex-row">{children}</div>;
     case "column": return <div className="min-w-0 flex-1">{children}</div>;
-    case "pageReference": return <p {...common} className="my-2"><RichLink href={"note://" + encodeURIComponent(stringAttr(node,"noteId"))} publicShare={publicShare}>↗ {stringAttr(node,"title") || "Page"}</RichLink></p>;
+    case "pageReference": return <p {...common} className="my-2"><RichLink href={"note://" + encodeURIComponent(stringAttr(node,"noteId"))} publicShare={publicShare}>{stringAttr(node,"title") || "Page"}</RichLink></p>;
     case "embedBlock": return <div {...common} className="my-3 rounded border border-border px-3 py-2"><RichLink href={stringAttr(node,"url")} publicShare={publicShare}>{stringAttr(node,"title") || stringAttr(node,"url")}</RichLink></div>;
     case "table": return <div {...common} className="overflow-x-auto"><table><tbody>{children}</tbody></table></div>;
     case "tableRow": return <tr>{children}</tr>;

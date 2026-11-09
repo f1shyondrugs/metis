@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkIcon } from "@/components/link-icon";
 import { LinkPreview } from "@/components/link-preview";
 import { FileLink } from "@/components/file-link";
 import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
@@ -68,7 +69,7 @@ function RichLink({ href, children, ...props }: { href: string; children: string
         window.dispatchEvent(new CustomEvent("ai-chat:open-browser", { detail: href }));
       }}
     >
-      {children}
+      <LinkIcon href={href} />{children}
       {hovered && modifierHeld && !internal ? (
         <ExternalLink className="ml-1 size-3.5 animate-in fade-in text-muted-foreground" aria-label="Ctrl-click opens in a new tab" />
       ) : null}
@@ -111,7 +112,7 @@ export const RichUserText = memo(function RichUserText({
                 );
               }}
             >
-              {part.text}
+              {reference && <LinkIcon kind={reference.kind} id={reference.id} />}{part.text}
             </button>
           );
         }

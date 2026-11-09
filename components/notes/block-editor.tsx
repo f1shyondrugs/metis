@@ -1,30 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useId, type ReactNode, type PointerEventHandler } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, useId, type ReactNode, type PointerEventHandler } from "react";
 import { createPortal } from "react-dom";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
-import { type Editor, type JSONContent } from "@tiptap/core";
+import { type AnyExtension, type Editor, type JSONContent } from "@tiptap/core";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { Fragment, type Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Compartment, EditorState } from "@codemirror/state";
-import { Decoration, EditorView, keymap, placeholder } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
+import { MarkdownSourceEditor } from "./markdown-source-editor";
 import { ArrowDown, ArrowUp, Bold, Check, ChevronDown, ChevronRight, Code2, Copy, FileText, GripVertical, Italic, Link2, List, Paperclip, Plus, Redo2, Strikethrough, Trash2, Underline, Undo2, X } from "lucide-react";
 import katex from "katex";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Markdown } from "@/components/markdown";
-import { notesEditorExtensions, NotesMathBlock, NotesSourceBlock, NotesToggle, NotesInlineMath, NotesTableOfContents } from "@/lib/notes-editor-extensions";
+import { notesEditorExtensions, NotesMathBlock, NotesSourceBlock, NotesToggle, NotesInlineMath, NotesTableOfContents, NotesPageReference, NotesEmbed } from "@/lib/notes-editor-extensions";
 import { parseNotesMarkdown, createNotesMarkdownSerializer, notesNodeSignature, type EditorNode } from "@/lib/notes-editor-markdown";
 import { findNotesTask, notesSelectionSourceId, planNotesTaskIssueConversion, type NotesIssueContext, type NotesIssueReference } from "@/lib/notes-editor-tasks";
-import { minimalMarkdownChange, replaceEmbeddedSource } from "@/lib/markdown-editor";
+import { replaceEmbeddedSource } from "@/lib/markdown-editor";
 import { createEditorValueSync } from "@/lib/editor-value-sync";
 import { createNotesEditorDropHandler } from "@/lib/notes-editor-drop";
 import { cancelUpload, getUploadSnapshot, retryUpload, startUpload, subscribeUploads, type UploadTask } from "@/lib/background-uploads";
 import { fileEmbedMarkdown } from "@/lib/file-types";
 import { appendMarkdownAttachment, markdownAttachmentLimit, markdownAttachmentTarget, persistMarkdownAttachment } from "@/lib/markdown-editor-attachment";
-import { markdownChangeFitsLimit, markdownLengthChangeFitsLimit, markdownDisplayImageExtension, markdownEditorGuard } from "@/lib/shared-markdown-editor";
-import { resolveMarkdownSourceLocation } from "@/lib/markdown-source-location";
+import { markdownChangeFitsLimit, markdownDisplayImageExtension, markdownEditorGuard } from "@/lib/shared-markdown-editor";
 import { parseWorkspaceFileLink, type WorkspaceFileLocation } from "@/lib/workspace-file-link";
 import { registerFileDrop } from "@/lib/file-drop";
 import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
@@ -36,10 +32,19 @@ import { parseReferenceLink } from "@/lib/reference-link";
 import { notesReferenceQuery, notesReferenceHref, NOTES_REFERENCE_KINDS } from "@/lib/notes-editor-references";
 import type { ReferenceKind, ReferenceResult } from "@/lib/reference-search";
 import { Type, Heading1, Heading2, Heading3, ListOrdered, ListTodo, Quote, Info, Minus, Table2, ImageIcon, Globe, Sigma, Columns2, ListTree, FilePlus2, CircleDot } from "lucide-react";
+import { LinkIcon } from "@/components/link-icon";
+import { NotesSpellcheckContext } from "./spellcheck-context";
+import { notesSpellcheckAttributes, type NotesSpellcheckChoice } from "@/lib/notes-spellcheck";
+import { NOTE_BLOCK_COLORS, type NoteBlockColor } from "@/lib/notes-block-style";
+import { findNotesSection, scrollNotesSection } from "@/lib/notes-section-navigation";
+import { NotesLinkIcons } from "@/lib/notes-link-icons";
+import { EditorLinkIcons } from "@/components/notes/editor-link-icons";
 import { NotesContextToolbar } from "@/components/notes/context-toolbar";
 import "./block-editor.css";
 
 export type NotesBlockEditorProps = {
+  collaboration?: {extensions:AnyExtension[]; metadata:()=>Record<string,unknown>; applySource:(source:string)=>void};
+  spellcheckChoice?: NotesSpellcheckChoice;
   value: string;
   onChange: (markdown: string) => void;
   noteId?: string;
@@ -71,6 +76,16 @@ const paragraph = () => ({ type: "paragraph" });
 const newId = () => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
 const safeUrl = (url: string) => /^(https?:\/\/|mailto:|\/(?!\/)|#)/i.test(url) || Boolean(parseInternalLink(url)) || Boolean(parseReferenceLink(url)) || Boolean(parseWorkspaceFileLink(url));
 
+function LinkBlockView({ node }: NodeViewProps) {
+  const page = node.type.name === "pageReference";
+  const href = page ? "note://" + encodeURIComponent(String(node.attrs.noteId)) : String(node.attrs.url || "");
+  const label = String(node.attrs.title || (page ? "Page" : href));
+  return <NodeViewWrapper data-notes-page={page ? String(node.attrs.noteId) : undefined}
+    data-notes-embed={!page ? "" : undefined} className={page ? "notes-page-reference" : "notes-embed-block"}>
+    {safeUrl(href) ? <a href={href}><LinkIcon href={href}/>{label}</a> : <span>{label}</span>}
+  </NodeViewWrapper>;
+}
+
 function SourceBlockView({ node, updateAttributes, selected, editor }: NodeViewProps) {
   const [editing, setEditing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -93,7 +108,7 @@ function SourceBlockView({ node, updateAttributes, selected, editor }: NodeViewP
       <span>{String(node.attrs.label || "Markdown source")}</span>
       <button type="button" disabled={!editor.isEditable} onClick={() => setEditing(!editing)}>{editing ? "Preview" : "Edit source"}</button>
     </div>
-    {editing ? <textarea aria-label="Block Markdown source" readOnly={!editor.isEditable} value={String(node.attrs.source || "")} onChange={(event) => updateAttributes({ source: event.target.value })} rows={Math.min(18, Math.max(4, String(node.attrs.source).split("\n").length))} spellCheck={false} /> :
+    {editing ? <div contentEditable={false}><MarkdownSourceEditor ariaLabel="Block Markdown source" disabled={!editor.isEditable} value={String(node.attrs.source || "")} onChange={source => updateAttributes({ source })} maxLength={100_000} onExceeded={() => {}} onFiles={async () => {}} /></div> :
       <div contentEditable={false} className="notes-source-preview"><Markdown content={String(node.attrs.source || "")} editableFiles={editor.isEditable} /></div>}
   </NodeViewWrapper>;
 }
@@ -126,83 +141,34 @@ function ToggleView({ node, updateAttributes, editor }: NodeViewProps) {
 
 function TableOfContentsView({ editor }: NodeViewProps) {
   const [, refresh] = useState(0);
-  useEffect(() => { const update = () => refresh((count) => count + 1); editor.on("transaction", update); return () => { editor.off("transaction", update); }; }, [editor]);
+  const [message,setMessage] = useState("");
+  useEffect(() => { const update = () => refresh(count => count + 1); editor.on("transaction", update); return () => { editor.off("transaction", update); }; }, [editor]);
   const headings: {pos:number;level:number;title:string}[] = [];
   editor.state.doc.descendants((node,pos) => { if (node.type.name === "heading") headings.push({pos,level:Number(node.attrs.level),title:node.textContent || "Untitled heading"}); });
-  return <NodeViewWrapper className="notes-table-of-contents" contentEditable={false}><nav aria-label="Table of contents"><strong>Table of contents</strong>{headings.length ? headings.map((heading) => <button key={heading.pos} type="button" style={{paddingLeft:(heading.level - 1) * 14}} onClick={() => editor.chain().focus().setTextSelection(heading.pos + 1).scrollIntoView().run()}>{heading.title}</button>) : <p>Add headings to build a table of contents.</p>}</nav></NodeViewWrapper>;
-}
-function MarkdownSourceEditor({ value, onChange, disabled, maxLength, ariaLabel, placeholderText, autoFocus, sourceLocation, onExceeded, onFiles }: {
-  value: string; onChange: (value: string) => void; disabled: boolean; maxLength: number; ariaLabel: string; placeholderText?: string;
-  autoFocus?: boolean; sourceLocation?: WorkspaceFileLocation | null; onExceeded: () => void; onFiles: (files: File[]) => Promise<void>;
-}) {
-  const host = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null);
-  const callback = useRef(onChange), current = useRef(value), syncing = useRef(false);
-  const valueSync = useRef(createEditorValueSync(value));
-  const settings = useRef({ disabled, maxLength, onExceeded, onFiles }); settings.current = { disabled, maxLength, onExceeded, onFiles };
-  const config = useMemo(() => new Compartment(), []), highlights = useMemo(() => new Compartment(), []);
-  callback.current = onChange;
-  useEffect(() => {
-    if (!host.current) return;
-    const instance = new EditorView({
-      parent: host.current,
-      state: EditorState.create({ doc: current.current, extensions: [
-        markdown(), history(), keymap.of([...defaultKeymap, ...historyKeymap]), EditorView.lineWrapping,
-        EditorState.lineSeparator.of(current.current.includes("\r\n") ? "\r\n" : "\n"),
-        config.of([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled),
-          placeholder(placeholderText || "Write Markdown…"), EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: "true" })]),
-        highlights.of([]),
-        EditorState.changeFilter.of((transaction) => {
-          if (syncing.current) return true;
-          if (settings.current.disabled) return false;
-          const separatorExtra = (transaction.startState.facet(EditorState.lineSeparator) || "\n").length - 1;
-          const previousLength = transaction.startState.doc.length + (transaction.startState.doc.lines - 1) * separatorExtra;
-          const nextLength = transaction.newDoc.length + (transaction.newDoc.lines - 1) * separatorExtra;
-          if (markdownLengthChangeFitsLimit(previousLength, nextLength, settings.current.maxLength)) return true;
-          settings.current.onExceeded(); return false;
-        }),
-        EditorView.domEventHandlers({
-          paste(event) { const files = Array.from(event.clipboardData?.files || []); if (!files.length) return false; event.preventDefault(); void settings.current.onFiles(files); return true; },
-          drop(event) { const files = Array.from(event.dataTransfer?.files || []); if (!files.length) return false; event.preventDefault(); void settings.current.onFiles(files); return true; },
-        }),
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged && !syncing.current) {
-            current.current = update.state.sliceDoc();
-            valueSync.current.published(current.current);
-            // Synchronous by contract: parent Save/navigation must see the very last keystroke.
-            callback.current(current.current);
-          }
-        }),
-      ] }),
-    });
-    view.current = instance; if (autoFocus) instance.focus();
-    return () => { view.current = null; instance.destroy(); };
-    // Source instance owns cursor/history. Changing props is handled through compartments below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    const instance = view.current; if (!instance) return;
-    instance.dispatch({ effects: config.reconfigure([
-      EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled), placeholder(placeholderText || "Write Markdown…"),
-      EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: "true" }),
-    ]) });
-  }, [ariaLabel, config, disabled, placeholderText]);
-  useEffect(() => {
-    if (!valueSync.current.receive(value)) return;
-    current.current = value;
-    const instance = view.current; if (!instance) return;
-    const change = minimalMarkdownChange(instance.state.doc.toString(), instance.state.toText(value).toString());
-    if (change) { syncing.current = true; try { instance.dispatch({ changes: change }); } finally { syncing.current = false; } }
-  }, [value]);
-  useEffect(() => {
-    const instance = view.current; if (!instance || !sourceLocation) return;
-    const location = resolveMarkdownSourceLocation(instance.state.doc.toString(), sourceLocation);
-    const ranges = location.changes.filter((change) => change.to > change.from).map((change) =>
-      Decoration.mark({ class: "notes-source-change notes-source-change-" + change.kind }).range(change.from, change.to));
-    instance.dispatch({ selection: { anchor: location.from, head: location.to },
-      effects: [highlights.reconfigure(EditorView.decorations.of(Decoration.set(ranges, true))), EditorView.scrollIntoView(location.from, { y: "center" })] });
-    instance.focus();
-  }, [sourceLocation, highlights]);
-  return <div ref={host} className="notes-markdown-source" />;
+  const go = (pos:number) => {
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(pos+1))));
+    editor.view.dom.focus({preventScroll:true});
+    requestAnimationFrame(()=>{const target=editor.view.nodeDOM(pos);if(target instanceof HTMLElement)scrollNotesSection(target);});
+  };
+  const copy = async (pos:number) => {
+    const node=editor.state.doc.nodeAt(pos); if(!node)return;
+    let id=String(node.attrs.blockId || "");
+    if(!id && editor.isEditable){id=newId();editor.view.dispatch(editor.state.tr.setNodeMarkup(pos,undefined,{...node.attrs,blockId:id}));}
+    const dom=editor.view.nodeDOM(pos) as HTMLElement | null;
+    const fragment=id?"block-"+id:dom?.id || "title";
+    const noteId=editor.view.dom.getAttribute("data-note-id");
+    try {await navigator.clipboard.writeText((noteId?"note://"+encodeURIComponent(noteId):"")+"#"+fragment);setMessage("Section link copied.");}
+    catch {setMessage("Could not copy the link. Allow clipboard access and try again.");}
+  };
+  return <NodeViewWrapper className="notes-table-of-contents" contentEditable={false}>
+    <nav aria-label="Table of contents"><strong>Table of contents</strong>
+      {headings.length ? headings.map(heading => <div className="notes-toc-row" key={heading.pos}>
+        <button type="button" style={{paddingInlineStart:(heading.level-1)*14}} onClick={()=>go(heading.pos)}>{heading.title}</button>
+        <button type="button" aria-label={"Copy link to "+heading.title} title="Copy section link" onClick={()=>void copy(heading.pos)}><Link2 size={15} aria-hidden="true"/></button>
+      </div>) : <p>Add headings to build a table of contents.</p>}
+      {message&&<p role="status">{message}</p>}
+    </nav>
+  </NodeViewWrapper>;
 }
 
 function ToolButton({ label, children, active, disabled, onClick }: { label: string; children: ReactNode; active?: boolean; disabled?: boolean; onClick: () => void }) {
@@ -236,19 +202,21 @@ export function NotesBlockEditor(props: NotesBlockEditorProps) {
   const instanceId = useId();
   const identity = props.workspace ? "workspace:" + props.workspace.chatId + ":" + props.workspace.id
     : props.noteId ? "note:" + props.noteId : "editor:" + (props.editorId || instanceId);
-  return <NotesBlockEditorInstance key={identity} {...props} identity={identity}/>;
+  const inheritedSpellcheck = useContext(NotesSpellcheckContext);
+  return <NotesSpellcheckContext.Provider value={props.spellcheckChoice ?? inheritedSpellcheck}><NotesBlockEditorInstance key={identity} {...props} identity={identity}/></NotesSpellcheckContext.Provider>;
 }
 function NotesBlockEditorInstance({
   value, onChange, noteId, workspace, identity, onCreateSubpage, onCreateIssue, onOpenNote,
   disabled: disabledProp = false, readOnly = false, maxLength, autoFocus = false, initialMode = "blocks",
-  sourceLocation, resolveUrl, placeholder: placeholderText, "aria-label": ariaLabel = "Page blocks", className, onPointerDown, onFiles, hideAttachmentButton = false,
+  collaboration, sourceLocation, resolveUrl, placeholder: placeholderText, "aria-label": ariaLabel = "Page blocks", className, onPointerDown, onFiles, hideAttachmentButton = false,
 }: NotesBlockEditorProps & { identity: string }) {
   const disabled = disabledProp || readOnly;
+  const spellcheckChoice = useContext(NotesSpellcheckContext);
   const target = markdownAttachmentTarget(noteId, workspace);
   const limit = markdownAttachmentLimit(target, maxLength);
   const settings = useRef({ disabled, limit, onFiles, resolveUrl }); settings.current = { disabled, limit, onFiles, resolveUrl };
   const externalUpdate = useRef(false);
-  const serialize = useMemo(createNotesMarkdownSerializer, [identity]);
+  const serialize = useMemo(() => {const base=createNotesMarkdownSerializer();return (node:ProseMirrorNode) => base(collaboration ? node.type.create(collaboration.metadata(),node.content) : node);}, [collaboration]);
   const root = useRef<HTMLDivElement>(null), fileInput = useRef<HTMLInputElement>(null);
   const onChangeRef = useRef(onChange); onChangeRef.current = onChange;
   const latest = useRef(value), mounted = useRef(true);
@@ -294,8 +262,14 @@ function NotesBlockEditorInstance({
     if (next === latest.current) return;
     latest.current = next; valueSync.current.published(next); setDraft(next); onChangeRef.current(next);
   }, []);
-  const extensions = useMemo(() => notesEditorExtensions().map((extension) => {
+  const publishSource = useCallback((source:string)=>{
+    if(settings.current.disabled||!markdownChangeFitsLimit(latest.current,source,settings.current.limit))return;
+    try{collaboration?.applySource(source);publish(source);}catch{setError("Could not apply this Markdown. Your source is preserved.");}
+  },[collaboration,publish]);
+  const extensions = useMemo(() => [...notesEditorExtensions(Boolean(collaboration)), NotesLinkIcons, ...(collaboration?.extensions || [])].map((extension) => {
     if (extension.name === "image") return markdownDisplayImageExtension((src) => settings.current.resolveUrl?.(src, "image") || src, extension.options);
+    if (extension.name === "pageReference") return NotesPageReference.extend({ addNodeView: () => ReactNodeViewRenderer(LinkBlockView) });
+    if (extension.name === "embedBlock") return NotesEmbed.extend({ addNodeView: () => ReactNodeViewRenderer(LinkBlockView) });
     if (extension.name === "sourceBlock") return NotesSourceBlock.extend({ addNodeView: () => ReactNodeViewRenderer(SourceBlockView) });
     if (extension.name === "mathBlock") return NotesMathBlock.extend({ addNodeView: () => ReactNodeViewRenderer(MathView) });
     if (extension.name === "inlineMath") return NotesInlineMath.extend({ addNodeView: () => ReactNodeViewRenderer(InlineMathView) });
@@ -304,7 +278,7 @@ function NotesBlockEditorInstance({
     if (extension.name === "placeholder" && placeholderText) return extension.configure({ placeholder: placeholderText });
     return extension;
   }).concat(markdownEditorGuard({ maxLength: () => settings.current.limit, disabled: () => settings.current.disabled,
-    externalUpdate: () => externalUpdate.current, serialize, onExceeded: () => setError("Document is full. Remove some content before adding more.") })), [placeholderText, serialize]);
+    externalUpdate: () => externalUpdate.current, serialize, onExceeded: () => setError("Document is full. Remove some content before adding more.") })), [placeholderText, serialize, collaboration]);
   // Initial parsing belongs to the editor instance; controlled updates sync below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const initialContent = useMemo(() => parseNotesMarkdown(value) as JSONContent, [identity]);
@@ -312,9 +286,9 @@ function NotesBlockEditorInstance({
     extensions, immediatelyRender: false, shouldRerenderOnTransaction: false,
     enableContentCheck: true,
     onContentError: () => { setError("Could not open rich blocks. Your complete Markdown source is preserved."); setSourceMode(true); },
-    content: initialContent, editable: !disabled, autofocus: autoFocus ? "end" : false,
+    content: collaboration ? undefined : initialContent, editable: !disabled, autofocus: autoFocus ? "end" : false,
     editorProps: {
-      attributes: { class: "notes-prosemirror", "aria-label": ariaLabel, role: "textbox", "aria-multiline": "true", spellcheck: "true" },
+      attributes: { class: "notes-prosemirror", "aria-label": ariaLabel, role: "textbox", "aria-multiline": "true", ...notesSpellcheckAttributes(spellcheckChoice), "data-note-id": noteId || "" },
       handleKeyDown: (view, event) => {
         if (settings.current.disabled) return false;
         if (!event.isComposing && referenceRef.current) {
@@ -358,21 +332,21 @@ function NotesBlockEditorInstance({
   const uploadRef = useRef<(files: File[]) => Promise<void>>(async () => {});
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    if (!valueSync.current.receive(value)) return;
+    if (collaboration || !valueSync.current.receive(value)) return;
     latest.current = value; setDraft(value);
     if (editor) {
       try { externalUpdate.current = true; editor.commands.setContent(parseNotesMarkdown(value) as JSONContent, { emitUpdate: false, errorOnInvalidContent: true }); setError(""); }
       catch (reason) { setError("Could not open rich blocks. Markdown source is preserved. " + (reason instanceof Error ? reason.message : "")); setSourceMode(true); }
       finally { externalUpdate.current = false; }
     }
-  }, [value, editor]);
+  }, [value, editor, collaboration]);
   useEffect(() => {
     editor?.setEditable(!disabled, false);
     if (editor) editor.setOptions({ editorProps: { ...editor.options.editorProps, attributes: {
-      class: "notes-prosemirror", "aria-label": ariaLabel, role: "textbox", "aria-multiline": "true", "aria-readonly": String(disabled), spellcheck: "true",
+      class: "notes-prosemirror", "aria-label": ariaLabel, role: "textbox", "aria-multiline": "true", "aria-readonly": String(disabled), ...notesSpellcheckAttributes(spellcheckChoice), "data-note-id": noteId || "",
     } } });
     if (disabled) { setSlash(null); slashRef.current = null; setBlockMenu(null); setSelectionMenu(null); setHover(null); setDialog(null); }
-  }, [ariaLabel, disabled, editor]);
+  }, [ariaLabel, disabled, editor, spellcheckChoice, noteId]);
   useEffect(() => { if (sourceLocation) setSourceMode(true); }, [sourceLocation]);
   useEffect(() => {
     if (!editor || sourceMode || disabled) { setSelectionMenu(null); return; }
@@ -450,7 +424,7 @@ function NotesBlockEditorInstance({
             if (mounted.current && current && !current.isDestroyed && !settings.current.disabled) {
               if (!latest.current.includes(source)) {
                 appendMarkdownAttachment(latest.current, source, settings.current.limit); // Validate before mutating.
-                if (sourceModeRef.current) publish(appendMarkdownAttachment(latest.current, source, settings.current.limit));
+                if (sourceModeRef.current) publishSource(appendMarkdownAttachment(latest.current, source, settings.current.limit));
                 else {
                   const position = Math.min(uploadPositions.current.get(taskId) ?? current.state.selection.to, current.state.doc.content.size);
                   const previous = current.state.doc;
@@ -612,6 +586,12 @@ function NotesBlockEditorInstance({
     const selection = extend ? TextSelection.create(editor.state.doc, Math.min(editor.state.selection.from, hover.pos + 1), Math.max(editor.state.selection.to, hover.pos + node.nodeSize - 1)) : NodeSelection.create(editor.state.doc, hover.pos);
     editor.view.dispatch(editor.state.tr.setSelection(selection));
   };
+  const setBlockColor = (color: NoteBlockColor | null) => {
+    if(!editor || disabled)return;
+    const transaction = editor.state.tr;
+    for(const {node,pos} of selectedBlocks(editor))transaction.setNodeMarkup(pos,undefined,{...node.attrs,blockColor:color});
+    editor.view.dispatch(transaction); setBlockMenu(null);
+  };
   const blockAction = async (action: string) => {
     if (!editor || disabled) return;
     const blocks = selectedBlocks(editor);
@@ -619,7 +599,8 @@ function NotesBlockEditorInstance({
     const from = blocks[0].pos, to = blocks.at(-1)!.pos + blocks.at(-1)!.node.nodeSize;
     if (action === "delete") editor.chain().focus().deleteRange({ from, to }).run();
     if (action === "duplicate") {
-      const copies = blocks.map(({node}) => { const json = node.toJSON(); json.attrs = { ...json.attrs, blockId: null }; return json; });
+      const clearIds = (json:JSONContent):JSONContent => ({...json,attrs:{...json.attrs,blockId:null},...(json.content ? {content:json.content.map(clearIds)} : {})});
+      const copies = blocks.map(({node}) => clearIds(node.toJSON()));
       editor.chain().focus().insertContentAt(to, copies).run();
     }
     if (action === "up" || action === "down") moveBlocks(editor, action === "up" ? -1 : 1);
@@ -652,7 +633,7 @@ function NotesBlockEditorInstance({
     }
     setDialog(null);
   };
-  return <div ref={root} className={"notes-block-editor" + (disabled ? " is-readonly" : "") + (className ? " " + className : "")} data-note-drop-target={noteId || workspace?.id || identity} onPointerDown={onPointerDown} aria-disabled={disabled || undefined}
+  return <div ref={root} className={"notes-block-editor" + (disabled ? " is-readonly" : "") + (className ? " " + className : "")} data-section-navigation-root data-note-drop-target={noteId || workspace?.id || identity} onPointerDown={onPointerDown} aria-disabled={disabled || undefined}
     onMouseOver={(event)=>{const anchor=(event.target as HTMLElement).closest<HTMLAnchorElement>(".notes-prosemirror a");setPreviewAnchor(anchor);}}
     onMouseOut={(event)=>{if(previewAnchor && !(event.relatedTarget instanceof Node && previewAnchor.contains(event.relatedTarget)))setPreviewAnchor(null);}}
     onFocusCapture={(event)=>setPreviewAnchor((event.target as HTMLElement).closest<HTMLAnchorElement>(".notes-prosemirror a"))}
@@ -661,6 +642,7 @@ function NotesBlockEditorInstance({
     const anchor = (event.target as HTMLElement).closest("a");
     const href = anchor?.getAttribute("href");
     if(!href)return;
+    if(href.startsWith("#")){try{const target=findNotesSection(root.current!,decodeURIComponent(href.slice(1)));if(target){event.preventDefault();event.stopPropagation();scrollNotesSection(target);return;}}catch{/* Invalid fragments remain inert. */}}
     const resolved=settings.current.resolveUrl?.(href,"link") || href;
     const modified=event.ctrlKey || event.metaKey;
     if(/^https?:\/\//i.test(resolved) && (modified || disabled)) {
@@ -677,14 +659,15 @@ function NotesBlockEditorInstance({
     if (internal) {
       event.preventDefault(); event.stopPropagation();
       if (internal.kind === "note" && internal.id === noteId && internal.blockId) {
-        root.current?.querySelector('[data-block-id="' + CSS.escape(internal.blockId) + '"]')?.scrollIntoView({ block: "center", behavior: "smooth" });
+        const target = root.current && findNotesSection(root.current,internal.blockId); if(target)scrollNotesSection(target);
       } else if (internal.kind === "note" && onOpenNote) onOpenNote(internal.id, internal.blockId);
       else { const navigation = internalLinkNavigation(internal); window.dispatchEvent(new CustomEvent(navigation.event, { detail: navigation.detail })); }
     }
   }}>
+    {!sourceMode && <EditorLinkIcons editor={editor} resolveUrl={resolveUrl} />}
     {previewAnchor && <LinkPreview key={previewAnchor.getAttribute("href")} href={settings.current.resolveUrl?.(previewAnchor.getAttribute("href") || "","link") || previewAnchor.getAttribute("href") || ""} anchorElement={previewAnchor}/>}
     <div className="notes-editor-topbar">
-      <div className="notes-editor-mode" role="group" aria-label="Editor mode"><button type="button" className={!sourceMode ? "is-active" : ""} onClick={() => { if (!editor) return; try { const parsed = parseNotesMarkdown(latest.current); editor.schema.nodeFromJSON(parsed).check(); if (serialize(editor.state.doc) !== latest.current) { externalUpdate.current = true; try { editor.commands.setContent(parsed as JSONContent, { emitUpdate: false, errorOnInvalidContent: true }); } finally { externalUpdate.current = false; } } setSourceMode(false); setError(""); } catch { setError("Could not open rich blocks. Your complete Markdown source is preserved."); } }}>Blocks</button><button type="button" className={sourceMode ? "is-active" : ""} onClick={() => setSourceMode(true)}><Code2 size={13} /> Markdown</button></div>
+      <div className="notes-editor-mode" role="group" aria-label="Editor mode"><button type="button" className={!sourceMode ? "is-active" : ""} onClick={() => { if (!editor) return; try { const parsed = parseNotesMarkdown(latest.current); editor.schema.nodeFromJSON(parsed).check(); if (!collaboration && serialize(editor.state.doc) !== latest.current) { externalUpdate.current = true; try { editor.commands.setContent(parsed as JSONContent, { emitUpdate: false, errorOnInvalidContent: true }); } finally { externalUpdate.current = false; } } setSourceMode(false); setError(""); } catch { setError("Could not open rich blocks. Your complete Markdown source is preserved."); } }}>Blocks</button><button type="button" className={sourceMode ? "is-active" : ""} onClick={() => setSourceMode(true)}><Code2 size={13} /> Markdown</button></div>
       <div className="notes-editor-tools">
         {!disabled && !sourceMode && <><ToolButton label="Undo (⌘/Ctrl Z)" disabled={!editor?.can().undo()} onClick={() => editor?.chain().focus().undo().run()}><Undo2 size={15}/></ToolButton><ToolButton label="Redo (⌘/Ctrl Shift Z)" disabled={!editor?.can().redo()} onClick={() => editor?.chain().focus().redo().run()}><Redo2 size={15}/></ToolButton><ToolButton label="Insert block (type /)" onClick={() => { if (!editor) return; const rect = editor.view.coordsAtPos(editor.state.selection.from); setBlockMenu({ top: rect.bottom + 8, left: Math.min(rect.left, window.innerWidth - 310) }); }}><Plus size={16}/></ToolButton></>}
         {!disabled && !hideAttachmentButton && <ToolButton label="Upload images or files" onClick={() => fileInput.current?.click()}><Paperclip size={15}/></ToolButton>}
@@ -702,7 +685,7 @@ function NotesBlockEditorInstance({
     }}> {editor && findNotesTask(editor.getJSON() as EditorNode,issueRecovery.sourceId) ? "Convert updated task" : "Insert issue link"}</button><button type="button" aria-label="Dismiss issue notice" onClick={() => setIssueRecovery(null)}><X size={14}/></button></div>}
     {uploadTasks.length > 0 && <div className="notes-editor-uploads" aria-live="polite">{uploadTasks.map((task) => <div key={task.id}><span>{task.name} · {task.status === "error" ? task.error : Math.round(task.loaded / Math.max(1,task.size) * 100) + "%"}</span>{task.status === "error" && <button type="button" onClick={() => retryUpload(task.id)}>Retry</button>}<button type="button" aria-label={"Cancel upload " + task.name} onClick={() => cancelUpload(task.id)}><X size={13}/></button></div>)}</div>}
     {fileDrag && <div className="notes-editor-file-drag" role="status">Drop images or files here</div>}
-    {sourceMode ? <MarkdownSourceEditor value={draft} onChange={publish} disabled={disabled} maxLength={limit} ariaLabel={ariaLabel + " Markdown source"} placeholderText={placeholderText} autoFocus sourceLocation={sourceLocation} onExceeded={() => setError("Document is full. Remove some content before adding more.")} onFiles={uploadFiles}/> :
+    {sourceMode ? <MarkdownSourceEditor value={draft} onChange={publishSource} disabled={disabled} maxLength={limit} ariaLabel={ariaLabel + " Markdown source"} placeholderText={placeholderText} autoFocus sourceLocation={sourceLocation} onExceeded={() => setError("Document is full. Remove some content before adding more.")} onFiles={uploadFiles}/> :
       <div className="notes-editor-canvas" onMouseMove={(event) => {
         if (!editor || disabled || blockMenu) return;
         let element = event.target as HTMLElement;
@@ -736,8 +719,9 @@ function NotesBlockEditorInstance({
       <div className="notes-menu-dismiss" onMouseDown={() => { setSlash(null); slashRef.current = null; setBlockMenu(null); }} />
       <div className="notes-block-menu" role="listbox" aria-label={slash ? "Insert a block" : "Block actions and insert"} style={{ top: Math.min((slash || blockMenu)!.top, window.innerHeight - 360), left: Math.max(8, Math.min((slash || blockMenu)!.left, window.innerWidth - 310)) }}>
         {blockMenu && <div className="notes-block-actions">
-          <button type="button" onClick={() => void blockAction("duplicate")}><Copy size={14}/> Duplicate</button><button type="button" onClick={() => void blockAction("copy")}><Link2 size={14}/> Copy block link</button><button type="button" onClick={() => void blockAction("up")}><ArrowUp size={14}/> Move up</button><button type="button" onClick={() => void blockAction("down")}><ArrowDown size={14}/> Move down</button>{onCreateIssue && <button type="button" disabled={creatingIssue} onClick={() => void blockAction("issue")}><Check size={14}/> {editor.isActive("taskItem") ? "Convert task to issue" : "Create issue"}</button>}<button type="button" className="notes-action-delete" onClick={() => void blockAction("delete")}><Trash2 size={14}/> Delete</button>
+          <button type="button" onClick={() => void blockAction("duplicate")}><Copy size={14}/> Duplicate</button><button type="button" onClick={() => void blockAction("copy")}><Link2 size={14}/> {selectedBlocks(editor)[0]?.node.type.name==="heading" ? "Copy heading link" : "Copy block link"}</button><button type="button" onClick={() => void blockAction("up")}><ArrowUp size={14}/> Move up</button><button type="button" onClick={() => void blockAction("down")}><ArrowDown size={14}/> Move down</button>{onCreateIssue && <button type="button" disabled={creatingIssue} onClick={() => void blockAction("issue")}><Check size={14}/> {editor.isActive("taskItem") ? "Convert task to issue" : "Create issue"}</button>}<button type="button" className="notes-action-delete" onClick={() => void blockAction("delete")}><Trash2 size={14}/> Delete</button>
         </div>}
+        {blockMenu && <fieldset className="notes-block-colors"><legend>Block marker</legend><button type="button" aria-label="Remove block marker" onClick={()=>setBlockColor(null)}>None</button>{Object.entries(NOTE_BLOCK_COLORS).map(([color,hex])=><button type="button" key={color} aria-label={color+" block marker"} aria-pressed={selectedBlocks(editor)[0]?.node.attrs.blockColor===color} onClick={()=>setBlockColor(color as NoteBlockColor)}><span aria-hidden="true" style={{backgroundColor:hex}}/>{color}</button>)}</fieldset>}
         <div className="notes-menu-label">{slash?.query ? "Blocks matching “" + slash.query + "”" : "Insert or turn into"}</div>
         {(slash ? filtered : commands).map((command, index) => <button key={command.id} type="button" role="option" aria-selected={Boolean(slash && index === menuIndex)} className={slash && index === menuIndex ? "is-selected" : ""} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => { setMenuIndex(index); menuIndexRef.current = index; }} onClick={() => runCommand(command.id)}><span className="notes-command-icon">{commandIcon(command.id)}</span><span><strong>{command.title}</strong><small>{command.detail}</small></span></button>)}
         {slash && !filtered.length && <div className="notes-menu-empty">No matching blocks. Try “table”, “toggle” or “image”.</div>}
@@ -756,6 +740,7 @@ function NotesBlockEditorInstance({
         />
       </div>
     </>,document.body)}
+    <div data-note-anchor-spacer aria-hidden="true"/>
     {dialog && <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) setDialog(null); }}><DialogPrimitive.Portal><DialogPrimitive.Overlay className="notes-editor-dialog-overlay"/><DialogPrimitive.Content asChild aria-describedby={undefined} onCloseAutoFocus={(event) => { event.preventDefault(); editor?.commands.focus(); }}>
       <form className="notes-editor-dialog" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); submitDialog(); }}>
         <div><DialogPrimitive.Title asChild><strong>{dialog === "code" ? "Code language" : dialog === "page" ? "Page reference" : "Add " + dialog}</strong></DialogPrimitive.Title><button type="button" aria-label="Close dialog" onClick={() => setDialog(null)}><X size={16}/></button></div>

@@ -25,6 +25,19 @@
 .notes-block-editor.is-readonly .notes-prosemirror { cursor:default; }
 .notes-block-editor button,.notes-block-editor input,.notes-block-editor select,.notes-block-editor textarea { font:inherit; }
 .notes-block-editor button { cursor:pointer; }
+.collaboration-carets__caret { border-inline-start:2px solid; margin-inline-start:-1px; margin-inline-end:-1px; position:relative; pointer-events:none; }
+.collaboration-carets__label { position:absolute; bottom:100%; left:-1px; padding:2px 5px; border-radius:3px; color:white; font-size:11px; line-height:1.4; white-space:nowrap; user-select:none; }
+.collaboration-carets__selection { opacity:.3; }
+.notes-toc-row { display:flex; align-items:center; gap:8px; }
+.notes-toc-row>button:first-child { flex:1; min-width:0; text-align:start; }
+.notes-toc-row>button:last-child { flex:none; display:flex; align-items:center; justify-content:center; width:36px; min-height:36px; border-radius:4px; }
+.notes-toc-row>button:last-child:hover { background:var(--muted); }
+.notes-block-colors { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:8px; border-bottom:1px solid var(--border); }
+.notes-block-colors legend { padding:0 4px; font-size:11px; color:var(--muted-foreground); }
+.notes-block-colors button { display:flex; align-items:center; gap:6px; min-height:36px; padding:4px 6px; text-transform:capitalize; font-size:12px; border-radius:4px; }
+.notes-block-colors button[aria-pressed=true] { background:var(--muted); outline:1px solid var(--border); }
+.notes-block-colors button>span { flex:none; width:12px; height:12px; border-radius:50%; }
+@media (max-width:767px),(pointer:coarse) { .notes-toc-row>button:last-child { width:44px; min-height:44px; } .notes-block-colors button { min-height:44px; } }
 .notes-block-editor button:disabled { cursor:default; opacity:.35; }
 .notes-block-editor button:focus-visible,.notes-block-editor input:focus-visible,.notes-block-editor textarea:focus-visible,.notes-block-editor select:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
 .notes-editor-topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; min-height:32px; }

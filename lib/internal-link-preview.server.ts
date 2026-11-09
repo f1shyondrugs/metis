@@ -1,3 +1,4 @@
+import { readNotesRichBlock, type EditorNode } from "@/lib/notes-editor-format";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
@@ -19,7 +20,7 @@ function bounded(value: string, limit: number) {
 
 /** Parse GFM so code examples do not count as completed tasks. */
 function documentSummary(content: string) {
-  type Node = { type: string; value?: string; alt?: string | null; checked?: boolean | null; children?: Node[] };
+  type Node = { type: string; lang?: string | null; value?: string; alt?: string | null; checked?: boolean | null; children?: Node[] };
   const nodes: Node[] = [parser.parse(content.slice(0, 100_000)) as Node];
   const text: string[] = [];
   let tasks = 0, completed = 0, steps = 0;
@@ -32,7 +33,21 @@ function documentSummary(content: string) {
         if (node.checked) completed += 1;
       }
     }
-    if (["text", "inlineCode", "code"].includes(node.type) && node.value) text.push(node.value);
+    if (node.type === "code") {
+      if (node.lang === "metis-block") {
+        const rich = readNotesRichBlock(node.value || "");
+        const collect = (item: EditorNode) => {
+          if (item.type === "codeBlock" || item.type === "sourceBlock") return;
+          if (item.text) text.push(item.text);
+          if (item.type === "toggleBlock" && typeof item.attrs?.title === "string") text.push(item.attrs.title);
+          if (item.type === "taskItem") { tasks++; steps++; if (item.attrs?.checked) completed++; }
+          for (const child of item.content || []) collect(child);
+        };
+        if (rich) collect(rich);
+      }
+      continue;
+    }
+    if (["text", "inlineCode"].includes(node.type) && node.value) text.push(node.value);
     if (node.type === "image" && node.alt) text.push(node.alt);
     if (node.children) for (let index = node.children.length - 1; index >= 0; index -= 1) nodes.push(node.children[index]);
   }
@@ -86,11 +101,11 @@ export function getInternalLinkPreview(target: InternalLinkTarget, ownerId: stri
     const note = getNote(target.id, ownerId);
     if (!note) return null;
     const todos = note.todos || [];
-    return preview(target, noteDisplayTitle(note.title), documentSummary(note.content).description, [
+    return { ...preview(target, noteDisplayTitle(note.title), documentSummary(note.content).description, [
       { label: "Scope", value: note.scope[0].toUpperCase() + note.scope.slice(1) },
       ...(todos.length ? [{ label: "Tasks", value: todos.filter(todo => todo.status === "completed").length + "/" + todos.length + " completed" }] : []),
       { label: "Updated", value: dateLabel(note.updatedAt) },
-    ]);
+    ]), icon: note.icon || null };
   }
   if (target.kind === "automation") {
     const automation = getAutomation(target.id, ownerId, false);

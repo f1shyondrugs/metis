@@ -25,6 +25,13 @@ test("extreme wheel zoom is clamped while preserving its content anchor", () => 
   assert.equal(viewAfterWheel({ x: 0, y: 0, zoom: 1 }, { ...wheel, ctrlKey: true, deltaY: -1e6 }, { x: 100, y: 100 }, 500).zoom, 3);
   assert.equal(viewAfterWheel({ x: 0, y: 0, zoom: 1 }, { ...wheel, ctrlKey: true, deltaY: 1e6 }, { x: 100, y: 100 }, 500).zoom, 0.2);
 });
+test("diagram zoom can fit below the unchanged notebook minimum", () => {
+  const movement = { ...wheel, ctrlKey: true, deltaY: 1000 };
+  const diagram = viewAfterWheel({ x: 0, y: 0, zoom: 1 }, movement, {x:200,y:100}, 400, 0.01);
+  assert.equal(diagram.zoom, 0.01);
+  assert.equal(viewAfterWheel({ x: 0, y: 0, zoom: 1 }, movement, {x:200,y:100}, 400).zoom, 0.2);
+});
+
 test("pinch combines zoom and two-finger translation inside an offset workspace", () => {
   const origin = { x: -40, y: 20, zoom: 1 };
   const start = { midpoint: { clientX: 1050, clientY: 200 }, distance: 100 };

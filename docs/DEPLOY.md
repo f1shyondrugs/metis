@@ -60,6 +60,26 @@ The generic Nginx template is `deploy/nginx/metis-ai.conf.template`. Replace
 `YOUR_DOMAIN` and `YOUR_PORT` for the local deployment; never copy a host's
 systemd unit or Nginx file unchanged to another machine.
 
+## Live note editing
+
+Notebooks use the same authenticated custom server for live editing at
+`/ws/notes`. Forward WebSocket upgrades for this path through
+the existing app proxy. Start with `pnpm start`, not `next start`.
+
+Opening a note joins its live document automatically. Accepted members of its
+shared project can edit together; private notes remain account-only and public
+share links remain read-only. Presence and cursors show current participants.
+Both Blocks and Markdown modes edit the same Yjs document. The server validates
+and atomically stores updates with canonical Markdown in SQLite before broadcasting.
+Local IndexedDB drafts merge after reconnect. External tool/API content replacements
+start a new document generation; stale editors stop and offer draft download and
+reconnect instead of overwriting the replacement. Back up the database, including
+the `note_collaboration` table, to retain live editing history.
+
+File options → Spellcheck selects a browser dictionary language or Off. The
+choice is local to the signed-in account on that browser. Available spelling
+suggestions depend on the browser's installed dictionaries.
+
 ## systemd
 
 Live units (`metis-ai`, `metis-ai-worker`, `metis-ai-mcp`) must **not** be

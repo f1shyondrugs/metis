@@ -5,6 +5,7 @@ import test from "node:test";
 const userText = readFileSync(new URL("../components/rich-user-text.tsx", import.meta.url), "utf8");
 const markdown = readFileSync(new URL("../components/markdown.tsx", import.meta.url), "utf8");
 const editor = readFileSync(new URL("../components/editable-markdown.tsx", import.meta.url), "utf8");
+const sourceEditor = readFileSync(new URL("../components/notes/markdown-source-editor.tsx", import.meta.url), "utf8");
 const blockEditor = readFileSync(new URL("../components/notes/block-editor.tsx", import.meta.url), "utf8");
 const shell = readFileSync(new URL("../components/app-shell.tsx", import.meta.url), "utf8");
 const subagentView = readFileSync(new URL("../components/subagent-chat-view.tsx", import.meta.url), "utf8");
@@ -45,9 +46,9 @@ test("the shared markdown engine supports rendered blocks and editable source", 
   assert.match(blockEditor, /aria-label="Editor mode"/);
   assert.match(blockEditor, /setSourceMode\(false\)/);
   assert.match(blockEditor, /setSourceMode\(true\)/);
-  assert.match(blockEditor, /sourceMode \? <MarkdownSourceEditor value=\{draft\} onChange=\{publish\}/);
-  assert.match(blockEditor, /new EditorView/);
-  assert.match(blockEditor, /callback\.current\(current\.current\)/);
+  assert.match(blockEditor, /sourceMode \? <MarkdownSourceEditor value=\{draft\} onChange=\{publishSource\}/);
+  assert.match(sourceEditor, /new EditorView/);
+  assert.match(sourceEditor, /callback\.current\(current\.current\)/);
 });
 
 test("new chat from shared notes does not reopen the notes route", () => {

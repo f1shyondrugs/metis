@@ -1,4 +1,5 @@
 "use client";
+import { findNotesSection, scrollNotesSection } from "@/lib/notes-section-navigation";
 import { BannerHeader } from "@/components/banner-image";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -6,6 +7,7 @@ import { ChevronDown, ChevronRight, FileText, ListTodo, LockKeyhole, Menu, X } f
 import { Markdown } from "@/components/markdown";
 import { FileEmbed } from "@/components/file-embed";
 import { SharedNotePasswordGate } from "@/components/notes/shared-note-password-gate";
+import { NoteSubfiles } from "@/components/notes/note-subfiles";
 import { NoteIcon } from "@/components/notes/note-icon";
 import { Button } from "@/components/ui/button";
 import { noteDisplayTitle } from "@/lib/notes-tree";
@@ -84,8 +86,8 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
   useEffect(()=>{
     if(!blockTarget||note?.id!==blockTarget.noteId)return;
     const frame=requestAnimationFrame(()=>{
-      const block=document.getElementById("block-"+blockTarget.blockId)||document.getElementById(blockTarget.blockId);
-      block?.scrollIntoView({block:"center"});
+      const block=findNotesSection(document,blockTarget.blockId);
+      if(block)scrollNotesSection(block,"auto");
       setBlockTarget(null);
     });
     return()=>cancelAnimationFrame(frame);
@@ -111,7 +113,7 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
     }
     return visible;
   },[share,expanded]);
-  const publicShare=useMemo(()=>({noteIds:share?.notes.map(note=>note.id)||[],assets:share?.assets||{},onOpenNote:openNote}),[share,openNote]);
+  const publicShare=useMemo(()=>({noteIds:share?.notes.map(note=>note.id)||[],noteIcons:Object.fromEntries((share?.notes||[]).map(note=>[note.id,note.icon||null])),assets:share?.assets||{},onOpenNote:openNote}),[share,openNote]);
   if(locked)return <SharedNotePasswordGate token={token} onUnlocked={next=>{setShare(next);setLocked(false);setError("");}}/>;
   if(!share||!root||!note)return <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center gap-4 px-6 text-center"><FileText className="size-8 text-muted-foreground"/><h1 className="text-xl font-semibold">Shared notes unavailable</h1><p className="text-sm text-muted-foreground">{error||"This link has expired or sharing was stopped."}</p><Button variant="outline" onClick={()=>setRetry(value=>value+1)}>Retry</Button></main>;
   const sharedAssetUrls=new Set(Object.values(share.assets));
@@ -138,18 +140,20 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
         <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><LockKeyhole className="size-3"/>Read only</span>
       </header>
       {error?<div role="alert" className="flex items-center gap-3 border-b border-border px-4 py-2 text-xs text-muted-foreground"><span className="min-w-0 flex-1">{error}</span><Button variant="ghost" size="sm" onClick={()=>setRetry(value=>value+1)}>Retry</Button></div>:null}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-note-page-scroll className="min-h-0 flex-1 overflow-y-auto">
         {coverColor?<div className="h-36 w-full sm:h-48" style={{backgroundColor:coverColor}}/>:null}
         <BannerHeader value={coverUrl} alt="" bannerClassName="h-36 w-full sm:h-48" gapClassName="mt-0" referrerPolicy="no-referrer">
-        <article key={note.id} className={cn("mx-auto px-5 py-8 sm:px-10",note.fullWidth?"max-w-none":"max-w-[920px]")}>
+        <article data-section-navigation-root key={note.id} className={cn("mx-auto px-5 py-8 sm:px-10",note.fullWidth?"max-w-none":"max-w-[920px]")}>
           {note.icon?<NoteIcon value={note.icon} className="mb-4 size-10 text-4xl" />:null}
-          <h1 className="mb-2 break-words text-3xl font-semibold tracking-tight">{title(note)}</h1>
+          <h1 data-note-title className="mb-2 break-words text-3xl font-semibold tracking-tight">{title(note)}</h1>
           <p className="mb-7 text-xs text-muted-foreground">Updated <time dateTime={note.updatedAt}>{note.updatedAt.slice(0,10)}</time></p>
+          <NoteSubfiles notes={share.notes.filter(item => item.parentId === note.id).sort((a,b) => a.sortKey - b.sortKey || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))} onOpenNote={openNote}/>
           {note.asset&&sharedAssetUrls.has(note.asset.url)?<FileEmbed file={note.asset} resizable={false} className="mb-6 rounded-lg border border-border"/>:null}
           {note.todos?.length?<section aria-label="Checklist" className="mb-6 space-y-2 border-b border-border pb-5">
             {note.todos.map(todo=><label key={todo.id} className="flex min-h-8 items-start gap-2 text-sm"><input type="checkbox" checked={todo.status==="completed"} disabled className="mt-1"/><span className={cn("min-w-0 flex-1",todo.status==="completed"&&"text-muted-foreground line-through")}>{todo.content}{todo.status==="in_progress"?<span className="ml-2 text-xs text-muted-foreground">In progress</span>:null}</span></label>)}
           </section>:null}
           {note.content.trim()?<Markdown content={note.content} publicShare={publicShare}/>:!note.asset&&!note.todos?.length?<p className="text-sm text-muted-foreground">This page is empty.</p>:null}
+          <div data-note-anchor-spacer aria-hidden="true"/>
         </article>
         </BannerHeader>
       </div>

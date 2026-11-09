@@ -5,12 +5,18 @@ const nextConfig: NextConfig = {
   // Keep compiler heaps isolated even with the node:sqlite webpack customization.
   experimental: { webpackBuildWorker: true, webpackMemoryOptimizations: true },
   transpilePackages: ["jsxgraph"],
-  serverExternalPackages: ["@cursor/sdk"],
+  // API seeding and the custom WebSocket server must share Yjs constructors.
+  serverExternalPackages: ["@cursor/sdk", "yjs"],
   distDir: process.env.NEXT_DIST_DIR || ".next",
   webpack: (config, { isServer }) => {
     if (isServer) {
       const previous = config.externals;
       config.externals = [
+        // Match the custom server's CJS runtime instead of a second ESM Yjs instance.
+        ({ request }: { request?: string }, callback: (error?: Error | null, result?: string) => void) => {
+          if (request === "yjs") return callback(null, "commonjs yjs");
+          callback();
+        },
         ...(Array.isArray(previous) ? previous : previous ? [previous] : []),
         ({ request }: { request?: string }, callback: (error?: Error | null, result?: string) => void) => {
           if (request === "node:sqlite") return callback(null, "commonjs node:sqlite");

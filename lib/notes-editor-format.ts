@@ -1,3 +1,5 @@
+import { isNoteBlockColor } from "./notes-block-style";
+
 /** Portable, JSON-only schema for rich Markdown block envelopes. */
 export type EditorNode = {
   type: string;
@@ -23,6 +25,7 @@ const supportedMarks = new Set(["bold","italic","strike","code","underline","lin
 function validAttributes(attrs: Record<string, unknown>) {
   return Object.entries(attrs).every(([key, value]) => {
     if (value === null || value === undefined) return true;
+    if (key === "blockColor") return isNoteBlockColor(value);
     if (key === "version") return value === 1;
     if (key === "colwidth") return Array.isArray(value) && value.every((width) => Number.isInteger(width) && Number(width) >= 0);
     if (["level","start","colspan","rowspan"].includes(key)) return typeof value === "number" && Number.isInteger(value) && (key === "level" ? value >= 1 && value <= 6 : key === "start" ? value >= 0 : value >= 1);
@@ -41,14 +44,26 @@ export function validNotesRichNode(value: unknown, depth = 0): value is EditorNo
   if (node.type === "tableOfContents" && node.attrs?.version !== 1) return false;
   if (node.attrs && (typeof node.attrs !== "object" || Array.isArray(node.attrs))) return false;
   if (node.attrs && !validAttributes(node.attrs)) return false;
-  if (node.attrs && Object.keys(node.attrs).some((key) => key !== "blockId" && !NOTES_SOURCE_METADATA.has(key) && !(NOTES_SEMANTIC_ATTRIBUTES[node.type] || []).includes(key))) return false;
+  if (node.attrs && Object.keys(node.attrs).some((key) => key !== "blockId" && key !== "blockColor" && !NOTES_SOURCE_METADATA.has(key) && !(NOTES_SEMANTIC_ATTRIBUTES[node.type] || []).includes(key))) return false;
   if (node.content && (!Array.isArray(node.content) || !node.content.every((child) => validNotesRichNode(child, depth + 1)))) return false;
   if (node.marks && (!Array.isArray(node.marks) || !node.marks.every((mark) => mark && typeof mark === "object" && supportedMarks.has(mark.type) && Object.keys(mark).every((key) => ["type","attrs"].includes(key)) && (!mark.attrs || (typeof mark.attrs === "object" && !Array.isArray(mark.attrs) && validAttributes(mark.attrs) && Object.keys(mark.attrs).every((key) => (NOTES_SEMANTIC_ATTRIBUTES[mark.type] || []).includes(key))))))) return false;
   return true;
 }
+/** Browser-generated link presentation attributes are not part of the stored schema. */
+export function normalizeNotesLinkAttributes(value: unknown, depth = 0): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value) || depth > 50) return value;
+  const node = value as EditorNode;
+  return {
+    ...node,
+    ...(Array.isArray(node.marks) ? {marks: node.marks.map(mark => mark?.type === "link" && mark.attrs
+      ? {...mark,attrs:Object.fromEntries(Object.entries(mark.attrs).filter(([key]) => !["target","rel","class"].includes(key)))}
+      : mark)} : {}),
+    ...(Array.isArray(node.content) ? {content: node.content.map(child => normalizeNotesLinkAttributes(child, depth + 1))} : {}),
+  };
+}
 export function readNotesRichBlock(source: string): EditorNode | null {
   try {
-    const value: unknown = JSON.parse(source);
+    const value = normalizeNotesLinkAttributes(JSON.parse(source));
     return validNotesRichNode(value) && !["text","hardBreak","inlineMath","column"].includes(value.type) ? value : null;
   } catch { return null; }
 }

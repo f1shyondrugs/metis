@@ -12,7 +12,10 @@ type Gesture =
   | { type: "pinch"; origin: NotesView; midpoint: Point; distance: number };
 
 /** Notes-style camera: unbounded panning and anchored zoom, independent of live data updates. */
-export function useInfiniteViewport(contentWidth: number, contentHeight: number, ready: boolean) {
+export function useInfiniteViewport(contentWidth: number, contentHeight: number, ready: boolean, options?: { minimumZoom?: number; fitPadding?: number; maxFitZoom?: number }) {
+  const minimumZoom = options?.minimumZoom ?? 0.2;
+  const fitPadding = options?.fitPadding;
+  const maxFitZoom = options?.maxFitZoom ?? 1.15;
   const viewport = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [view, setView] = useState<NotesView>({ x: 0, y: 0, zoom: 1 });
@@ -29,9 +32,9 @@ export function useInfiniteViewport(contentWidth: number, contentHeight: number,
   }, []);
   const fit = useCallback(() => {
     if (!size.width || !size.height) return;
-    const zoom = Math.max(0.2, Math.min(1.15, (size.width - 24) / contentWidth, (size.height - 100) / contentHeight));
+    const zoom = Math.max(minimumZoom, Math.min(maxFitZoom, Math.max(1, size.width - (fitPadding ?? 24)) / contentWidth, Math.max(1, size.height - (fitPadding ?? 100)) / contentHeight));
     updateView({ zoom, x: (size.width - contentWidth * zoom) / 2, y: (size.height - contentHeight * zoom) / 2 });
-  }, [contentWidth, contentHeight, size.width, size.height, updateView]);
+  }, [contentWidth, contentHeight, size.width, size.height, minimumZoom, fitPadding, maxFitZoom, updateView]);
 
   useEffect(() => {
     const element = viewport.current;
@@ -47,7 +50,7 @@ export function useInfiniteViewport(contentWidth: number, contentHeight: number,
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [ready, updateView]);
+  }, [ready, updateView, minimumZoom]);
 
   useEffect(() => {
     if (!ready) initialized.current = false;
@@ -63,7 +66,7 @@ export function useInfiniteViewport(contentWidth: number, contentHeight: number,
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
       const rect = element.getBoundingClientRect();
-      updateView(view => viewAfterWheel(view, event, { x: event.clientX - rect.left, y: event.clientY - rect.top }, element.clientHeight));
+      updateView(view => viewAfterWheel(view, event, { x: event.clientX - rect.left, y: event.clientY - rect.top }, element.clientHeight, minimumZoom));
     };
     const reset = () => { pointers.current.clear(); gesture.current = null; setPanning(false); };
     element.addEventListener("wheel", wheel, { passive: false });
@@ -75,7 +78,7 @@ export function useInfiniteViewport(contentWidth: number, contentHeight: number,
       document.removeEventListener("visibilitychange", reset);
       reset();
     };
-  }, [ready, updateView]);
+  }, [ready, updateView, minimumZoom]);
 
   const startGesture = () => {
     const points = [...pointers.current.values()];
@@ -95,7 +98,7 @@ export function useInfiniteViewport(contentWidth: number, contentHeight: number,
 
   return {
     viewport, view, size, updateView, fit, panning,
-    zoom: (factor: number) => updateView(view => viewAfterZoom(view, size.width / 2, size.height / 2, view.zoom * factor)),
+    zoom: (factor: number) => updateView(view => viewAfterZoom(view, size.width / 2, size.height / 2, view.zoom * factor, minimumZoom)),
     pointerHandlers: {
       onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
         if (event.button !== 0 || (event.target as Element).closest("button")) return;
@@ -109,7 +112,7 @@ export function useInfiniteViewport(contentWidth: number, contentHeight: number,
         const active = gesture.current;
         const points = [...pointers.current.values()];
         if (active?.type === "pinch" && points.length >= 2) {
-          updateView(viewAfterPinch(active.origin, active, points[0], points[1], event.currentTarget.getBoundingClientRect()));
+          updateView(viewAfterPinch(active.origin, active, points[0], points[1], event.currentTarget.getBoundingClientRect(), minimumZoom));
         } else if (active?.type === "pan" && points.length === 1) {
           updateView({ ...active.origin, x: active.origin.x + points[0].clientX - active.point.clientX, y: active.origin.y + points[0].clientY - active.point.clientY });
         }

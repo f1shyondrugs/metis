@@ -1,5 +1,6 @@
 import { getAuthenticatedUserId } from "@/lib/auth";
 import { getInternalLinkPreview } from "@/lib/internal-link-preview.server";
+import { getNote } from "@/lib/shared-context";
 import type { InternalLinkKind } from "@/lib/internal-link";
 
 export const runtime = "nodejs";
@@ -18,6 +19,11 @@ export async function GET(req: Request) {
       !id || id.length > 200 || /[\u0000-\u001f\u007f/\\]/.test(id) ||
       (chatId !== undefined && (!chatId || chatId.length > 200 || /[\u0000-\u001f\u007f/\\]/.test(chatId)))) {
     return Response.json({ error: "A valid kind and id are required" }, { status: 400, headers });
+  }
+  if (params.get("view") === "icon" && kind === "note") {
+    const note = getNote(id, ownerId);
+    return note ? Response.json({ icon: note.icon || null }, { headers })
+      : Response.json({ error: "Preview not found" }, { status: 404, headers });
   }
   const result = getInternalLinkPreview({ kind: kind as InternalLinkKind, id }, ownerId, chatId);
   return result

@@ -68,6 +68,14 @@ export function fitMermaidSvg(svg: string) {
   });
 }
 
+/** Natural SVG dimensions keep large diagrams zoomable instead of shrinking their content. */
+export function mermaidSvgDimensions(svg: string) {
+  const root = /^\s*<svg\b[^>]*>/i.exec(svg)?.[0];
+  const box = root?.match(/\sviewBox=["']([^"']+)["']/i)?.[1].trim().split(/[\s,]+/).map(Number);
+  return box?.length === 4 && box.every(Number.isFinite) && box[2] > 0 && box[3] > 0
+    ? { width: box[2], height: box[3] } : null;
+}
+
 export function wrapBareMermaid(content: string) {
   const parts = content.split(/(```[\s\S]*?```)/g);
   return parts
