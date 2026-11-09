@@ -300,6 +300,17 @@ export function getDatabase(): DatabaseSync {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS deleted_chats (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      project_id TEXT,
+      title TEXT NOT NULL,
+      data TEXT NOT NULL,
+      related_data TEXT NOT NULL DEFAULT '{}',
+      deleted_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS deleted_chats_owner ON deleted_chats(owner_id, deleted_at DESC);
+    CREATE INDEX IF NOT EXISTS deleted_chats_project ON deleted_chats(project_id, deleted_at DESC);
     ${CHAT_PAGE_SCHEMA}
     ${CHAT_SEARCH_SCHEMA}
     CREATE INDEX IF NOT EXISTS chats_owner_updated ON chats(owner_id, updated_at DESC);

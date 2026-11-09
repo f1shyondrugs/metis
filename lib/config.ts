@@ -1,3 +1,4 @@
+import { productName } from "@/lib/product-name";
 import os from "node:os";
 import path from "node:path";
 import { isDockerEnv, rewriteDockerServiceUrl } from "@/lib/docker-urls.mjs";
@@ -35,7 +36,7 @@ function internalUrl(name: string, route: string) {
 }
 
 export const config = {
-  appName: env("APP_NAME") || "Metis AI",
+  appName: productName(env("APP_NAME")),
   appDescription: env("APP_DESCRIPTION") || "A private, configurable AI agent workspace.",
   chatUsername: env("CHAT_USERNAME") || "admin",
   agentCwd,

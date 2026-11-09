@@ -81,7 +81,7 @@ export class CodexAppServer {
 
   async initialize() {
     await this.request("initialize", {
-      clientInfo: { name: "metis-ai", title: "Metis AI", version: "1.0.0" },
+      clientInfo: { name: "metis-ai", title: "Metis", version: "1.0.0" },
       capabilities: { experimentalApi: true },
     });
     this.child.stdin.write(JSON.stringify({ method: "initialized" }) + "\n");
