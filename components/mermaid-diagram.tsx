@@ -3,11 +3,12 @@
 import dynamic from "next/dynamic";
 import type { ComponentProps } from "react";
 import { useEscapeDismiss } from "@/components/use-escape-dismiss";
-import { useEffect, useId, useRef, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Fullscreen, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fitMermaidSvg, isMermaidErrorSvg, prepareMermaidSource } from "@/lib/mermaid";
+import {EmbeddedSourceControlsContext} from "@/components/embedded-source-controls";
 import { publicMermaidSource, publicMermaidSvg } from "@/lib/public-mermaid";
 import { MermaidViewport } from "@/components/mermaid-viewport";
 import type { MarkdownSourceEditor as SourceEditorComponent } from "@/components/notes/markdown-source-editor";
@@ -22,8 +23,11 @@ export function MermaidDiagram({ code, language, publicShare = false, readOnly =
 }) {
   const reactId = useId().replace(/:/g, "");
   const root = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<"interface" | "code">("interface");
+  const externalSourceControls = useContext(EmbeddedSourceControlsContext);
+  const [preferredMode, setMode] = useState<"interface" | "code">("interface");
   const [fullscreen, setFullscreen] = useState(false);
+  const mode = externalSourceControls && !fullscreen ? "interface" : preferredMode;
+  useEffect(() => { if (externalSourceControls && !fullscreen) setMode("interface"); }, [externalSourceControls, fullscreen]);
   const [source, setSource] = useState(code);
   const [svg, setSvg] = useState("");
   const [error, setError] = useState("");
@@ -65,8 +69,8 @@ export function MermaidDiagram({ code, language, publicShare = false, readOnly =
     })));
   };
   const toolbar = <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border/40 bg-background/80 p-1.5 text-xs">
-    <button type="button" aria-pressed={mode === "code"} className={cn("min-h-8 rounded px-2", mode === "code" ? "bg-muted" : "text-muted-foreground hover:text-foreground")} onClick={() => setMode("code")}>Code</button>
-    <button type="button" aria-pressed={mode === "interface"} className={cn("min-h-8 rounded px-2", mode === "interface" ? "bg-muted" : "text-muted-foreground hover:text-foreground")} onClick={() => setMode("interface")}>Interface</button>
+    {(!externalSourceControls || fullscreen) && <><button type="button" aria-pressed={mode === "code"} className={cn("min-h-8 rounded px-2", mode === "code" ? "bg-muted" : "text-muted-foreground hover:text-foreground")} onClick={() => setMode("code")}>Code</button>
+    <button type="button" aria-pressed={mode === "interface"} className={cn("min-h-8 rounded px-2", mode === "interface" ? "bg-muted" : "text-muted-foreground hover:text-foreground")} onClick={() => setMode("interface")}>Interface</button></>}
     <button type="button" className="flex size-8 items-center justify-center rounded text-muted-foreground hover:bg-muted"
       aria-label={fullscreen ? "Exit fullscreen" : "Open flowchart fullscreen"} onClick={() => setFullscreen(current => !current)}>
       {fullscreen ? <Minimize2 className="size-4"/> : <Fullscreen className="size-4"/>}
@@ -78,7 +82,7 @@ export function MermaidDiagram({ code, language, publicShare = false, readOnly =
       ariaLabel="Mermaid source" placeholderText="Write Mermaid…" onExceeded={() => setError("Diagram source is full. Remove some content before adding more.")}
       onFiles={async () => {}} />
   </div> : loading ? <div role="status" className="flex min-h-56 flex-1 items-center justify-center text-sm text-muted-foreground">Rendering diagram…</div>
-    : error ? <div role="status" className="min-h-40 flex-1 p-4 text-sm text-muted-foreground"><p>{error}</p><button type="button" className="mt-3 underline" onClick={() => setMode("code")}>Open source</button></div>
+    : error ? <div role="status" className="min-h-40 flex-1 p-4 text-sm text-muted-foreground"><p>{externalSourceControls && !fullscreen ? error.replace("Switch to Code to edit it.", "Use Edit source above to edit it.") : error}</p>{(!externalSourceControls || fullscreen) && <button type="button" className="mt-3 underline" onClick={() => setMode("code")}>Open source</button>}</div>
     : <MermaidViewport svg={svg} fullscreen={fullscreen}/>;
   const card = <div data-editor-control="mermaid" data-mermaid-source={source} contentEditable={false}
     className={cn("relative flex min-h-0 max-w-full flex-col overflow-hidden rounded-lg border border-border/40 bg-background", fullscreen ? "h-full w-full" : "my-2")}>
