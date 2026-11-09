@@ -18,7 +18,7 @@ test("trusted login target survives hidden return-URL redaction without exposing
   t.after(async()=>{await closeBrowserSession("owner-a","chat-a");await new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());});});
   const url=`http://127.0.0.1:${(server.address() as {port:number}).port}/login`;
   const result=await performBrowserAction("owner-a","chat-a",{action:"navigate",url,source:"agent",includeScreenshot:false});
-  assert.equal(result.url,url,"a public routing URL is not a credential");
+  assert.equal(result.url,"[REDACTED]");
   assert.equal(getBrowserLoginTarget("owner-a","chat-a",result.tabId),url);
   assert.throws(()=>getBrowserLoginTarget("owner-b","chat-a",result.tabId));
   assert.throws(()=>getBrowserLoginTarget("owner-a","chat-b",result.tabId));

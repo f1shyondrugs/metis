@@ -528,22 +528,26 @@ async function waitForLocatorAcrossFrames(
 import {BROWSER_CREDENTIAL_SELECTOR,screenshotFieldMasks} from "./browser-screenshot-policy";
 import {browserInputSecrets,retainBrowserSecrets} from "./browser-secure-input";
 export {BROWSER_CREDENTIAL_SELECTOR} from "./browser-screenshot-policy";
-// Hidden fields stay write-only in form results; public routing values must not
-// replace unrelated text, URLs or CSS selectors throughout the entire page.
-export const BROWSER_SENSITIVE_SELECTOR = BROWSER_CREDENTIAL_SELECTOR;
+// Preserve hidden-token redaction in DOM results. Only actual credential fields
+// join the screenshot history; public hidden routing flags are not visible pixels.
+export const BROWSER_SENSITIVE_SELECTOR = BROWSER_CREDENTIAL_SELECTOR + ', input[type="hidden"]';
 
 async function redactBrowserText(page: Page, text: string) {
   return (await browserTextRedactor(page))(text);
 }
 
 async function browserTextRedactor(page: Page) {
-  const secrets:string[]=[];
+  const secrets:string[]=[],credentials:string[]=[];
   for (const frame of page.frames()) {
     try {
-      secrets.push(...await frame.locator(BROWSER_SENSITIVE_SELECTOR).evaluateAll(elements=>elements.map(el=>(el as HTMLInputElement).value).filter(Boolean)));
+      const values=await frame.locator(BROWSER_SENSITIVE_SELECTOR).evaluateAll((elements,selector)=>({
+        all:elements.map(el=>"value" in el?String((el as HTMLInputElement).value||""):el.textContent||"").filter(Boolean),
+        credentials:elements.filter(el=>el.matches(selector)).map(el=>"value" in el?String((el as HTMLInputElement).value||""):el.textContent||"").filter(Boolean),
+      }),BROWSER_CREDENTIAL_SELECTOR);
+      secrets.push(...values.all);credentials.push(...values.credentials);
     } catch { throw new Error('Browser content unavailable'); }
   }
-  retainBrowserSecrets(page,secrets);
+  retainBrowserSecrets(page,credentials);
   return (text:string)=>[...new Set([...browserInputSecrets(page),...secrets])].sort((a,b)=>b.length-a.length).reduce((clean,secret)=>clean.split(secret).join('[REDACTED]'),text);
 }
 
@@ -596,7 +600,7 @@ export const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
   const elements = Array.from(document.querySelectorAll(
     'input, textarea, select, button, a[href], [role="radio"], [role="checkbox"], [role="button"], [contenteditable="true"], [draggable="true"], [tabindex]:not([tabindex="-1"])'
   )).slice(0, 500);
-  const sensitive = (element) => element.matches(${JSON.stringify(BROWSER_CREDENTIAL_SELECTOR)});
+  const sensitive = (element) => element.type === "hidden" || element.matches(${JSON.stringify(BROWSER_CREDENTIAL_SELECTOR)});
   // Inspect every input, even when the interactive control list is truncated.
   const secrets = Array.from(document.querySelectorAll('input, textarea')).filter(sensitive).map(element => String(element.value || '')).filter(Boolean);
   const redact = (text) => secrets.reduce((result, secret) => result.split(secret).join('[REDACTED]'), text);
