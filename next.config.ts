@@ -12,6 +12,11 @@ const nextConfig: NextConfig = {
     if (isServer) {
       const previous = config.externals;
       config.externals = [
+        // Match the custom server's CJS runtime instead of a second ESM Yjs instance.
+        ({ request }: { request?: string }, callback: (error?: Error | null, result?: string) => void) => {
+          if (request === "yjs") return callback(null, "commonjs yjs");
+          callback();
+        },
         ...(Array.isArray(previous) ? previous : previous ? [previous] : []),
         ({ request }: { request?: string }, callback: (error?: Error | null, result?: string) => void) => {
           if (request === "node:sqlite") return callback(null, "commonjs node:sqlite");
