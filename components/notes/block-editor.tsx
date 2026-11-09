@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useId, type ReactNode, type PointerEventHandler } from "react";
 import { createPortal } from "react-dom";
+import {EmbeddedSourceControlsContext} from "@/components/embedded-source-controls";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
 import { type Editor, type JSONContent } from "@tiptap/core";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
@@ -94,7 +95,7 @@ function SourceBlockView({ node, updateAttributes, selected, editor }: NodeViewP
       <button type="button" disabled={!editor.isEditable} onClick={() => setEditing(!editing)}>{editing ? "Preview" : "Edit source"}</button>
     </div>
     {editing ? <textarea aria-label="Block Markdown source" readOnly={!editor.isEditable} value={String(node.attrs.source || "")} onChange={(event) => updateAttributes({ source: event.target.value })} rows={Math.min(18, Math.max(4, String(node.attrs.source).split("\n").length))} spellCheck={false} /> :
-      <div contentEditable={false} className="notes-source-preview"><Markdown content={String(node.attrs.source || "")} editableFiles={editor.isEditable} /></div>}
+      <div contentEditable={false} className="notes-source-preview"><EmbeddedSourceControlsContext.Provider value><Markdown content={String(node.attrs.source || "")} editableFiles={editor.isEditable} /></EmbeddedSourceControlsContext.Provider></div>}
   </NodeViewWrapper>;
 }
 function MathView({ node, updateAttributes, selected, editor }: NodeViewProps) {

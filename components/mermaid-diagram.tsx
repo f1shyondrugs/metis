@@ -2,11 +2,12 @@
 
 import { useEscapeDismiss } from "@/components/use-escape-dismiss";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Code2, Fullscreen, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fitMermaidSvg, isMermaidErrorSvg, prepareMermaidSource } from "@/lib/mermaid";
+import {EmbeddedSourceControlsContext} from "@/components/embedded-source-controls";
 import { publicMermaidSource, publicMermaidSvg } from "@/lib/public-mermaid";
 
 type View = { x: number; y: number; zoom: number };
@@ -21,8 +22,11 @@ export function MermaidDiagram({
   publicShare?: boolean;
 }) {
   const reactId = useId().replace(/:/g, "");
-  const [mode, setMode] = useState<"interface" | "code">("interface");
+  const externalSourceControls=useContext(EmbeddedSourceControlsContext);
+  const [preferredMode, setMode] = useState<"interface" | "code">("interface");
   const [fullscreen, setFullscreen] = useState(false);
+  const mode=externalSourceControls&&!fullscreen?"interface":preferredMode;
+  useEffect(()=>{if(externalSourceControls&&!fullscreen)setMode("interface");},[externalSourceControls,fullscreen]);
   const [svg, setSvg] = useState("");
   const [error, setError] = useState("");
   const [view, setView] = useState<View>({ x: 0, y: 0, zoom: 1 });
@@ -115,7 +119,7 @@ export function MermaidDiagram({
 
   const toolbar = (
     <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md border border-border/50 bg-background/90 p-0.5 text-[11px] backdrop-blur">
-      <button
+      {!externalSourceControls && <><button
         type="button"
         className={cn("rounded px-1.5 py-0.5", mode === "code" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
         onClick={() => setMode("code")}
@@ -128,7 +132,7 @@ export function MermaidDiagram({
         onClick={() => setMode("interface")}
       >
         Interface
-      </button>
+      </button></>}
       <button
         type="button"
         className="rounded p-1 text-muted-foreground hover:text-foreground"
@@ -150,7 +154,7 @@ export function MermaidDiagram({
     </pre>
   ) : error ? (
     <div className="px-3 py-2 pr-28 text-xs text-muted-foreground" data-mermaid-source={code}>
-      {error}
+      {externalSourceControls ? error.replace("Switch to Code to edit it.", "Use Edit source above to edit it.") : error}
     </div>
   ) : (
     <div
