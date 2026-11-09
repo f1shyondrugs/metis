@@ -111,5 +111,9 @@ test("passive desktop API, compatible clients and live activity preserve account
     assert.match(desktopUnavailableReason(offline)!, /offline/);
     assert.equal(chooseDesktopClient([offline], client.id)?.id, client.id, "offline selections remain visible");
     assert.equal(chooseDesktopClient([], null), null);
+    const online = { ...offline, status: "online" as const };
+    assert.equal(chooseDesktopClient([online, offline], null), null, "opening Desktops must wait for a user choice");
+    assert.equal(chooseDesktopClient([online], "removed-device"), null, "a missing choice must not fall back to a different desktop");
+    assert.equal(chooseDesktopClient([online], online.id)?.id, online.id, "an explicit online choice opens that desktop");
   } finally { socket.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
 });

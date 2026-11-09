@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoaderCircle, Monitor, Pause, Play, RefreshCw, Settings2, Upload } from "lucide-react";
+import { ArrowLeft, ChevronRight, LoaderCircle, Monitor, Pause, Play, RefreshCw, Settings2, Upload } from "lucide-react";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { startUpload } from "@/lib/background-uploads";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ async function responseError(response: Response, fallback: string) {
   return typeof data?.error === "string" ? data.error : fallback;
 }
 
-export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, activityTimestamp, onOpenDevices }: {
+export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, onOpenDevices }: {
   active: boolean; agentClientId?: string | null; agentActive?: boolean; activityTimestamp?: number; onOpenDevices: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,9 +56,11 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
     return () => { disposed = true; clearTimeout(timer); controller?.abort(); document.removeEventListener("visibilitychange", visibility); };
   }, [active, retry]);
 
-  // Follow only a new, running desktop tool; choosing another device stays possible afterwards.
-  useEffect(() => { if (agentClientId) { setSelectedId(agentClientId); setPaused(false); } }, [agentClientId, activityTimestamp]);
-  const selected = chooseDesktopClient(clients, selectedId);
+  // Reopening starts at the chooser; a removed device must never select another one.
+  useEffect(() => {
+    if (!active || (selectedId && !loading && !inventoryError && !clients.some(client => client.id === selectedId))) setSelectedId(null);
+  }, [active, clients, inventoryError, loading, selectedId]);
+  const selected = active ? chooseDesktopClient(clients, selectedId) : null;
   const unavailable = selected ? desktopUnavailableReason(selected) : null;
   const deviceId = selected?.id ?? null;
   const { monitors, monitor, monitorId, ready: monitorReady, selectionSupported, error: monitorError, reason: monitorReason, selectMonitor } =
@@ -85,13 +87,52 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
   }
 
   const error = inventoryError || unavailable || monitorError;
+  if (!selected) return <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex shrink-0 items-center gap-2">
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm font-medium">Choose a device</h3>
+        <p className="mt-1 text-xs text-muted-foreground">Select a Remote Device to view its desktop.</p>
+      </div>
+      <Button size="icon-sm" variant="ghost" className="size-11 shrink-0" aria-label="Refresh remote desktops" onClick={refresh}><RefreshCw className="size-4" /></Button>
+      <Button size="icon-sm" variant="ghost" className="size-11 shrink-0" aria-label="Manage Remote Devices" onClick={onOpenDevices}><Settings2 className="size-4" /></Button>
+    </div>
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {inventoryError ? <div className="space-y-3 p-6 text-center">
+        <p className="text-sm text-destructive" role="alert">{inventoryError}</p>
+        <Button size="sm" variant="outline" onClick={refresh}>Try again</Button>
+      </div> : loading ? <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground" role="status">
+        <LoaderCircle className="size-4 animate-spin" />Loading Remote Devices…
+      </div> : clients.length ? <ul className="space-y-2" aria-label="Remote Devices">
+        {clients.map(client => <li key={client.id}><button type="button"
+          className="flex min-h-16 w-full items-center gap-3 rounded-md border border-border/50 px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring"
+          onClick={() => { setSelectedId(client.id); setPaused(false); }}>
+          <Monitor className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium" title={client.name || client.hostname || client.id}>{client.name || client.hostname || client.id}</span>
+            {(client.hostname || client.os) && <span className="mt-1 block truncate text-xs text-muted-foreground">{[client.hostname, client.os].filter(Boolean).join(" · ")}</span>}
+            {agentActive && agentClientId === client.id && client.status === "online" && <span className="mt-1 block text-xs text-muted-foreground">Agent is using this device</span>}
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span aria-hidden="true" className={"size-2 rounded-full " + (client.status === "online" ? "bg-emerald-500" : client.status === "revoked" ? "bg-amber-500" : "bg-muted-foreground/50")} />
+            {client.status === "online" ? "Online" : client.status === "revoked" ? "Revoked" : "Offline"}
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </button></li>)}
+      </ul> : <div className="space-y-3 p-6 text-center">
+        <Monitor className="mx-auto size-8 text-muted-foreground" aria-hidden="true" />
+        <p className="text-sm">No Remote Devices</p>
+        <p className="mx-auto max-w-xs text-xs text-muted-foreground">Add a Remote Client to view its desktop here.</p>
+        <Button size="sm" variant="outline" onClick={onOpenDevices}>Add Remote Device</Button>
+      </div>}
+    </div>
+  </div>;
   return <FileDropZone className="relative flex min-h-0 flex-1 flex-col gap-2" enabled={Boolean(transferReady)}
     title={"Drop files onto " + (selected?.name || "this desktop")} detail="Files are saved in this device’s Desktop folder." onFiles={uploadFiles}>
     <input ref={fileInputRef} type="file" multiple className="hidden" aria-label="Upload files to remote desktop" onChange={event => {
       if (event.target.files?.length) uploadFiles(event.target.files); event.target.value = "";
     }} />
     <div className="flex shrink-0 flex-wrap items-center gap-2">
-      <Monitor className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <Button size="icon-sm" variant="ghost" className="size-11 shrink-0" aria-label="Back to devices" onClick={() => setSelectedId(null)}><ArrowLeft className="size-4" /></Button>
       <select aria-label="Select remote desktop" value={deviceId || ""} disabled={loading || clients.length === 0}
         onChange={event => { setSelectedId(event.target.value); setPaused(false); }}
         className="h-9 min-w-0 flex-1 rounded-md border border-border/50 bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-ring">
@@ -128,11 +169,6 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, act
       {error ? <div className="max-w-sm space-y-3 p-6 text-center">
         <p className={inventoryError || monitorError ? "text-sm text-destructive" : "text-sm text-muted-foreground"} role={inventoryError || monitorError ? "alert" : "status"}>{error}</p>
         {inventoryError || monitorError ? <Button size="sm" variant="outline" onClick={refresh}>Try again</Button> : null}
-      </div> : !loading && !selected ? <div className="space-y-3 p-6 text-center">
-        <Monitor className="mx-auto size-8 text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm">No Remote Devices connected</p>
-        <p className="max-w-xs text-xs text-muted-foreground">Add a Remote Client to view its desktop here.</p>
-        <Button size="sm" variant="outline" onClick={onOpenDevices}>Add Remote Device</Button>
       </div> : loading || !monitorReady ? <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground" role="status">
         <LoaderCircle className="size-4 animate-spin" />{loading ? "Loading Remote Devices…" : "Loading monitors…"}
       </div> : layout ? <div className="relative max-h-full max-w-full" aria-label="All displays" data-layout={layout.mode}
