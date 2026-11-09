@@ -256,6 +256,31 @@ test("gateway issue tools use the actual bearer, run lease, actor identity and e
   assert.equal(pageResult.noteLink,"note://"+page.id);
   assert.equal(pageResult.markdown,"[Gateway parent page](note://"+page.id+")");
   assert.equal(page.projectId,projectId);assert.equal(page.sortKey,4096);assert.equal(page.fullWidth,true);assert.equal(page.favorite,true);assert.equal(page.icon,"📓");
+  assert.equal(page.cover,"https://example.com/cover.png");
+  // Exercise appearance through the actual gateway, leased API and persisted note,
+  // including structured icons and banner framing rather than only schema presence.
+  const icon="lucide:book-open:#22c55e";
+  const cover="https://example.com/banner.png#metis-image=fit;banner=fade";
+  const appearance=parse(await call("create_note",{title:"Styled agent page",icon,cover,idempotencyKey:"gateway-appearance-create"})).note;
+  assert.equal(appearance.icon,icon);assert.equal(appearance.cover,cover);
+  assert.equal(appearance.projectId,projectId);assert.equal(appearance.author,"agent");
+  const stored=modules[2].getNote(appearance.id,owner)!;
+  assert.equal(stored.icon,icon);assert.equal(stored.cover,cover);
+  assert.equal(modules[2].getNote(appearance.id,stranger),null);
+  const disk=new DatabaseSync(path.join(root,"issues.sqlite"));
+  try {
+    const row=disk.prepare("SELECT data FROM notes WHERE id=?").get(appearance.id) as {data:string};
+    assert.equal(JSON.parse(row.data).icon,icon);assert.equal(JSON.parse(row.data).cover,cover);
+  } finally {disk.close();}
+  const retry=parse(await call("create_note",{title:"Do not replace",icon:"❌",cover:null,idempotencyKey:"gateway-appearance-create"})).note;
+  assert.equal(retry.id,appearance.id);assert.equal(retry.icon,icon);assert.equal(retry.cover,cover);
+  const textEdit=parse(await call("update_note",{id:appearance.id,content:"Keep appearance",version:appearance.version,idempotencyKey:"gateway-appearance-text"})).note;
+  assert.equal(textEdit.icon,icon);assert.equal(textEdit.cover,cover);
+  const removed=parse(await call("update_note",{id:appearance.id,icon:null,cover:null,version:textEdit.version,idempotencyKey:"gateway-appearance-clear"})).note;
+  assert.equal(removed.icon,null);assert.equal(removed.cover,null);
+  assert.equal(removed.content,"Keep appearance");
+  assert.equal((await call("create_note",{icon:{name:"book-open"},cover,idempotencyKey:"gateway-appearance-invalid-icon"})).isError,true);
+  assert.equal((await call("create_note",{icon,cover:42,idempotencyKey:"gateway-appearance-invalid-cover"})).isError,true);
   const child=parse(await call("create_note",{title:"Gateway child page",projectId,parentId:page.id,sortKey:512,scope:"global",idempotencyKey:"gateway-child-create"})).note;
   assert.equal(child.parentId,page.id);
   const updatedPageResult=parse(await call("update_note",{id:child.id,parentId:null,sortKey:2048,icon:"📝",cover:null,fullWidth:false,favorite:false,version:child.version,idempotencyKey:"gateway-page-update"}));
