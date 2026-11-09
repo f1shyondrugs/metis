@@ -35,15 +35,15 @@ test("device themes use the authenticated owner, support custom aliases, and sen
     heartbeat();
     assert.equal(sent.at(-1)!.appearance,undefined,"Legacy clients retain the old heartbeat shape");
     heartbeat({appearance:true,ownerId:other.id});
-    assert.equal(sent.at(-1)!.appearance.variables["--primary"],"#88c0d0");
+    assert.equal(sent.at(-1)!.appearance!.variables["--primary"],"#88c0d0");
     assert.equal(JSON.stringify(sent.at(-1)).includes("Private custom"),false);
     heartbeat({appearance:true});
     assert.equal(sent.at(-1)!.appearance,undefined);
     settings.saveAppearanceSettings(owner.id,custom,1);
     heartbeat({appearance:true});
-    assert.equal(sent.at(-1)!.appearance.mode,"light");
-    assert.equal(sent.at(-1)!.appearance.variables["--brand"],"#685139");
-    assert.equal(sent.at(-1)!.appearance.variables["--primary"],"var(--brand)");
-    assert.equal(sent.at(-1)!.appearance.customThemes,undefined);
+    assert.equal(sent.at(-1)!.appearance!.mode,"light");
+    assert.equal(sent.at(-1)!.appearance!.variables["--brand"],"#685139");
+    assert.equal(sent.at(-1)!.appearance!.variables["--primary"],"var(--brand)");
+    assert.equal(sent.at(-1)!.appearance!.customThemes,undefined);
   } finally {socket.close();}
 });
