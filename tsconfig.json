@@ -41,6 +41,7 @@
     ".next",
     ".next-*/**",
     "tmp",
+    "output",
     "docs/security-audit-2026-10-08-evidence"
   ]
 }
