@@ -80,7 +80,7 @@ test("Screenshot pixels: normal text stays readable, native password dots stay u
  const page=await browser.newPage({viewport:{width:700,height:420}});
  await page.setContent('<h1>Public form</h1><input id="search" value="Alpha text"><textarea id="notes">Public notes</textarea><div contenteditable="true">Editable text</div><input type="hidden" name="skin" value="1">');
  const first=await screenshotPage(page,{type:"png"});
- await page.locator("#search").fill("Other text");
+ await page.locator("#search").fill("Other text");await page.locator("#search").evaluate(el=>el.blur());
  assert.notDeepEqual(await screenshotPage(page,{type:"png"}),first,"ordinary input text must change the visible image");
  const form=await collectFormState(page);assert.equal(form.controls.find(c=>c.id==="search").value,"Other text");
  assert.equal(form.controls.find(c=>c.name==="skin").value,"[REDACTED]");
@@ -91,7 +91,7 @@ test("Screenshot pixels: normal text stays readable, native password dots stay u
  await page.setContent('<h1>Revealed password</h1><input type="text" name="password" value="ABCD1234">');
  const plain=await page.screenshot({type:"png"}),masked=await screenshotPage(page,{type:"png"});
  assert.notDeepEqual(masked,plain);
- await page.locator("input").fill("WXYZ5678");
+ await page.locator("input").fill("WXYZ5678");await page.locator("input").evaluate(el=>el.blur());
  assert.deepEqual(await screenshotPage(page,{type:"png"}),masked,"revealed secrets never change the masked pixels");
  await page.setContent('<div id="shadow"></div>');
  await page.locator("#shadow").evaluate(el=>{el.attachShadow({mode:"open"}).innerHTML='<input type="text" name="password" value="SHADOW-TEST-9842"><span>SHADOW-TEST-9842</span>';});

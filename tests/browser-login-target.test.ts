@@ -39,7 +39,7 @@ test("the trusted SSO context retains only the last explicitly opened HTTPS entr
  t.after(async()=>{for(const context of contexts)await context.close();});
  const initial=await performBrowserAction("entry-owner","entry-chat",{action:"select_tab",includeScreenshot:false});
  await pages[0].route("**/*",route=>route.request().url().startsWith("https://entry.test")?
-  route.fulfill({contentType:"text/html",body:'<script>location.href="https://login.test/?url=https%3A%2F%2Frelay.test%2F"</script>'}):
+  route.fulfill({contentType:"text/html",body:'<script>setTimeout(()=>location.href="https://login.test/?url=https%3A%2F%2Frelay.test%2F",50)</script>'}):
   route.fulfill({contentType:"text/html",body:"<form><input type=password></form>"}));
  await performBrowserAction("entry-owner","entry-chat",{action:"navigate",url:"https://entry.test/start",includeScreenshot:false});
  await pages[0].waitForURL("https://login.test/**");
