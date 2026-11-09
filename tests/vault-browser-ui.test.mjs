@@ -65,7 +65,7 @@ test("Vault UI: add, safe errors, retry, duplicate protection, cancellation and 
   await dialog.getByLabel("Login website").fill("https://example.test/login");
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   const bounds=await dialog.boundingBox();assert(bounds.x>=0&&bounds.x+bounds.width<=width+1);
-  await page.screenshot({path:path.join(artifacts,"vault-add-"+width+".png")});
+  await page.screenshot({path:path.join(artifacts,"vault-add-"+width+".png"),animations:"disabled"});
   await dialog.getByRole("button",{name:"Cancel",exact:true}).click();
  }
  assert(!await page.evaluate(value=>JSON.stringify([localStorage,sessionStorage]).includes(value),secret));

@@ -23,14 +23,16 @@ export async function screenshotFieldMasks(page:Page):Promise<Locator[]>{
    const variants=[...new Set(values.flatMap(browserSecretRepresentations))];
    for(const frame of frames){
     const reflected=await frame.locator("body").evaluate((body,{selector,variants})=>{
-      const text:string[]=[];
-      const visit=(node:Node)=>{
-        if(node.nodeType===Node.TEXT_NODE){text.push(node.textContent||"");return;}
-        if(node instanceof Element&&node.matches("script,style,template,noscript,"+selector))return;
-        for(const child of node.childNodes)visit(child);
-        if(node instanceof Element&&node.shadowRoot)visit(node.shadowRoot);
-      };
-      visit(body);
+      const text:string[]=[],pending:Node[]=[body];
+      // Keep this callback self-contained when TypeScript is serialized to Chromium.
+      while(pending.length){
+        const node=pending.pop()!;
+        if(node.nodeType===Node.TEXT_NODE){text.push(node.textContent||"");continue;}
+        if(node instanceof Element&&node.matches("script,style,template,noscript,"+selector))continue;
+        const children:Node[]=Array.from(node.childNodes);
+        if(node instanceof Element&&node.shadowRoot)children.push(node.shadowRoot);
+        pending.push(...children.reverse());
+      }
       const content=text.join("");
       return variants.some(value=>content.includes(value));
     },{selector:BROWSER_CREDENTIAL_SELECTOR,variants});
