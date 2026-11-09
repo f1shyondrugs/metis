@@ -41,7 +41,7 @@ function githubFetcher(init?: { api?: unknown; files?: Record<string, Response> 
 }
 
 test("Windows client files come from public GitHub releases", () => {
-  assert.equal(WINDOWS_INSTALLER_URL, "https://github.com/f1shyondrugs/metis-remote-client/releases/latest/download/Metis-AI-Remote-Client-Setup.exe");
+  assert.equal(WINDOWS_INSTALLER_URL, "https://github.com/f1shyondrugs/Metis-Apps/releases/latest/download/Metis-AI-Remote-Client-Setup.exe");
   assert.equal(windowsReleaseUrl(WINDOWS_UPDATE_METADATA), WINDOWS_RELEASE_BASE + "latest.yml");
   assert.equal(windowsReleaseUrl("../secret"), null);
 });
@@ -50,16 +50,16 @@ test("Devices downloads use the GitHub latest release tag for every platform", a
   const { fetcher, requested } = githubFetcher();
   assert.equal(
     await latestWindowsInstallerUrl(fetcher),
-    "https://github.com/f1shyondrugs/metis-remote-client/releases/download/v1.4.2/Metis-AI-Remote-Client-Setup.exe",
+    "https://github.com/f1shyondrugs/Metis-Apps/releases/download/v1.4.2/Metis-AI-Remote-Client-Setup.exe",
   );
   assert.deepEqual(await remoteDesktopDownloads("windows", fetcher), [
-    { label: "Windows installer", url: "https://github.com/f1shyondrugs/metis-remote-client/releases/download/v1.4.2/Metis-AI-Remote-Client-Setup.exe" },
+    { label: "Windows installer", url: "https://github.com/f1shyondrugs/Metis-Apps/releases/download/v1.4.2/Metis-AI-Remote-Client-Setup.exe" },
   ]);
   assert.deepEqual(await remoteDesktopDownloads("macos", fetcher), [
-    { label: "macOS · Apple Silicon", url: "https://github.com/f1shyondrugs/metis-remote-client/releases/download/v1.4.2/Metis-AI-Remote-Client-arm64.dmg" },
+    { label: "macOS · Apple Silicon", url: "https://github.com/f1shyondrugs/Metis-Apps/releases/download/v1.4.2/Metis-AI-Remote-Client-arm64.dmg" },
   ]);
   assert.deepEqual(await remoteDesktopDownloads("linux", fetcher), [
-    { label: "Linux · Intel / AMD", url: "https://github.com/f1shyondrugs/metis-remote-client/releases/download/v1.4.2/Metis-AI-Remote-Client-x86_64.AppImage" },
+    { label: "Linux · Intel / AMD", url: "https://github.com/f1shyondrugs/Metis-Apps/releases/download/v1.4.2/Metis-AI-Remote-Client-x86_64.AppImage" },
   ]);
   assert.ok(requested.every((url) => url === REMOTE_CLIENT_RELEASE_API || url.includes("/releases/download/v1.4.2/") || url.includes("api.github.com")));
 });
@@ -76,7 +76,7 @@ test("legacy paired-client update proxies the tagged latest asset without forwar
   assert.equal(await response?.text(), "version: 1.4.2\n");
   assert.deepEqual(requested.map((request) => request.url), [
     REMOTE_CLIENT_RELEASE_API,
-    "https://github.com/f1shyondrugs/metis-remote-client/releases/download/v1.4.2/latest.yml",
+    "https://github.com/f1shyondrugs/Metis-Apps/releases/download/v1.4.2/latest.yml",
   ]);
   assert.equal(requested[1]?.init?.headers, undefined);
   assert.equal(response?.headers.get("content-type"), "text/yaml; charset=utf-8");

@@ -2854,7 +2854,7 @@ export function SettingsPanel({
                 <>
                   <div>
                     <p className="flex items-center gap-2 text-sm font-medium"><Monitor className="size-4 text-primary" /> Install the {remotePlatform === "macos" ? "macOS" : remotePlatform === "linux" ? "Linux" : "Windows"} app</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Install the app, open it, then enter this server URL and pairing code. The code expires after 15 minutes. {remotePlatform === "windows" && remotePermissionMode === "admin" ? "For admin access, start the app as administrator and confirm UAC." : remotePlatform === "macos" ? "Drag the app into Applications. Desktop control needs Screen Recording and Accessibility permissions." : remotePlatform === "linux" ? "Make the AppImage executable and open it. Desktop control needs an X11 session, xdotool, wmctrl and ImageMagick." : "User access runs without administrator rights."}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Install Metis, open Metis → Device settings, then enter this server URL and pairing code. The code expires after 15 minutes. {remotePlatform === "windows" && remotePermissionMode === "admin" ? "For admin access, start the app as administrator and confirm UAC." : remotePlatform === "macos" ? "Drag the app into Applications. Desktop control needs Screen Recording and Accessibility permissions." : remotePlatform === "linux" ? "Make the AppImage executable and open it. Desktop control needs an X11 session, xdotool, wmctrl and ImageMagick." : "User access runs without administrator rights."}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {remoteInstallerUrls.map((installer) => <a key={installer.url} href={installer.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2">Download {installer.label}</a>)}
@@ -2862,10 +2862,10 @@ export function SettingsPanel({
                   {remotePlatform === "macos" ? (
                     <div className="space-y-2 rounded-lg border border-border/70 bg-background p-3">
                       <p className="text-sm font-medium">Is it saying “damaged”?</p>
-                      <p className="text-xs text-muted-foreground">macOS marks unsigned browser downloads as damaged. The file is fine. Run this in Terminal, then open the app:</p>
+                      <p className="text-xs text-muted-foreground">If macOS blocks this unsigned build, verify that you downloaded it from Metis-Apps. To remove its quarantine flag, run this in Terminal, then open the app:</p>
                       <div className="flex gap-2">
-                        <Input readOnly value={'xattr -cr "/Applications/Metis AI Remote Client.app"'} aria-label="Fix damaged macOS app command" className="font-mono text-xs" />
-                        <Button type="button" variant="outline" onClick={() => void navigator.clipboard.writeText('xattr -cr "/Applications/Metis AI Remote Client.app"')}>Copy</Button>
+                        <Input readOnly value={'xattr -cr "/Applications/Metis.app"'} aria-label="Fix damaged macOS app command" className="font-mono text-xs" />
+                        <Button type="button" variant="outline" onClick={() => void navigator.clipboard.writeText('xattr -cr "/Applications/Metis.app"')}>Copy</Button>
                       </div>
                     </div>
                   ) : null}

@@ -1,9 +1,9 @@
 export const WINDOWS_INSTALLER = "Metis-AI-Remote-Client-Setup.exe";
 export const WINDOWS_UPDATE_METADATA = "latest.yml";
 export const WINDOWS_ARTIFACTS = new Set([WINDOWS_INSTALLER, WINDOWS_UPDATE_METADATA]);
-export const WINDOWS_RELEASE_BASE = "https://github.com/f1shyondrugs/metis-remote-client/releases/latest/download/";
+export const WINDOWS_RELEASE_BASE = "https://github.com/f1shyondrugs/Metis-Apps/releases/latest/download/";
 export const WINDOWS_INSTALLER_URL = WINDOWS_RELEASE_BASE + WINDOWS_INSTALLER;
-export const REMOTE_CLIENT_RELEASE_API = "https://api.github.com/repos/f1shyondrugs/metis-remote-client/releases/latest";
+export const REMOTE_CLIENT_RELEASE_API = "https://api.github.com/repos/f1shyondrugs/Metis-Apps/releases/latest";
 
 export function windowsReleaseUrl(filename: string): string | null {
   return WINDOWS_ARTIFACTS.has(filename) ? WINDOWS_RELEASE_BASE + filename : null;
@@ -23,7 +23,7 @@ function githubHeaders(): Record<string, string> {
 
 function taggedDownloadUrl(file: string, tag?: string): string {
   return tag && RELEASE_TAG_RE.test(tag)
-    ? `https://github.com/f1shyondrugs/metis-remote-client/releases/download/${tag}/${file}`
+    ? `https://github.com/f1shyondrugs/Metis-Apps/releases/download/${tag}/${file}`
     : WINDOWS_RELEASE_BASE + file;
 }
 

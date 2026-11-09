@@ -17,6 +17,6 @@ test("existing paired clients can update through authenticated server proxy", ()
   const release = read("lib/remote-client-release.ts");
   assert.match(update, /authenticateRemoteClient/);
   assert.match(update, /legacyWindowsUpdate\(filename\)/);
-  assert.match(release, /github\.com\/f1shyondrugs\/metis-remote-client\/releases\/latest\/download\//);
+  assert.match(release, /github\.com\/f1shyondrugs\/Metis-Apps\/releases\/latest\/download\//);
   assert.doesNotMatch(release, /x-metis-client-id/);
 });
