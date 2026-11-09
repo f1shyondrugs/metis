@@ -1,4 +1,5 @@
 import { remoteDesktopEvents } from "@/lib/remote-desktop-events";
+import { getRemoteClientAppearance } from "@/lib/remote-client-appearance";
 import { buildFileEditProgram, normalizeFileEdit } from "../remote-client/file-edit.mjs";
 import { bindNotificationSession } from "@/lib/notification-remote";
 import {
@@ -66,6 +67,7 @@ export function attachRemoteClient(socket: SocketLike, clientId: string, ownerId
   bindNotificationSession(socket, clientId, ownerId);
   markRemoteClientSeen(clientId, address);
   let lastHeartbeatAt = Date.now();
+  let appearanceRevision: number | undefined;
   const heartbeatCheck = setInterval(() => {
     if (Date.now() - lastHeartbeatAt > 90_000) socket.close();
   }, 30_000);
@@ -81,7 +83,16 @@ export function attachRemoteClient(socket: SocketLike, clientId: string, ownerId
       lastHeartbeatAt = Date.now();
       markRemoteClientSeen(clientId, address);
       if (typeof message.desktopGui === "boolean") updateRemoteClientDesktopCapability(clientId, message.desktopGui);
-      socket.send(JSON.stringify({ type: "heartbeat_ack", timestamp: Date.now() }));
+      let appearance;
+      if (message.appearance === true) {
+        // A bad saved theme must never break the device heartbeat or input path.
+        try {
+          const current = getRemoteClientAppearance(ownerId);
+          if (current.revision !== appearanceRevision) appearance = current;
+        } catch { /* Keep the client's last valid theme. */ }
+      }
+      socket.send(JSON.stringify({ type: "heartbeat_ack", timestamp: Date.now(), ...(appearance ? { appearance } : {}) }));
+      if (appearance) appearanceRevision = appearance.revision;
       return;
     }
     if (message.type === "event" && typeof message.sessionId === "string") {

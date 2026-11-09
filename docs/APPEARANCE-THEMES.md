@@ -4,6 +4,8 @@ Metis includes Midnight, Graphite, Nord, Forest, Sand, and Paper. Custom themes 
 
 Theme selection and custom themes are saved to the signed-in account, shared across devices, and loaded before the first paint. The browser refreshes them on focus and every 30 seconds while visible. Changes become active after the server confirms the save; failed saves preserve the previous theme and the open editor draft. Revision checks reject stale changes from another tab/device and requests made after switching accounts.
 
+Remote desktop clients from v1.4.13 receive only their paired account's selected theme through the authenticated device heartbeat. The hub and Computer Use overlay update within 20 seconds while connected, including custom-variable aliases and light/dark mode. Unchanged revisions are omitted, older clients keep their existing heartbeat contract, and invalid theme data does not interrupt device control.
+
 Existing browser-local themes are migrated once into the first signed-in account on that browser. When account preferences already exist, their selection is preserved and distinct local themes are merged. Imported IDs/content are deduplicated; local data is removed only after a confirmed account save. Migration errors preserve local data and do not block normal account edits. Browser storage is optional for account persistence. The public static demo keeps its own local-only settings.
 
 The authenticated `/api/appearance` endpoint stores the full theme collection in the existing account-scoped settings table. GET returns `{ ownerId, state, revision }`; PATCH requires the same owner/revision preconditions and a validated state. Maximum collection size is 20 custom themes and 512 KiB. Responses are private and not cached.
