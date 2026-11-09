@@ -3,7 +3,8 @@ import type {ProtectedLoginReply} from "./protected-login-contract";
 import { ProtectedLoginError } from "./protected-login-errors";
 
 type LoginRequest = (owner: string, chat: string, operation: string, input?: Record<string, unknown>) => Promise<ProtectedLoginReply>;
-type LoginTarget = (owner: string, chat: string, tabId?: string) => string | Promise<string>;
+type TrustedLoginTarget=string|{url:string;entryOrigin?:string};
+type LoginTarget = (owner: string, chat: string, tabId?: string) => TrustedLoginTarget | Promise<TrustedLoginTarget>;
 
 // Own the transition from the ordinary tab to the chat's private login browser.
 // Preparing again never reseeds an active private session from a stale public URL.
@@ -14,10 +15,11 @@ export class ProtectedBrowserRouting {
   async prepare(owner: string, chat: string, action: Partial<SharedBrowserAction>) {
     const key = `${owner}:${chat}`;
     const active = this.chats.has(key) || action.tabId === "protected";
-    const url = active ? undefined : await this.target(owner, chat, action.tabId);
+    const target = active ? undefined : await this.target(owner, chat, action.tabId);
+    const url=typeof target==="string"?target:target?.url;
     try {
       const result = await this.request(owner, chat, "prepare", {
-        ...(url ? {url} : {}), selector:action.selector, usernameSelector:action.usernameSelector,
+        ...(url ? {url,...(typeof target==="object"&&target.entryOrigin?{entryOrigin:target.entryOrigin}:{})} : {}), selector:action.selector, usernameSelector:action.usernameSelector,
         emailSelector:action.emailSelector, fields:action.fields, replace:action.replace,
       });
       this.chats.add(key);
@@ -34,9 +36,10 @@ export class ProtectedBrowserRouting {
     const key = `${owner}:${chat}`;
     // An explicit protected tab also restores routing after an app restart.
     this.chats.add(key);
+    const closing=action.action==="close"||action.action==="close_tab";
     try {
-      const result = await this.request(owner, chat, action.action === "close" ? "close" : "action", action);
-      if (action.action === "close") this.chats.delete(key);
+      const result = await this.request(owner, chat, closing ? "close" : "action", action);
+      if (closing) this.chats.delete(key);
       return result;
     } catch (error) {
       if (error instanceof ProtectedLoginError && error.code === "session_unavailable") this.chats.delete(key);

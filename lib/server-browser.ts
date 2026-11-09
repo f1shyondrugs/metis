@@ -213,6 +213,8 @@ const pageMeta = new WeakMap<Page, { ownerId: string; chatId: string; tabId: str
 
 const persistentContexts = new Map<string, Promise<BrowserContext>>();
 const sessions = new Map<string, BrowserContextState>();
+// Only the last explicitly opened HTTPS entry site can join a private SSO flow.
+const loginEntryOrigins = new WeakMap<Page,string>();
 const sessionCreations = new Map<string, Promise<BrowserContextState>>();
 const closingContexts = new Map<string, Promise<void>>();
 const actionLocks = new Map<string, Promise<void>>();
@@ -523,10 +525,12 @@ async function waitForLocatorAcrossFrames(
   }
 }
 
-export const BROWSER_CREDENTIAL_SELECTOR = 'input[type="password"], input[autocomplete*="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"], input[name*="token" i], input[name*="secret" i], input[name*="pass" i], input[id*="pass" i]';
-// Hidden search/routing fields are redacted from text, but their presence alone
-// does not mean a screenshot contains credentials.
-export const BROWSER_SENSITIVE_SELECTOR = BROWSER_CREDENTIAL_SELECTOR + ', input[type="hidden"]';
+import {BROWSER_CREDENTIAL_SELECTOR,screenshotFieldMasks} from "./browser-screenshot-policy";
+import {browserInputSecrets,retainBrowserSecrets} from "./browser-secure-input";
+export {BROWSER_CREDENTIAL_SELECTOR} from "./browser-screenshot-policy";
+// Hidden fields stay write-only in form results; public routing values must not
+// replace unrelated text, URLs or CSS selectors throughout the entire page.
+export const BROWSER_SENSITIVE_SELECTOR = BROWSER_CREDENTIAL_SELECTOR;
 
 async function redactBrowserText(page: Page, text: string) {
   return (await browserTextRedactor(page))(text);
@@ -539,7 +543,8 @@ async function browserTextRedactor(page: Page) {
       secrets.push(...await frame.locator(BROWSER_SENSITIVE_SELECTOR).evaluateAll(elements=>elements.map(el=>(el as HTMLInputElement).value).filter(Boolean)));
     } catch { throw new Error('Browser content unavailable'); }
   }
-  return (text:string)=>secrets.sort((a,b)=>b.length-a.length).reduce((clean,secret)=>clean.split(secret).join('[REDACTED]'),text);
+  retainBrowserSecrets(page,secrets);
+  return (text:string)=>[...new Set([...browserInputSecrets(page),...secrets])].sort((a,b)=>b.length-a.length).reduce((clean,secret)=>clean.split(secret).join('[REDACTED]'),text);
 }
 
 export async function collectFrameText(page: Page, mode: "text" | "snapshot") {
@@ -591,8 +596,7 @@ export const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
   const elements = Array.from(document.querySelectorAll(
     'input, textarea, select, button, a[href], [role="radio"], [role="checkbox"], [role="button"], [contenteditable="true"], [draggable="true"], [tabindex]:not([tabindex="-1"])'
   )).slice(0, 500);
-  const sensitive = (element) => element.type === 'password' || element.type === 'hidden' ||
-    /password|passwd|secret|token|authorization|one-time-code|cc-number|cc-csc/i.test([element.name, element.id, element.autocomplete].join(' '));
+  const sensitive = (element) => element.matches(${JSON.stringify(BROWSER_CREDENTIAL_SELECTOR)});
   // Inspect every input, even when the interactive control list is truncated.
   const secrets = Array.from(document.querySelectorAll('input, textarea')).filter(sensitive).map(element => String(element.value || '')).filter(Boolean);
   const redact = (text) => secrets.reduce((result, secret) => result.split(secret).join('[REDACTED]'), text);
@@ -618,7 +622,7 @@ export const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
         label: redact(explicitLabel || closestLabel || (element.innerText || '').trim().slice(0, 500)) || undefined,
         placeholder: redact(element.placeholder || '') || undefined,
         ariaLabel: redact(element.getAttribute('aria-label') || '') || undefined,
-        value: sensitive(element) ? '[REDACTED]' : ('value' in element ? redact(String(element.value ?? '')) : undefined),
+        value: element.type === 'hidden' || sensitive(element) ? '[REDACTED]' : ('value' in element ? redact(String(element.value ?? '')) : undefined),
         checked: typeof element.checked === 'boolean' ? element.checked : undefined,
         disabled: 'disabled' in element ? Boolean(element.disabled) : undefined,
         visible: element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0 && !['hidden', 'collapse'].includes(getComputedStyle(element).visibility),
@@ -660,13 +664,7 @@ export async function collectFormState(page: Page): Promise<{ text: string; cont
 }
 
 export async function screenshotPage(page: Page, options: { type: "png" } | { type: "jpeg"; quality: number }) {
-  for(const frame of page.frames()) {
-    const containsSecret=await frame.locator(BROWSER_CREDENTIAL_SELECTOR).evaluateAll(elements=>elements.some(el=>'value' in el && Boolean((el as HTMLInputElement).value))).catch(()=>true);
-    // Field masks cannot cover a reflected value in surrounding DOM/canvas.
-    if(containsSecret) throw new Error("Screenshot unavailable while sensitive form values are present");
-  }
-  // Mask all editable controls, including revealed-password fields, in every frame.
-  const mask = page.frames().map(frame => frame.locator('input, textarea, [contenteditable="true"]'));
+  const mask=await screenshotFieldMasks(page);
   return page.screenshot({ ...options, mask, maskColor: "#222222", timeout: 15_000 });
 }
 
@@ -711,6 +709,13 @@ async function resultFor(state: BrowserContextState, tabId: string): Promise<Bro
 }
 
 // Trusted server-to-broker routing only. Agent-visible pageInfo stays redacted.
+export function getBrowserLoginContext(ownerId:string,chatId:string,requestedTabId?:string) {
+  const url=getBrowserLoginTarget(ownerId,chatId,requestedTabId);
+  const state=sessions.get(sessionKey(ownerId,chatId))!;
+  const page=state.tabs.get(requestedTabId||state.activeTabId)!;
+  const entryOrigin=loginEntryOrigins.get(page);
+  return {url,...(entryOrigin?{entryOrigin}:{})};
+}
 export function getBrowserLoginTarget(ownerId: string, chatId: string, requestedTabId?: string) {
   if (!ownerId || !chatId) throw new Error("Browser session required");
   const state = sessions.get(sessionKey(ownerId, chatId));
@@ -838,7 +843,11 @@ async function performBrowserActionUnlocked(ownerId: string, chatId: string, act
   } else if (action.action === "navigate") {
     if (!action.url) throw new Error("A URL is required");
     await page.evaluate(() => window.stop()).catch(() => undefined);
-    await page.goto(await assertAllowedUrl(action.url), { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const target=await assertAllowedUrl(action.url);
+    await page.goto(target, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const entry=new URL(target);
+    if(entry.protocol==="https:"&&!entry.username&&!entry.password&&!entry.port)loginEntryOrigins.set(page,entry.origin);
+    else loginEntryOrigins.delete(page);
     recordOrigin(ownerId, page.url());
   } else if (action.action === "back") {
     await page.goBack({ waitUntil: "domcontentloaded", timeout: 15_000 }).catch(() => null);

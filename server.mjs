@@ -1,10 +1,8 @@
 import http from "node:http";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { WebSocketServer } from "ws";
-import { browserLoginRequest } from "./lib/browser-login-client.ts";
-import { ProtectedBrowserRouting } from "./lib/protected-browser-routing.ts";
-import { ProtectedLoginError, protectedLoginFailure } from "./lib/protected-login-errors.ts";
-import { verifyBrowserUserAction } from "./lib/browser-user-capability.ts";
+import { importWorkerModule } from "./lib/worker-module.mjs";
+const importServerModule=specifier=>importWorkerModule(new URL(specifier,import.meta.url).href);
 
 // Next's custom-server entrypoint expects this Node primitive to be exposed
 // globally. The regular `next start` launcher does this during its bootstrap,
@@ -12,29 +10,33 @@ import { verifyBrowserUserAction } from "./lib/browser-user-capability.ts";
 if (!globalThis.AsyncLocalStorage) {
   globalThis.AsyncLocalStorage = AsyncLocalStorage;
 }
+const {browserLoginRequest}=await importServerModule("./lib/browser-login-client.ts");
+const {ProtectedBrowserRouting}=await importServerModule("./lib/protected-browser-routing.ts");
+const {ProtectedLoginError,protectedLoginFailure}=await importServerModule("./lib/protected-login-errors.ts");
+const {verifyBrowserUserAction}=await importServerModule("./lib/browser-user-capability.ts");
 const {
   initializeRequestNetwork, stampRequestNetwork, browserStreamOriginAllowed,
-} = await import("./lib/request-network.ts");
+} = await importServerModule("./lib/request-network.ts");
 initializeRequestNetwork();
 const { default: next } = await import("next");
-const { getAuthenticatedUser } = await import("./lib/auth.ts");
-const { updateChatOffThread } = await import("./lib/chat-page-loader.ts");
+const { getAuthenticatedUser } = await importServerModule("./lib/auth.ts");
+const { updateChatOffThread } = await importServerModule("./lib/chat-page-loader.ts");
 const {
   captureBrowserFrame,
   closeBrowserSession,
   cleanupBrowserSessions,
   performBrowserAction,
-  getBrowserLoginTarget,
+  getBrowserLoginContext,
   setBrowserViewport,
   browserEvents,
-} = await import("./lib/server-browser.ts");
+} = await importServerModule("./lib/server-browser.ts");
 const {
   authenticateClientMessage,
   attachRemoteClient,
-} = await import("./lib/remote-client-gateway.ts");
-const { logError } = await import("./lib/error-logs.ts");
-const { startUpdateScheduler } = await import("./lib/update-schedule.ts");
-const { startNotificationObserver } = await import("./lib/notification-observer-thread.ts");
+} = await importServerModule("./lib/remote-client-gateway.ts");
+const { logError } = await importServerModule("./lib/error-logs.ts");
+const { startUpdateScheduler } = await importServerModule("./lib/update-schedule.ts");
+const { startNotificationObserver } = await importServerModule("./lib/notification-observer-thread.ts");
 
 const port = Number(process.env.PORT || 3100);
 const host = process.env.AI_CHAT_HOST?.trim() || "127.0.0.1";
@@ -137,13 +139,17 @@ async function persistBrowserContext(userId, chatId, result) {
   }
 }
 
-const protectedBrowserRouting = new ProtectedBrowserRouting(browserLoginRequest, getBrowserLoginTarget);
+const protectedBrowserRouting = new ProtectedBrowserRouting(browserLoginRequest, getBrowserLoginContext);
 async function performSharedBrowserAction(userId, chatId, action) {
   if (action.action === "secure_input_prepare") {
     return protectedBrowserRouting.prepare(userId, chatId, action);
   }
   if (protectedBrowserRouting.has(userId, chatId) || action.tabId === "protected") {
-    return protectedBrowserRouting.action(userId, chatId, action);
+    const result=await protectedBrowserRouting.action(userId, chatId, action);
+    if(action.action!=="close_tab")return result;
+    const ordinary=await performBrowserAction(userId,chatId,{action:"select_tab",source:action.source});
+    await persistBrowserContext(userId,chatId,ordinary);
+    return ordinary;
   }
   const now = Date.now();
   if (now - lastBrowserCleanupAt > 60_000) {
@@ -465,7 +471,7 @@ remoteClientWebsocketServer.on("connection", (socket, request) => {
   socket.on("error", () => clearTimeout(timer));
 });
 
-const { initializeSetupToken } = await import("./lib/setup-token.ts");
+const { initializeSetupToken } = await importServerModule("./lib/setup-token.ts");
 const setupAccess = initializeSetupToken();
 if (setupAccess.required) {
   console.log(setupAccess.tokenFile

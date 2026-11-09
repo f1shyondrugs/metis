@@ -3,6 +3,10 @@
 const messages = {
   isolation_required: "Protected logins are unavailable until an operator configures the Linux credential services in isolated or trusted-root mode. Never enter credentials through ordinary chat or ask_user.",
   session_unavailable: "The protected browser session is unavailable. Close the browser, open the intended HTTPS login page again, then request a new protected login.",
+  credential_exists: "A login already exists for this website. Edit the existing entry instead.",
+  credential_unavailable: "This saved login is no longer available. Refresh the vault and try again.",
+  navigation_blocked: "The protected login could not complete a safe website navigation. Close this browser tab, reopen the original website and try again.",
+  protected_action_unavailable: "This action is unavailable in the protected login browser. Use page controls, or close the protected tab before opening another website.",
   session_limit: "The protected browser session limit has been reached. Close an unused protected browser and retry.",
   page_unavailable: "The protected login page could not be opened. Check the website and retry.",
   https_required: "Protected login requires an HTTPS website without URL credentials or a nonstandard port.",
