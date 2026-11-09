@@ -1,3 +1,4 @@
+import { moveChatToTrash } from "@/lib/chat-trash";
 import { setChatModelChain } from "@/lib/model-chains";
 import { getChatMetadata } from "@/lib/db-store";
 import { ensureChatPage, updateChatOffThread } from "@/lib/chat-page-loader";
@@ -13,7 +14,6 @@ import { projectModelOverride } from "@/lib/project-model-server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { browserLoginRequest } from "@/lib/browser-login-client";
 import {
-  deleteChat,
   getChatPage,
   type BrowserContext,
   type PendingChatQuestion,
@@ -218,7 +218,7 @@ export async function DELETE(req: Request, { params }: Params) {
   const ownerId = user.id;
   const teamAgent = getProjectAgentForChat(id, ownerId);
   if (teamAgent) { archiveProjectAgent(teamAgent.projectId, teamAgent.id, ownerId); return Response.json({ ok: true, archived: true }); }
-  if (!deleteChat(id, ownerId)) {
+  if (!moveChatToTrash(id, ownerId)) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
   await browserLoginRequest(ownerId,id,"forget_chat",{},true).catch(()=>{});

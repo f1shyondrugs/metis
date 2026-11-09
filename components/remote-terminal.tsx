@@ -30,7 +30,7 @@ async function readRemoteResponse<T>(response: Response): Promise<T> {
     const preview = body.replace(/\s+/g, " ").trim().slice(0, 160);
     throw new Error(
       `Remote terminal returned a non-JSON response (${response.status}, ${contentType}). ` +
-      `${preview || "Check that the Metis AI server URL and authentication are correct."}`,
+      `${preview || "Check that the Metis server URL and authentication are correct."}`,
     );
   }
   if (!response.ok) throw new Error(data.error || `Remote terminal request failed (${response.status})`);
@@ -187,7 +187,7 @@ export function RemoteTerminal({ cwd, sessionId, onSessionIdChange }: RemoteTerm
           aria-label="Terminal device"
           className="h-8 max-w-[15rem] rounded-md border bg-background px-2 text-xs"
         >
-          <option value="server">Metis AI server</option>
+          <option value="server">Metis server</option>
           {clients.map((client) => (
             <option key={client.id} value={client.id}>
               {client.name} · {client.os || "client"} · {client.status}

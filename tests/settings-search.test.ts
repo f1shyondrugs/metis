@@ -7,7 +7,7 @@ test("every visible settings section and top-level tab is searchable with its na
     const entries = settingsSearchEntries(isAdmin);
     assert.equal(new Set(entries.map(entry => entry.id)).size, entries.length);
     for (const tab of SETTINGS_TABS) {
-      assert.ok(entries.some(entry => entry.id === tab.value && entry.tab === tab.value && !entry.sectionId));
+      if(tab.value !== "admin" || isAdmin) assert.ok(entries.some(entry => entry.id === tab.value && entry.tab === tab.value && !entry.sectionId));
       for (const section of visibleSettingsSections(tab.value, isAdmin)) {
         const result = searchSettings(entries, section.label).find(entry => entry.id === section.id);
         assert.ok(result, section.label);
@@ -15,7 +15,7 @@ test("every visible settings section and top-level tab is searchable with its na
         assert.equal(result.sectionId, section.id);
       }
     }
-    assert.equal(entries.length, SETTINGS_TABS.length + Object.keys(SETTINGS_SECTIONS).flatMap(tab => visibleSettingsSections(tab, isAdmin)).length);
+    assert.equal(entries.length, SETTINGS_TABS.length - (isAdmin ? 0 : 1) + Object.keys(SETTINGS_SECTIONS).flatMap(tab => visibleSettingsSections(tab, isAdmin)).length);
   }
 });
 
@@ -101,7 +101,8 @@ test("overview navigation preserves host-admin boundaries and valid parent desti
       }
     }
   }
-  assert.deepEqual(settingsOverviewSections("admin", false).map(section => section.id), ["settings-archived", "settings-shared"]);
+  assert.deepEqual(settingsOverviewSections("admin", false), []);
+  assert.deepEqual(settingsOverviewSections("chats", false).map(section => section.id), ["settings-archived", "settings-deleted", "settings-shared"]);
   assert.ok(settingsOverviewSections("admin", true).some(section => section.id === "settings-users"));
   assert.ok(settingsOverviewSections("admin", true).some(section => section.id === "settings-maintenance"));
   assert.deepEqual(settingsOverviewSections("missing-tab", false), []);
@@ -114,7 +115,8 @@ test("search respects host-admin visibility and calls the nonadmin area Chats", 
   assert.ok(searchSettings(admin, "maintenance").some(entry => entry.id === "settings-maintenance"));
   assert.deepEqual(searchSettings(regular, "users"), []);
   assert.deepEqual(searchSettings(regular, "maintenance"), []);
-  assert.equal(regular.find(entry => entry.id === "admin")?.label, "Chats");
+  assert.equal(regular.find(entry => entry.id === "admin"), undefined);
+  assert.equal(regular.find(entry => entry.id === "chats")?.label, "Chats");
   assert.equal(regular.find(entry => entry.id === "settings-archived")?.category, "Chats");
   assert.ok(searchSettings(regular, "archived").some(entry => entry.id === "settings-archived"));
 });

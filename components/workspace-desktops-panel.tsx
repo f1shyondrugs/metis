@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronRight, LoaderCircle, Monitor, Pause, Play, RefreshCw, Settings2, Upload } from "lucide-react";
+import { LoadError } from "@/components/load-error";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { startUpload } from "@/lib/background-uploads";
 import { toast } from "sonner";
@@ -97,10 +98,7 @@ export function WorkspaceDesktopsPanel({ active, agentClientId, agentActive, onO
       <Button size="icon-sm" variant="ghost" className="size-11 shrink-0" aria-label="Manage Remote Devices" onClick={onOpenDevices}><Settings2 className="size-4" /></Button>
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto">
-      {inventoryError ? <div className="space-y-3 p-6 text-center">
-        <p className="text-sm text-destructive" role="alert">{inventoryError}</p>
-        <Button size="sm" variant="outline" onClick={refresh}>Try again</Button>
-      </div> : loading ? <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground" role="status">
+      {inventoryError ? <LoadError message={inventoryError} onRetry={refresh} /> : loading ? <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground" role="status">
         <LoaderCircle className="size-4 animate-spin" />Loading Remote Devices…
       </div> : clients.length ? <ul className="space-y-2" aria-label="Remote Devices">
         {clients.map(client => <li key={client.id}><button type="button"

@@ -954,7 +954,7 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   if (!String(contentType ?? "").toLowerCase().includes("application/json")) {
     throw new Error(
       response.status === 404
-        ? "Browser API not found. Open Metis AI through its application server, not a static frontend server."
+        ? "Browser API not found. Open Metis through its application server, not a static frontend server."
         : `Browser API returned an unexpected response (${response.status}).`,
     );
   }
@@ -12423,7 +12423,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           <p className="text-sm text-muted-foreground">
             Are you sure you want to delete{" "}
             <span className="font-medium text-foreground">{deleteTarget?.title || "this chat"}</span>?
-            This action cannot be undone.
+            You can restore deleted chats in Settings → Chats → Recently deleted. Incognito chats are permanently deleted.
           </p>
           <DialogFooter>
             <Button

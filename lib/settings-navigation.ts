@@ -26,10 +26,13 @@ export const SETTINGS_SECTIONS: Record<string, SettingsSection[]> = {
   devices: [
     { id: "settings-remote-clients", label: "Remote clients", keywords: "devices pairing desktop pc windows linux macos permissions geräte verbinden" },
   ],
+  chats: [
+    { id: "settings-archived", label: "Archived chats", keywords: "restore archive archiv wiederherstellen" },
+    { id: "settings-deleted", label: "Recently deleted", keywords: "deleted trash recycle bin restore recover chats gelöscht geloscht papierkorb wiederherstellen" },
+    { id: "settings-shared", label: "Shared chats", keywords: "sharing public links teilen freigaben" },
+  ],
   admin: [
     { id: "settings-users", label: "Users", keywords: "accounts passwords access benutzer konten passwort" },
-    { id: "settings-archived", label: "Archived chats", keywords: "restore archive archiv wiederherstellen" },
-    { id: "settings-shared", label: "Shared chats", keywords: "sharing public links teilen freigaben" },
     { id: "settings-maintenance", label: "Maintenance", keywords: "reset metis delete cleanup wartung zurücksetzen löschen" },
   ],
 };
@@ -40,9 +43,14 @@ export const SETTINGS_TABS = [
   { value: "models", label: "Models", keywords: "modelle" },
   { value: "agent", label: "Agent" },
   { value: "devices", label: "Devices", keywords: "geräte" },
+  { value: "chats", label: "Chats", keywords: "archive deleted trash sharing chats" },
   { value: "admin", label: "Admin" },
   { value: "updates", label: "Updates", keywords: "automatic schedule channel stable beta releases aktualisierung automatisch zeitplan" },
 ] as const;
+
+export function visibleSettingsTabs(isHostAdmin: boolean) {
+  return SETTINGS_TABS.filter(tab => isHostAdmin || tab.value !== "admin");
+}
 
 export function visibleSettingsSections(tab: string, isHostAdmin: boolean) {
   return (SETTINGS_SECTIONS[tab] || []).filter(item =>
@@ -64,8 +72,8 @@ export type SettingsSearchEntry = {
 };
 
 export function settingsSearchEntries(isHostAdmin: boolean): SettingsSearchEntry[] {
-  return SETTINGS_TABS.flatMap(tab => {
-    const category = tab.value === "admin" && !isHostAdmin ? "Chats" : tab.label;
+  return visibleSettingsTabs(isHostAdmin).flatMap(tab => {
+    const category = tab.label;
     return [
       { id: tab.value, tab: tab.value, label: category, category: "Settings", keywords: "keywords" in tab ? tab.keywords : undefined },
       ...visibleSettingsSections(tab.value, isHostAdmin).map(item => ({

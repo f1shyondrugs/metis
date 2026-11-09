@@ -389,7 +389,7 @@ async function discoverIsolatedCodexModels(connection: ProviderConnectionWithSec
   });
   try {
     await request("initialize", {
-      clientInfo: { name: "metis-ai", title: "Metis AI", version: "1.0.0" },
+      clientInfo: { name: "metis-ai", title: "Metis", version: "1.0.0" },
       capabilities: { experimentalApi: true },
     });
     child.stdin.write(`${JSON.stringify({ method: "initialized" })}\n`);

@@ -1,4 +1,6 @@
 "use client";
+import { LoadError } from "@/components/load-error";
+import { RecentlyDeletedChats } from "@/components/recently-deleted-chats";
 import { SavedWebsiteLogins } from "@/components/saved-website-logins";
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
@@ -21,6 +23,7 @@ import {
   KeyRound,
   Link2,
   Mic,
+  MessageSquare,
   Monitor,
   MoreHorizontal,
   Palette,
@@ -92,7 +95,7 @@ import { CliVersionsPanel } from "@/components/cli-versions-panel";
 import { BrowserSettingsControls } from "@/components/browser-settings-controls";
 import type { UsageSnapshot } from "@/lib/usage-display";
 import {SettingsSearch} from "@/components/settings-search";
-import {SETTINGS_TABS, settingsOverviewSections, type SettingsSearchEntry} from "@/lib/settings-navigation";
+import {SETTINGS_TABS, visibleSettingsTabs, settingsOverviewSections, type SettingsSearchEntry} from "@/lib/settings-navigation";
 
 type ProviderDefinition = {
   key: string;
@@ -391,6 +394,7 @@ type SettingsPaneId =
   | "remote-clients"
   | "users"
   | "archived"
+  | "deleted"
   | "shared"
   | "maintenance"
   | "updates";
@@ -415,6 +419,7 @@ const SETTINGS_SECTION_TO_PANE: Partial<Record<string, Exclude<SettingsPaneId, "
   "settings-remote-clients": "remote-clients",
   "settings-users": "users",
   "settings-archived": "archived",
+  "settings-deleted": "deleted",
   "settings-shared": "shared",
   "settings-maintenance": "maintenance",
 };
@@ -427,13 +432,14 @@ function settingsCategoryIcon(value: string): LucideIcon {
     : value === "models" ? KeyRound
     : value === "agent" ? Puzzle
     : value === "devices" ? PlugZap
+    : value === "chats" ? MessageSquare
     : value === "updates" ? RefreshCw
     : Users;
 }
 
 function settingsCategoryLabel(tab: SettingsCategory, isHostAdmin: boolean, updateAvailable: boolean) {
   return tab.value === "updates" && updateAvailable ? "Update Available"
-    : tab.value === "admin" ? (isHostAdmin ? "Admin" : "Chats") : tab.label;
+    : tab.label;
 }
 
 const SETTINGS_CATEGORY_DESCRIPTIONS: Record<string, string> = {
@@ -441,7 +447,8 @@ const SETTINGS_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   models: "Providers, usage and CLI versions",
   agent: "Runtime, delegation and memories",
   devices: "Remote clients and permissions",
-  admin: "Archived and shared chats",
+  chats: "Archived, recently deleted and shared chats",
+  admin: "Users and maintenance",
   updates: "Update channels, schedule and history",
 };
 
@@ -906,6 +913,7 @@ export function SettingsPanel({
   const [archivedChats, setArchivedChats] = useState<ArchivedChat[]>([]);
   const [sharedChats, setSharedChats] = useState<ArchivedChat[]>([]);
   const [archivedChatsLoaded, setArchivedChatsLoaded] = useState(false);
+  const [archivedChatsError, setArchivedChatsError] = useState("");
   const [resetMetisOpen, setResetMetisOpen] = useState(false);
   const [updateMetisOpen, setUpdateMetisOpen] = useState(false);
   const loadRemoteClients = useCallback(async () => {
@@ -1170,6 +1178,7 @@ export function SettingsPanel({
 
   const loadArchivedChats = useCallback(async () => {
     setArchivedChatsLoaded(false);
+    setArchivedChatsError("");
     try {
       const res = await fetch("/api/chats?includeArchived=true", { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to load archived chats");
@@ -1178,7 +1187,7 @@ export function SettingsPanel({
       setArchivedChats(chats.filter((chat) => chat.archived));
       setSharedChats(chats.filter((chat) => chat.share?.active));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load archived chats");
+      setArchivedChatsError(error instanceof Error ? error.message : "Failed to load chats");
     } finally {
       setArchivedChatsLoaded(true);
     }
@@ -1629,10 +1638,10 @@ export function SettingsPanel({
           <div ref={settingsContentRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto" data-slot="settings-mobile-menu">
             <div className="flex min-h-full flex-col gap-4 px-3 py-3">
               <nav aria-label="Settings categories" className="divide-y divide-border/60">
-                {SETTINGS_TABS.map(tab => (
+                {visibleSettingsTabs(isHostAdmin).map(tab => (
                   <SettingsTile key={tab.value} id={`settings-category-${tab.value}`}
                     title={settingsCategoryLabel(tab, isHostAdmin, updateAvailable)}
-                    meta={tab.value === "admin" && isHostAdmin ? "Users, chats and maintenance" : tab.value === "updates" && !isHostAdmin ? "Managed by your host administrator" : SETTINGS_CATEGORY_DESCRIPTIONS[tab.value]}
+                    meta={tab.value === "admin" && isHostAdmin ? "Users and maintenance" : tab.value === "updates" && !isHostAdmin ? "Managed by your host administrator" : SETTINGS_CATEGORY_DESCRIPTIONS[tab.value]}
                     icon={settingsCategoryIcon(tab.value)}
                     onOpen={() => openSettingsCategory(tab.value)} />
                 ))}
@@ -1657,20 +1666,12 @@ export function SettingsPanel({
               onValueChange={openSettingsCategory}
               ariaLabel="Settings section"
               className="h-10 w-full"
-              options={[
-                { value: "general", label: "General" },
-                { value: "security", label: "Security" },
-                { value: "models", label: "Models" },
-                { value: "agent", label: "Agent" },
- { value: "devices", label: "Devices" },
- { value: "admin", label: isHostAdmin ? "Admin" : "Chats" },
- { value: "updates", label: updateAvailable ? "Update Available" : "Updates" },
-              ]}
+              options={visibleSettingsTabs(isHostAdmin).map(tab => ({ value: tab.value, label: settingsCategoryLabel(tab, isHostAdmin, updateAvailable) }))}
             />
           </div>
           )}
           <TabsList className="hidden h-auto w-full shrink-0 flex-wrap justify-start gap-1.5 rounded-none border-b border-border bg-muted/20 px-3 py-3 lg:flex lg:h-full lg:min-h-0 lg:flex-nowrap lg:flex-col lg:items-stretch lg:justify-start lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-4">
-           {SETTINGS_TABS.map((tab) => {
+           {visibleSettingsTabs(isHostAdmin).map((tab) => {
            const Icon = settingsCategoryIcon(tab.value);
            const label = settingsCategoryLabel(tab, isHostAdmin, updateAvailable);
            const expanded = settingsTab === tab.value;
@@ -2592,7 +2593,7 @@ export function SettingsPanel({
  <AdminUsersPanel />
  </SettingsFeaturePane>
  ) : settingsPane === "archived" ? (
- <SettingsFeaturePane backLabel={isHostAdmin ? "Admin" : "Chats"} slot="archived-chat-settings" onBack={() => backToSettings("settings-archived")}>
+ <SettingsFeaturePane backLabel="Chats" slot="archived-chat-settings" onBack={() => backToSettings("settings-archived")}>
  <section className="flex flex-col gap-4">
                 <div>
                   <h3 id="settings-archived" className="flex items-center gap-2 text-sm font-medium">
@@ -2607,6 +2608,8 @@ export function SettingsPanel({
                   <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
                     Loading archived chats…
                   </div>
+                ) : archivedChatsError ? (
+                  <LoadError message={archivedChatsError} onRetry={() => void loadArchivedChats()} />
                 ) : archivedChats.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
                     No archived chats.
@@ -2648,8 +2651,12 @@ export function SettingsPanel({
                 )}
                 </section>
  </SettingsFeaturePane>
+ ) : settingsPane === "deleted" ? (
+ <SettingsFeaturePane backLabel="Chats" slot="deleted-chat-settings" onBack={() => backToSettings("settings-deleted")}>
+ <RecentlyDeletedChats onChatsChanged={onChatsChanged} />
+ </SettingsFeaturePane>
  ) : settingsPane === "shared" ? (
- <SettingsFeaturePane backLabel={isHostAdmin ? "Admin" : "Chats"} slot="shared-chat-settings" onBack={() => backToSettings("settings-shared")}>
+ <SettingsFeaturePane backLabel="Chats" slot="shared-chat-settings" onBack={() => backToSettings("settings-shared")}>
  <section className="flex flex-col gap-4"><div>
                   <div>
                     <h3 id="settings-shared" className="flex items-center gap-2 text-sm font-medium">
@@ -2660,7 +2667,9 @@ export function SettingsPanel({
                       Manage active read-only links for your chats.
                     </p>
                   </div>
-                  {sharedChats.length === 0 ? (
+                  {!archivedChatsLoaded ? <p role="status" className="py-6 text-sm text-muted-foreground">Loading shared chats…</p> : archivedChatsError ? (
+                    <LoadError message={archivedChatsError} onRetry={() => void loadArchivedChats()} />
+                  ) : sharedChats.length === 0 ? (
                     <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
                       No active shared chats.
                     </div>
@@ -2765,11 +2774,17 @@ export function SettingsPanel({
   <SettingsTile id="settings-device-notifications-link" title="Notifications" meta="Alerts, sounds and delivery devices" icon={Bell} onOpen={() => openSettingsPane("notifications", "general")} />
  </SettingsOverview>
 </TabsContent>
-<TabsContent value="admin" className="mt-0">
- <SettingsOverview title={isHostAdmin ? "Admin" : "Chats"}>
-  {isHostAdmin ? <SettingsTile id="settings-users" title="Users" meta="Accounts and access" icon={Users} onOpen={() => openSettingsPane("users")} /> : null}
-  <SettingsTile id="settings-archived" title="Archived chats" meta={archivedChatsLoaded ? `${archivedChats.length} archived chats` : "Restore or remove archived chats"} icon={Archive} onOpen={() => openSettingsPane("archived")} />
+<TabsContent value="chats" className="mt-0">
+ <SettingsOverview title="Chats">
+  <SettingsTile id="settings-archived" title="Archived chats" meta={archivedChatsError ? "Unavailable · open to retry" : archivedChatsLoaded ? `${archivedChats.length} archived chat${archivedChats.length === 1 ? "" : "s"}` : "Restore or remove archived chats"} icon={Archive} onOpen={() => openSettingsPane("archived")} />
+  <SettingsTile id="settings-deleted" title="Recently deleted" meta="Restore or permanently delete removed chats" icon={Trash2} onOpen={() => openSettingsPane("deleted")} />
   <SettingsTile id="settings-shared" title="Shared chats" meta="Manage read-only chat links" icon={Link2} onOpen={() => openSettingsPane("shared")} />
+ </SettingsOverview>
+</TabsContent>
+<TabsContent value="admin" className="mt-0">
+ <SettingsOverview title="Admin">
+  {isHostAdmin ? <SettingsTile id="settings-users" title="Users" meta="Accounts and access" icon={Users} onOpen={() => openSettingsPane("users")} /> : null}
+
   {isHostAdmin ? <SettingsTile id="settings-maintenance" title="Maintenance" meta="Update preparation and data reset" icon={Settings2} onOpen={() => openSettingsPane("maintenance")} /> : null}
  </SettingsOverview>
 </TabsContent>

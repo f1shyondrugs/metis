@@ -73,9 +73,9 @@ export function ShareLinkControls({ url, active, passwordProtected, busy, onUpda
         value={url}
         onFocus={event => event.currentTarget.select()}
         aria-label="Share link"
-        className="min-w-0"
+        className="min-w-0 h-11 sm:h-8"
       />
-      <Button type="button" variant="outline" size="icon" aria-label={copied ? "Share link copied" : "Copy share link"} onClick={() => void copyLink()}>
+      <Button type="button" variant="outline" size="icon-action" aria-label={copied ? "Share link copied" : "Copy share link"} onClick={() => void copyLink()}>
         {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
       </Button>
     </div>
@@ -92,7 +92,7 @@ export function ShareLinkControls({ url, active, passwordProtected, busy, onUpda
       </div>
       <Button
         type="button"
-        size="sm"
+        size="action"
         variant={passwordProtected ? "default" : "outline"}
         disabled={working}
         onClick={() => {
@@ -106,6 +106,7 @@ export function ShareLinkControls({ url, active, passwordProtected, busy, onUpda
     {!passwordProtected && showPasswordForm ? <form className="flex gap-2" onSubmit={event => { event.preventDefault(); if (password.trim()) void update({ password }); }}>
       <Input
         type="password"
+        className="h-11 sm:h-8"
         value={password}
         onChange={event => setPassword(event.target.value)}
         placeholder="New password"
@@ -115,9 +116,9 @@ export function ShareLinkControls({ url, active, passwordProtected, busy, onUpda
         disabled={working}
         autoFocus
       />
-      <Button type="submit" disabled={working || !password.trim()}>Lock</Button>
+      <Button type="submit" size="action" disabled={working || !password.trim()}>Lock</Button>
     </form> : null}
-    <Button type="button" variant={active ? "destructive" : "default"} className="w-full" disabled={working} onClick={() => void update({ active: !active })}>
+    <Button type="button" size="action" variant={active ? "destructive" : "default"} className="w-full" disabled={working} onClick={() => void update({ active: !active })}>
       {working ? <LoaderCircle className="size-4 animate-spin" /> : null}
       {active ? "Stop sharing" : "Start sharing"}
     </Button>

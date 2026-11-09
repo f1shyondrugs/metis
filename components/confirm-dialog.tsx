@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,25 +35,35 @@ export function ConfirmDialog({
   onSecondary,
 }: ConfirmDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const confirming = useRef(false);
+  useEffect(() => { if (open) setError(""); }, [open]);
 
   async function confirm() {
+    if (confirming.current) return;
+    confirming.current = true;
     setLoading(true);
+    setError("");
     try {
       await onConfirm();
       onOpenChange(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not complete this action. Please retry.");
     } finally {
+      confirming.current = false;
       setLoading(false);
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !loading && onOpenChange(nextOpen)}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
+      <DialogContent closeButtonDisabled={loading} aria-busy={loading} className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-sm">
+        <DialogHeader className="min-h-0 overflow-y-auto p-4">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <DialogFooter>
+        {error ? <p role="alert" className="shrink-0 px-4 pb-4 text-sm text-destructive [overflow-wrap:anywhere]">{error}</p> : null}
+        <DialogFooter className="mx-0 mb-0 shrink-0">
           <Button variant="ghost" disabled={loading} onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

@@ -389,6 +389,10 @@
   text-decoration: none;
 }
 
+.workspace-card-preview .markdown-body h1 { @apply mt-0 mb-2 border-0 pb-0 text-lg leading-snug; }
+.workspace-card-preview .markdown-body h2 { @apply mt-3 mb-2 border-0 pb-0 text-base leading-snug; }
+.workspace-card-preview .markdown-body h3 { @apply mt-3 mb-2 text-sm leading-snug; }
+
 .markdown-body blockquote {
   @apply my-3 border-l-2 border-border pl-3 text-muted-foreground;
 }

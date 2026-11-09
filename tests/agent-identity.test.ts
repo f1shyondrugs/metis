@@ -7,9 +7,9 @@ import { metisAgentIdentity } from "../lib/agent-identity";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("identity prompt names Metis AI and the harness", () => {
+test("identity prompt names Metis and the harness", () => {
   const identity = metisAgentIdentity();
-  assert.match(identity, /^You are Metis AI\./);
+  assert.match(identity, /^You are Metis\./);
   assert.match(identity, /application harness/);
   assert.match(identity, /not a generic Cursor assistant/);
   assert.match(identity, /remote-client connection are your own runtime/);
@@ -28,6 +28,6 @@ test("cursor and provider runtimes inject the shared identity through their cano
   assert.match(providerSupport, /buildProviderPrompt\(/);
   assert.match(promptContext, /agentRulesPrompt/);
   assert.match(promptContext, /agentRulesPrompt\(globalSettings\)/);
-  assert.match(modes, /You are Metis AI, running in the Metis AI harness/);
+  assert.match(modes, /You are Metis, running in the Metis harness/);
   assert.doesNotMatch(promptContext, /You are a provider inside a private AI chat application/);
 });

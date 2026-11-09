@@ -476,6 +476,7 @@ export function getChatMetadata(id: string, ownerId?: string): Chat | null {
 }
 
 function saveChatInternal(chat: Chat, options?: { touchUpdatedAt?: boolean; syncKind?: ChatSyncEventKind; metadataProjection?: boolean; pageChange?: { message?: ChatMessage; position?: number; metadataOnly?: boolean } }) {
+  if (getDatabase().prepare("SELECT 1 FROM deleted_chats WHERE id=?").get(chat.id)) throw new Error("Chat is in Recently deleted.");
   // `updated_at` is also the cache revision used by getChat/getChatPage.
   // Every JSON mutation must advance it, including workspace/session changes
   // that do not necessarily change the chat title or message activity.
