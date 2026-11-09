@@ -2,6 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
+import { NoteSubfiles } from "./note-subfiles";
 import { BannerHeader } from "@/components/banner-image";
 import { Check, Loader2, RefreshCw, AlertCircle, Plus, ListTodo } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ const NotesBlockEditor = dynamic(() => import("./block-editor").then(mod => mod.
 });
 export type NoteDocumentHandle = { flush: () => Promise<boolean> };
 type Props = {
+  subfiles?: readonly TreeNote[];
   headerOnly?: boolean;
   afterHeader?: ReactNode;
   note: TreeNote;
@@ -33,7 +35,7 @@ type Props = {
 };
 
 export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteDocument({
-  note, ownerId, onSaved, onCreateSubpage, onOpenNote, onOpenIssue, onCreateIssue, headerOnly = false, afterHeader,
+  note, ownerId, onSaved, onCreateSubpage, onOpenNote, onOpenIssue, onCreateIssue, headerOnly = false, afterHeader, subfiles = [],
 }, ref) {
   const [document, setDocument] = useState<TreeNote>(note);
   const [status, setStatus] = useState<"saved" | "saving" | "offline" | "conflict">("saved");
@@ -231,10 +233,11 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
       </span>
     </div>
     <input
-      aria-label="File title" value={noteDisplayTitle(document.title)} placeholder="Untitled" maxLength={document.issueId ? 300 : 200}
+      data-note-title aria-label="File title" value={noteDisplayTitle(document.title)} placeholder="Untitled" maxLength={document.issueId ? 300 : 200}
       onChange={event => update({ title: noteDisplayTitle(event.target.value) })}
       className="mb-6 w-full border-0 bg-transparent text-3xl font-semibold leading-tight tracking-tight outline-none placeholder:text-muted-foreground/50 sm:text-4xl"
     />
+    <NoteSubfiles notes={subfiles} onOpenNote={id => { persist(); onOpenNote(id); }}/>
     {error && <div role="alert" className="mb-5 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
       <p>{error}</p>
       {remoteConflict ? <div className="mt-3 flex flex-wrap gap-2">

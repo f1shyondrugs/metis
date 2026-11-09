@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, FileText, ListTodo, LockKeyhole, Menu, X } f
 import { Markdown } from "@/components/markdown";
 import { FileEmbed } from "@/components/file-embed";
 import { SharedNotePasswordGate } from "@/components/notes/shared-note-password-gate";
+import { NoteSubfiles } from "@/components/notes/note-subfiles";
 import { NoteIcon } from "@/components/notes/note-icon";
 import { Button } from "@/components/ui/button";
 import { noteDisplayTitle } from "@/lib/notes-tree";
@@ -138,13 +139,14 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
         <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><LockKeyhole className="size-3"/>Read only</span>
       </header>
       {error?<div role="alert" className="flex items-center gap-3 border-b border-border px-4 py-2 text-xs text-muted-foreground"><span className="min-w-0 flex-1">{error}</span><Button variant="ghost" size="sm" onClick={()=>setRetry(value=>value+1)}>Retry</Button></div>:null}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-note-page-scroll className="min-h-0 flex-1 overflow-y-auto">
         {coverColor?<div className="h-36 w-full sm:h-48" style={{backgroundColor:coverColor}}/>:null}
         <BannerHeader value={coverUrl} alt="" bannerClassName="h-36 w-full sm:h-48" gapClassName="mt-0" referrerPolicy="no-referrer">
         <article key={note.id} className={cn("mx-auto px-5 py-8 sm:px-10",note.fullWidth?"max-w-none":"max-w-[920px]")}>
           {note.icon?<NoteIcon value={note.icon} className="mb-4 size-10 text-4xl" />:null}
-          <h1 className="mb-2 break-words text-3xl font-semibold tracking-tight">{title(note)}</h1>
+          <h1 data-note-title className="mb-2 break-words text-3xl font-semibold tracking-tight">{title(note)}</h1>
           <p className="mb-7 text-xs text-muted-foreground">Updated <time dateTime={note.updatedAt}>{note.updatedAt.slice(0,10)}</time></p>
+          <NoteSubfiles notes={share.notes.filter(item => item.parentId === note.id).sort((a,b) => a.sortKey - b.sortKey || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))} onOpenNote={openNote}/>
           {note.asset&&sharedAssetUrls.has(note.asset.url)?<FileEmbed file={note.asset} resizable={false} className="mb-6 rounded-lg border border-border"/>:null}
           {note.todos?.length?<section aria-label="Checklist" className="mb-6 space-y-2 border-b border-border pb-5">
             {note.todos.map(todo=><label key={todo.id} className="flex min-h-8 items-start gap-2 text-sm"><input type="checkbox" checked={todo.status==="completed"} disabled className="mt-1"/><span className={cn("min-w-0 flex-1",todo.status==="completed"&&"text-muted-foreground line-through")}>{todo.content}{todo.status==="in_progress"?<span className="ml-2 text-xs text-muted-foreground">In progress</span>:null}</span></label>)}
