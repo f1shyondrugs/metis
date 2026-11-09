@@ -6,10 +6,7 @@ import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer,
 import { type Editor, type JSONContent } from "@tiptap/core";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { Fragment, type Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Compartment, EditorState } from "@codemirror/state";
-import { Decoration, EditorView, keymap, placeholder } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
+import { MarkdownSourceEditor } from "./markdown-source-editor";
 import { ArrowDown, ArrowUp, Bold, Check, ChevronDown, ChevronRight, Code2, Copy, FileText, GripVertical, Italic, Link2, List, Paperclip, Plus, Redo2, Strikethrough, Trash2, Underline, Undo2, X } from "lucide-react";
 import katex from "katex";
 import { Dialog as DialogPrimitive } from "radix-ui";
@@ -17,14 +14,13 @@ import { Markdown } from "@/components/markdown";
 import { notesEditorExtensions, NotesMathBlock, NotesSourceBlock, NotesToggle, NotesInlineMath, NotesTableOfContents, NotesPageReference, NotesEmbed } from "@/lib/notes-editor-extensions";
 import { parseNotesMarkdown, createNotesMarkdownSerializer, notesNodeSignature, type EditorNode } from "@/lib/notes-editor-markdown";
 import { findNotesTask, notesSelectionSourceId, planNotesTaskIssueConversion, type NotesIssueContext, type NotesIssueReference } from "@/lib/notes-editor-tasks";
-import { minimalMarkdownChange, replaceEmbeddedSource } from "@/lib/markdown-editor";
+import { replaceEmbeddedSource } from "@/lib/markdown-editor";
 import { createEditorValueSync } from "@/lib/editor-value-sync";
 import { createNotesEditorDropHandler } from "@/lib/notes-editor-drop";
 import { cancelUpload, getUploadSnapshot, retryUpload, startUpload, subscribeUploads, type UploadTask } from "@/lib/background-uploads";
 import { fileEmbedMarkdown } from "@/lib/file-types";
 import { appendMarkdownAttachment, markdownAttachmentLimit, markdownAttachmentTarget, persistMarkdownAttachment } from "@/lib/markdown-editor-attachment";
-import { markdownChangeFitsLimit, markdownLengthChangeFitsLimit, markdownDisplayImageExtension, markdownEditorGuard } from "@/lib/shared-markdown-editor";
-import { resolveMarkdownSourceLocation } from "@/lib/markdown-source-location";
+import { markdownChangeFitsLimit, markdownDisplayImageExtension, markdownEditorGuard } from "@/lib/shared-markdown-editor";
 import { parseWorkspaceFileLink, type WorkspaceFileLocation } from "@/lib/workspace-file-link";
 import { registerFileDrop } from "@/lib/file-drop";
 import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
@@ -106,7 +102,7 @@ function SourceBlockView({ node, updateAttributes, selected, editor }: NodeViewP
       <span>{String(node.attrs.label || "Markdown source")}</span>
       <button type="button" disabled={!editor.isEditable} onClick={() => setEditing(!editing)}>{editing ? "Preview" : "Edit source"}</button>
     </div>
-    {editing ? <textarea aria-label="Block Markdown source" readOnly={!editor.isEditable} value={String(node.attrs.source || "")} onChange={(event) => updateAttributes({ source: event.target.value })} rows={Math.min(18, Math.max(4, String(node.attrs.source).split("\n").length))} spellCheck={false} /> :
+    {editing ? <div contentEditable={false}><MarkdownSourceEditor ariaLabel="Block Markdown source" disabled={!editor.isEditable} value={String(node.attrs.source || "")} onChange={source => updateAttributes({ source })} maxLength={100_000} onExceeded={() => {}} onFiles={async () => {}} /></div> :
       <div contentEditable={false} className="notes-source-preview"><Markdown content={String(node.attrs.source || "")} editableFiles={editor.isEditable} /></div>}
   </NodeViewWrapper>;
 }
@@ -143,79 +139,6 @@ function TableOfContentsView({ editor }: NodeViewProps) {
   const headings: {pos:number;level:number;title:string}[] = [];
   editor.state.doc.descendants((node,pos) => { if (node.type.name === "heading") headings.push({pos,level:Number(node.attrs.level),title:node.textContent || "Untitled heading"}); });
   return <NodeViewWrapper className="notes-table-of-contents" contentEditable={false}><nav aria-label="Table of contents"><strong>Table of contents</strong>{headings.length ? headings.map((heading) => <button key={heading.pos} type="button" style={{paddingLeft:(heading.level - 1) * 14}} onClick={() => editor.chain().focus().setTextSelection(heading.pos + 1).scrollIntoView().run()}>{heading.title}</button>) : <p>Add headings to build a table of contents.</p>}</nav></NodeViewWrapper>;
-}
-function MarkdownSourceEditor({ value, onChange, disabled, maxLength, ariaLabel, placeholderText, autoFocus, sourceLocation, onExceeded, onFiles }: {
-  value: string; onChange: (value: string) => void; disabled: boolean; maxLength: number; ariaLabel: string; placeholderText?: string;
-  autoFocus?: boolean; sourceLocation?: WorkspaceFileLocation | null; onExceeded: () => void; onFiles: (files: File[]) => Promise<void>;
-}) {
-  const host = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null);
-  const callback = useRef(onChange), current = useRef(value), syncing = useRef(false);
-  const valueSync = useRef(createEditorValueSync(value));
-  const settings = useRef({ disabled, maxLength, onExceeded, onFiles }); settings.current = { disabled, maxLength, onExceeded, onFiles };
-  const config = useMemo(() => new Compartment(), []), highlights = useMemo(() => new Compartment(), []);
-  callback.current = onChange;
-  useEffect(() => {
-    if (!host.current) return;
-    const instance = new EditorView({
-      parent: host.current,
-      state: EditorState.create({ doc: current.current, extensions: [
-        markdown(), history(), keymap.of([...defaultKeymap, ...historyKeymap]), EditorView.lineWrapping,
-        EditorState.lineSeparator.of(current.current.includes("\r\n") ? "\r\n" : "\n"),
-        config.of([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled),
-          placeholder(placeholderText || "Write Markdown…"), EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: "true" })]),
-        highlights.of([]),
-        EditorState.changeFilter.of((transaction) => {
-          if (syncing.current) return true;
-          if (settings.current.disabled) return false;
-          const separatorExtra = (transaction.startState.facet(EditorState.lineSeparator) || "\n").length - 1;
-          const previousLength = transaction.startState.doc.length + (transaction.startState.doc.lines - 1) * separatorExtra;
-          const nextLength = transaction.newDoc.length + (transaction.newDoc.lines - 1) * separatorExtra;
-          if (markdownLengthChangeFitsLimit(previousLength, nextLength, settings.current.maxLength)) return true;
-          settings.current.onExceeded(); return false;
-        }),
-        EditorView.domEventHandlers({
-          paste(event) { const files = Array.from(event.clipboardData?.files || []); if (!files.length) return false; event.preventDefault(); void settings.current.onFiles(files); return true; },
-          drop(event) { const files = Array.from(event.dataTransfer?.files || []); if (!files.length) return false; event.preventDefault(); void settings.current.onFiles(files); return true; },
-        }),
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged && !syncing.current) {
-            current.current = update.state.sliceDoc();
-            valueSync.current.published(current.current);
-            // Synchronous by contract: parent Save/navigation must see the very last keystroke.
-            callback.current(current.current);
-          }
-        }),
-      ] }),
-    });
-    view.current = instance; if (autoFocus) instance.focus();
-    return () => { view.current = null; instance.destroy(); };
-    // Source instance owns cursor/history. Changing props is handled through compartments below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    const instance = view.current; if (!instance) return;
-    instance.dispatch({ effects: config.reconfigure([
-      EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled), placeholder(placeholderText || "Write Markdown…"),
-      EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: "true" }),
-    ]) });
-  }, [ariaLabel, config, disabled, placeholderText]);
-  useEffect(() => {
-    if (!valueSync.current.receive(value)) return;
-    current.current = value;
-    const instance = view.current; if (!instance) return;
-    const change = minimalMarkdownChange(instance.state.doc.toString(), instance.state.toText(value).toString());
-    if (change) { syncing.current = true; try { instance.dispatch({ changes: change }); } finally { syncing.current = false; } }
-  }, [value]);
-  useEffect(() => {
-    const instance = view.current; if (!instance || !sourceLocation) return;
-    const location = resolveMarkdownSourceLocation(instance.state.doc.toString(), sourceLocation);
-    const ranges = location.changes.filter((change) => change.to > change.from).map((change) =>
-      Decoration.mark({ class: "notes-source-change notes-source-change-" + change.kind }).range(change.from, change.to));
-    instance.dispatch({ selection: { anchor: location.from, head: location.to },
-      effects: [highlights.reconfigure(EditorView.decorations.of(Decoration.set(ranges, true))), EditorView.scrollIntoView(location.from, { y: "center" })] });
-    instance.focus();
-  }, [sourceLocation, highlights]);
-  return <div ref={host} className="notes-markdown-source" />;
 }
 
 function ToolButton({ label, children, active, disabled, onClick }: { label: string; children: ReactNode; active?: boolean; disabled?: boolean; onClick: () => void }) {
