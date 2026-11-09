@@ -28,7 +28,7 @@ const {
   closeBrowserSession,
   cleanupBrowserSessions,
   performBrowserAction,
-  getBrowserLoginTarget,
+  getBrowserLoginContext,
   setBrowserViewport,
   browserEvents,
 } = await importServerModule("./lib/server-browser.ts");
@@ -144,13 +144,17 @@ async function persistBrowserContext(userId, chatId, result) {
   }
 }
 
-const protectedBrowserRouting = new ProtectedBrowserRouting(browserLoginRequest, getBrowserLoginTarget);
+const protectedBrowserRouting = new ProtectedBrowserRouting(browserLoginRequest, getBrowserLoginContext);
 async function performSharedBrowserAction(userId, chatId, action) {
   if (action.action === "secure_input_prepare") {
     return protectedBrowserRouting.prepare(userId, chatId, action);
   }
   if (protectedBrowserRouting.has(userId, chatId) || action.tabId === "protected") {
-    return protectedBrowserRouting.action(userId, chatId, action);
+    const result=await protectedBrowserRouting.action(userId, chatId, action);
+    if(action.action!=="close_tab")return result;
+    const ordinary=await performBrowserAction(userId,chatId,{action:"select_tab",source:action.source});
+    await persistBrowserContext(userId,chatId,ordinary);
+    return ordinary;
   }
   const now = Date.now();
   if (now - lastBrowserCleanupAt > 60_000) {

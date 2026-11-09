@@ -20,7 +20,7 @@ values exist only in memory for the same owner, chat and target, for at most
 24 hours, ending on broker restart or chat deletion. Selecting it saves an
 encrypted record per owner and exact HTTPS origin. Settings → Security →
 Credential vault lists saved browser and console entries and supports replacement
-and deletion. Changing a login identity does not silently reuse a password bound
+and deletion. The + button also creates a website login directly, using its HTTPS sign-in address and optional username/email. Paths are normalized to the exact origin; an existing entry is never overwritten by Add. Draft values remain in the form after a failed save and are cleared on success or cancellation. Changing a login identity does not silently reuse a password bound
 to a different identity. Multiple accounts or tenants sharing one login origin
 are not separate saved profiles.
 
@@ -110,7 +110,7 @@ Known secret representations and sensitive form values are redacted from DOM
 results. This is not a universal information-flow guarantee against a malicious
 login site; the trusted site necessarily receives the credentials it accepts.
 
-HTTPS return origins explicitly declared in the initial login URL may be used
+The application also retains the last explicitly opened HTTPS entry origin for that tab. It may join the declared SSO return sites when a new private session is created; page redirects cannot add origins, and callers cannot override this with tool arguments. This supports an entry → login → SSO relay → entry flow without forwarding passwords away from the exact credential origin.\n\nHTTPS return origins explicitly declared in the initial login URL may be used
 for navigation without forwarding password values. For a reviewed SSO flow that
 requires another exact origin, an operator can set
 `METIS_BROWSER_LOGIN_RETURN_ORIGINS_FILE` to a root-owned JSON file, for example:
@@ -131,7 +131,7 @@ closes the protected context. Pre-login public resources may be replayed locally
 from the bounded session cache instead of making new third-party requests after
 credential entry.
 
-## Verification and rollback
+Closing the protected tab returns to the ordinary browser without copying private cookies or page state. Listing tabs uses metadata rather than requesting a forbidden private screenshot. A blocked navigation returns a fixed actionable error instead of a successful empty page. Unsupported workers close the credential context while still paused.\n\nOrdinary browser screenshots leave normal inputs, textareas and editable text visible. Native concealed password bullets need no extra field mask. Revealed passwords, login identities, payment/token fields and explicitly marked sensitive controls are masked. Known values reflected outside their field block capture, and inspection failures remain fail-closed. Private credential sessions retain their separate no-image boundary. Hidden fields remain redacted throughout DOM results. Hidden routing flags do not join the screenshot history or by themselves imply that visible pixels contain credentials. The private login target and entry origin come from trusted app-owned tab state, independent of redacted display URLs.\n\n## Verification and rollback
 
 Run `pnpm run test:protected-login`, `pnpm run typecheck`, the complete test suite
 and `pnpm run build` against the contributed tree with isolated test data.

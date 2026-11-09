@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import dns from "node:dns/promises";
 import {mkdtempSync,rmSync} from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,6 +25,30 @@ test("trusted login target survives hidden return-URL redaction without exposing
   assert.throws(()=>getBrowserLoginTarget("owner-a","chat-a","missing-tab"));
 });
 
+test("the trusted SSO context retains only the last explicitly opened HTTPS entry site",async t=>{
+ const contexts:BrowserContext[]=[],pages:Page[]=[];
+ const launch=chromium.launchPersistentContext.bind(chromium);
+ t.mock.method(chromium,"launchPersistentContext",async(...args:Parameters<typeof launch>)=>{
+  const context=await launch(...args);contexts.push(context);
+  const create=context.newPage.bind(context);
+  t.mock.method(context,"newPage",async()=>{const page=await create();pages.push(page);return page;});
+  return context;
+ });
+ t.mock.method(dns,"lookup",async()=>[{address:"8.8.8.8",family:4}] as never);
+ const {performBrowserAction,getBrowserLoginContext}=await import("../lib/server-browser");
+ t.after(async()=>{for(const context of contexts)await context.close();});
+ const initial=await performBrowserAction("entry-owner","entry-chat",{action:"select_tab",includeScreenshot:false});
+ await pages[0].route("**/*",route=>route.request().url().startsWith("https://entry.test")?
+  route.fulfill({contentType:"text/html",body:'<script>setTimeout(()=>location.href="https://login.test/?url=https%3A%2F%2Frelay.test%2F",50)</script>'}):
+  route.fulfill({contentType:"text/html",body:"<form><input type=password></form>"}));
+ await performBrowserAction("entry-owner","entry-chat",{action:"navigate",url:"https://entry.test/start",includeScreenshot:false});
+ await pages[0].waitForURL("https://login.test/**");
+ const target=getBrowserLoginContext("entry-owner","entry-chat",initial.tabId);
+ assert.equal(target.entryOrigin,"https://entry.test");assert.match(target.url,/^https:\/\/login\.test/);
+ assert.throws(()=>getBrowserLoginContext("other-owner","entry-chat",initial.tabId));
+ await performBrowserAction("entry-owner","entry-chat",{action:"navigate",url:"http://127.0.0.1/public",includeScreenshot:false});
+ assert.equal(getBrowserLoginContext("entry-owner","entry-chat",initial.tabId).entryOrigin,undefined);
+});
 test("trusted HTTPS target preserves query and fragment while form metadata distinguishes visible fields",async t=>{
   const launch=chromium.launchPersistentContext.bind(chromium);
   const contexts:BrowserContext[]=[];

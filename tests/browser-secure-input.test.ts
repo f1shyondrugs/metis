@@ -17,18 +17,22 @@ test("real HTTPS browser: secure input, encrypted save, automatic per-owner/per-
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),"metis-saved-login-test-"));
   const cert=path.join(dir,"cert.pem"),keyFile=path.join(dir,"cert.key");
   execFileSync("openssl",["req","-x509","-newkey","rsa:2048","-nodes","-keyout",keyFile,"-out",cert,"-days","1","-subj","/CN=portal.test"],{stdio:"ignore"});
-  let received="",receivedFields:Record<string,string>={},publicReads=0;
+  let received="",receivedFields:Record<string,string>={},publicReads=0,chainReadyReads=0;
   const portal=https.createServer({key:fs.readFileSync(keyFile),cert:fs.readFileSync(cert)},async(req,res)=>{
     res.setHeader("Content-Type","text/html");
     if(req.method==="POST") {
       let body="";for await(const chunk of req)body+=chunk;
       received=new URLSearchParams(body).get("password")||"";
       receivedFields=Object.fromEntries(new URLSearchParams(body));
+      if(req.url?.startsWith("/chain-sso")){res.writeHead(302,{Location:"https://other.test/chain-return"});res.end();return;}
       if(req.url==="/sso-login"){res.writeHead(302,{Location:"https://other.test/after-sso?code=TEST-SSO-AUTH-CODE"});res.end();return;}
       if(req.url==="/continue"){res.end('<form action="/login" method="post"><input id="password" type="password" name="password"><button id="submit">Login</button></form>');return;}
       res.setHeader("Set-Cookie","auth=TEST-ONLY-SESSION-COOKIE; HttpOnly; Secure");
       res.end(`<h1>Logged in</h1><p>${received}</p><p>TEST-ONLY-SESSION-COOKIE</p>`);
-    }else if(req.url?.startsWith('/school-data.js')){publicReads++;res.setHeader('Content-Type','application/javascript');res.end('window.schoolDataReady=true');}
+    }else if(req.url==="/chain-return"){res.writeHead(302,{Location:"https://public.test/chain-ready"});res.end();}
+    else if(req.url==="/chain-ready"){chainReadyReads++;res.end('<h1 id="chain-ready">CHAIN_READY</h1>');}
+    else if(req.url?.startsWith("/chain-sso"))res.end('<form action="/chain-sso" method="post"><input name="username"><input type="password" name="password"><button id="submit">Login</button></form>');
+    else if(req.url?.startsWith('/school-data.js')){publicReads++;res.setHeader('Content-Type','application/javascript');res.end('window.schoolDataReady=true');}
     else if(req.url?.startsWith('/sso-app.js')){res.setHeader('Content-Type','application/javascript');res.end('if(window.schoolDataReady)document.body.innerHTML="<h1 id=task-ready>SSO_TASK_READY</h1>"');}
     else if(req.url?.startsWith('/after-sso'))res.end('<h1>SSO_LOADING</h1><script src="https://public.test/school-data.js"></script><script src="/sso-app.js"></script>');
     else if(req.url?.startsWith('/sso-choose'))res.end('<button id="select-campus" onclick="location.href=\'/sso-login\'+location.search">Select test campus</button><form hidden action="/sso-login" method="post"><input name="username"><input name="password" type="password"></form>');
@@ -56,6 +60,26 @@ test("real HTTPS browser: secure input, encrypted save, automatic per-owner/per-
   let core=new SavedBrowserLogins(key,database,proxyUrl);
   t.after(async()=>{await core.close();for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>proxy.close(()=>resolve()));await new Promise<void>(resolve=>portal.close(()=>resolve()));fs.rmSync(dir,{recursive:true,force:true});});
   const call=(operation:string,input:Record<string,unknown>={},management=false,owner="alice",chat="chat")=>core.dispatch({owner,chat,operation,input},management);
+  const manualSecret="TEST-MANUAL-LOGIN-ONLY";
+  await call("create",{origin:"https://portal.test/identity",username:"TEST-MANUAL-USER",password:manualSecret},true,"manual-user","manual-chat");
+  assert.equal((await call("prepare",{url:"https://portal.test/login",fields:["username","password"]},false,"manual-user","manual-chat")).status,"filled_saved");
+  await call("action",{action:"click",selector:"#submit"},false,"manual-user","manual-chat");
+  assert.deepEqual(receivedFields,{username:"TEST-MANUAL-USER",password:manualSecret});
+  await call("close",{},false,"manual-user","manual-chat");
+  const chainUrl="https://portal.test/chain-sso?url="+Buffer.from("https://other.test/chain-return").toString("base64");
+  const chain=await call("prepare",{url:chainUrl,entryOrigin:"https://public.test",fields:["username","password"]},false,"chain-user","chain-chat");
+  await call("fill",{requestId:requireProtectedInput(chain).requestId,username:"TEST-CHAIN-USER",password:"TEST-CHAIN-PASSWORD",persist:false},true,"chain-user","chain-chat");
+  await call("action",{action:"click",selector:"#submit"},false,"chain-user","chain-chat");
+  await call("action",{action:"wait_for",selector:"#chain-ready"},false,"chain-user","chain-chat");
+  assert.equal(chainReadyReads,1,"verified entry origin receives the final SSO return");
+  assert.match(String((await call("action",{action:"extract_text"},false,"chain-user","chain-chat")).snapshot),/CHAIN_READY/);
+  await call("close",{},false,"chain-user","chain-chat");
+  const blockedChain=await call("prepare",{url:chainUrl,fields:["username","password"]},false,"blocked-chain","chain-chat");
+  await call("fill",{requestId:requireProtectedInput(blockedChain).requestId,username:"TEST-BLOCKED-USER",password:"TEST-BLOCKED-PASSWORD",persist:false},true,"blocked-chain","chain-chat");
+  await call("action",{action:"click",selector:"#submit"},false,"blocked-chain","chain-chat").catch(()=>{});
+  await assert.rejects(call("action",{action:"form_state"},false,"blocked-chain","chain-chat"),error=>error instanceof Error&&"code" in error&&error.code==="navigation_blocked");
+  assert.equal(chainReadyReads,1,"an unapproved return origin still receives no request");
+  await call("close",{},false,"blocked-chain","chain-chat");
   const first=await call("prepare",{url:"https://portal.test/login",selector:"#password"});
   assert.equal(first.status,"input_required");assert.equal(requireProtectedInput(first).origin,"https://portal.test");
   await assert.rejects(call("fill",{requestId:requireProtectedInput(first).requestId,password},true,"bob"));

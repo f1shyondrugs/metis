@@ -50,7 +50,7 @@ test("credentials inside an embedded frame still prevent capture",{skip:needsNon
   const browser=await chromium.launch({headless:true,chromiumSandbox:true});
   t.after(()=>browser.close());
   const page=await browser.newPage();
-  await page.setContent('<iframe srcdoc="&lt;input type=password value=TEST-FRAME-SECRET&gt;"></iframe>');
+  await page.setContent('<iframe srcdoc="&lt;input type=password value=TEST-FRAME-SECRET&gt;&lt;p&gt;TEST-FRAME-SECRET&lt;/p&gt;"></iframe>');
   await page.frameLocator("iframe").locator("input").waitFor();
   await assert.rejects(screenshotPage(page,{type:"png"}),/sensitive form values/);
 });

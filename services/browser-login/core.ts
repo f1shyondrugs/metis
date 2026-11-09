@@ -16,7 +16,7 @@ function publicResourceKey(value:string){const url=new URL(value);if(/^\d+$/.tes
 type Session = { browser: Browser; context: BrowserContext; page: Page; origin: string; navigationOrigins:Set<string>; declaredOrigins:ReadonlySet<string>; publicResources:Map<string,PublicResource>;resourceBytes:number; used: number };
 type LoginInput = Record<string, unknown> & {
   kind?:string; origin?:string; password?:string; username?:string; email?:string;
-  requestId?:string; persist?:boolean; replace?:boolean; url?:string; fields?:CredentialField[];
+  entryOrigin?:string; requestId?:string; persist?:boolean; replace?:boolean; url?:string; fields?:CredentialField[];
   selector?:string; usernameSelector?:string; emailSelector?:string; action?:string;
   text?:string; key?:string; value?:string|string[]; includeSnapshot?:boolean;
   deltaY?:number; width?:number; height?:number;
@@ -58,7 +58,7 @@ export class SavedBrowserLogins {
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key,item]) => [key,this.scrub(page,item)])) as T;
     return value;
   }
-  private async session(owner: string, chat: string, url?: string) {
+  private async session(owner: string, chat: string, url?: string, entryOrigin?:string) {
     const key = `${owner}:${chat}`;
     for (const [id, old] of this.sessions) if (Date.now()-old.used > 15*60_000) {
       this.sessions.delete(id); await old.browser.close();
@@ -68,7 +68,8 @@ export class SavedBrowserLogins {
       if (!url) throw new ProtectedLoginError("session_unavailable");
       if (this.sessions.size >= 8) throw new ProtectedLoginError("session_limit");
       const target = this.site(url);
-      const declaredOrigins = loginNavigationOrigins(target);
+      if(entryOrigin!==undefined&&this.site(entryOrigin).origin!==entryOrigin)throw new ProtectedLoginError("https_required");
+      const declaredOrigins = loginNavigationOrigins(target,entryOrigin?[entryOrigin]:[]);
       const navigationOrigins = withOperatorReturnOrigins(declaredOrigins, this.operatorReturnOrigins[target.origin]);
       this.proxy ??= this.testProxy ? undefined : await publicBrowserProxy();
       const browser = await chromium.launch({ headless:true, chromiumSandbox:true,
@@ -125,6 +126,8 @@ export class SavedBrowserLogins {
   }
   private async state(session: Session):Promise<ProtectedLoginReply> {
     const {page} = session;
+    if(page.isClosed())throw new ProtectedLoginError("session_unavailable");
+    if(!page.url().startsWith("https://"))throw new ProtectedLoginError("navigation_blocked");
     retainBrowserSecrets(page,(await session.context.cookies()).map(cookie=>cookie.value));
     retainBrowserSecrets(page,await page.locator('input[type="hidden"]').evaluateAll(elements=>elements.map(el=>(el as HTMLInputElement).value)).catch(()=>[]));
     const url=new URL(page.url());
@@ -155,6 +158,16 @@ export class SavedBrowserLogins {
       for (const [id,s] of this.sessions) if (id.startsWith(`${owner}:`) && s.origin===origin) {this.sessions.delete(id);await s.browser.close();}
       return {status:"deleted"};
     }
+    if (operation === "create" && management) {
+      if(input.kind && input.kind!=="browser")throw Error("Invalid credential kind");
+      const origin=this.site(input.origin).origin;
+      if(this.db.prepare("SELECT 1 FROM website_logins WHERE owner=? AND origin=?").get(owner,origin))throw new ProtectedLoginError("credential_exists");
+      if(typeof input.password!=="string"||!input.password||input.password.length>4096)throw Error("Invalid credentials");
+      const values=Object.fromEntries(["password","username","email"].filter(key=>input[key]!==undefined).map(key=>[key,input[key]]));
+      this.credentials.saveValues(owner,"","browser",origin,values,true);
+      input.password="";input.username="";input.email="";
+      return {status:"created",origin};
+    }
     if (operation === "update" && management) {
       if(input.kind==="console"){
         const target=String(input.origin);
@@ -167,7 +180,7 @@ export class SavedBrowserLogins {
       const origin=this.site(input.origin).origin;
       if(!["password","username","email"].some(key=>typeof input[key]==="string"&&input[key]))throw Error("Invalid credentials");
       const result=this.db.prepare("SELECT 1 FROM website_logins WHERE owner=? AND origin=?").get(owner,origin);
-      if(!result)throw Error("Credential unavailable");
+      if(!result)throw new ProtectedLoginError("credential_unavailable");
       this.credentials.saveValues(owner,"","browser",origin,Object.fromEntries(["password","username","email"].filter(key=>input[key]!==undefined).map(key=>[key,input[key]])),true);
       input.password="";
       this.credentials.clearTemporary(owner,"browser",origin);
@@ -215,7 +228,7 @@ export class SavedBrowserLogins {
     }
     if (operation === "status" && management) {const saved=this.requests.get(input.requestId ?? "");return {filled:this.inputs.status(owner,chat,requiredText(input.requestId))&&saved?.persist!==undefined,scope:saved?.persist?"permanent":"chat"};}
     if (operation === "prepare") {
-      const session=await this.session(owner,chat,input.url);
+      const session=await this.session(owner,chat,input.url,input.entryOrigin);
       const origin=this.site(session.page.url()).origin;
       if (origin!==session.origin) {
         if(browserHasSecureInput(session.page))throw Error("Website changed; open its login page again");
@@ -267,8 +280,8 @@ export class SavedBrowserLogins {
     else if (action === "wait_for") await page.locator(requiredText(input.selector)).waitFor();
     else if (action === "scroll") await page.evaluate(y=>scrollBy(0,y),Number(input.deltaY)||600);
     else if (action === "resize") await page.setViewportSize({width:Math.max(320,Math.min(2560,Number(input.width)||1280)),height:Math.max(240,Math.min(1600,Number(input.height)||800))});
-    else if (action === "screenshot" || action === "download" || action === "batch" || action === "upload_file" || action === "upload_files" || action === "drop_files") throw Error("This operation is unavailable in a protected login; use DOM tools and individual actions");
-    else if (!["snapshot","extract_text","form_state","select_tab"].includes(action ?? "")) throw Error("Unsupported protected-browser action");
+    else if (action === "screenshot" || action === "download" || action === "batch" || action === "upload_file" || action === "upload_files" || action === "drop_files") throw new ProtectedLoginError("protected_action_unavailable");
+    else if (!["snapshot","extract_text","form_state","select_tab"].includes(action ?? "")) throw new ProtectedLoginError("protected_action_unavailable");
     if(action==="click"||action==="press")await page.waitForLoadState("domcontentloaded",{timeout:8000});
     const result=await this.state(session);
     if (action==="form_state") {

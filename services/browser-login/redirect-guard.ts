@@ -55,7 +55,6 @@ function childProtocol(parent: Protocol, sessionId: string): Protocol & { receiv
 export async function installProtectedRedirectGuard(context: BrowserContext, page: Page, policy: () => Policy) {
   const browser = context.browser();
   if (!browser) throw Error("Protected redirect interception unavailable");
-  const browserSession = await browser.newBrowserCDPSession();
   const session = await context.newCDPSession(page);
   const root: Protocol = {
     send: async (method, params) => { await session.send(method, params); },
@@ -80,8 +79,9 @@ export async function installProtectedRedirectGuard(context: BrowserContext, pag
         if (!["page", "iframe"].includes(event.targetInfo.type)) {
           // Chromium workers do not implement Fetch interception. Never resume
           // an unguarded target, even before fill: it could outlive that fill.
-          const result = await browserSession.send("Target.closeTarget", { targetId: event.targetInfo.targetId });
-          if (!result.success) throw Error("Protected redirect interception unavailable");
+          // closeTarget may resume a paused worker during teardown. Close the
+          // entire credential context while it is still paused instead.
+          await context.close();
           return;
         }
         await install(child);

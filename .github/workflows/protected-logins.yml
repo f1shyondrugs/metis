@@ -59,5 +59,12 @@ jobs:
           /tmp/metis-console-tests/bin/python tests/secure-console.test.py
       - name: Run complete test suite
         run: pnpm test
+      - name: Upload synthetic vault UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vault-ui
+          path: output/vault-ui/*.png
+          if-no-files-found: ignore
       - name: Build the reviewed source
         run: pnpm build

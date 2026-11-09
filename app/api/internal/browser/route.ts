@@ -1,5 +1,6 @@
 import { internalRunContextAuthorized } from "@/lib/internal-run-lease";
 import { bearerTokenMatches } from "@/lib/security";
+import {ProtectedLoginError,protectedLoginFailure} from "@/lib/protected-login-errors";
 import { performSharedBrowserAction } from "@/lib/shared-browser-client";
 
 export const runtime = "nodejs";
@@ -23,7 +24,8 @@ export async function POST(req: Request) {
     if (!body.action) return Response.json({ error: "Browser action is required" }, { status: 400 });
     const result = await performSharedBrowserAction(userId, chatId, { ...body, action: body.action, source: "agent" });
     return Response.json(result);
-  } catch {
+  } catch (error) {
+    if(error instanceof ProtectedLoginError)return Response.json(protectedLoginFailure(error),{status:400});
     // Playwright call logs can contain field values, URLs and page text.
     return Response.json({ error: "Browser action failed" }, { status: 400 });
   }

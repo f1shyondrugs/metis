@@ -30,6 +30,16 @@ test("readiness routes school selection privately and repeated prepare never rea
   assert.equal(router.has("owner-a","chat-a"), false);
 });
 
+test("verified entry origin joins a new login flow, never caller-supplied overrides",async()=>{
+ const calls:Record<string,unknown>[]=[];
+ const router=new ProtectedBrowserRouting(async(_owner,_chat,_operation,input)=>{calls.push(input||{});return {status:"protected_browser_ready"};},
+ async()=>({url:"https://login.test/?url="+encodeURIComponent("https://connect.test/"),entryOrigin:"https://start.test"}));
+ await router.prepare("owner","chat",{entryOrigin:"https://attacker.test"} as never);
+ assert.equal(calls[0].entryOrigin,"https://start.test");
+ await router.prepare("owner","chat",{});assert(!Object.hasOwn(calls[1],"entryOrigin"));
+ await router.action("owner","chat",{action:"close_tab",tabId:"protected"});
+ assert.equal(router.has("owner","chat"),false);
+});
 test("field correction stays on the private page while transport failures do not select it", async () => {
   for (const [code, active] of [["field_ambiguous",true], ["unsafe_target",true], ["invalid_fields",true], ["session_limit",false], ["protected_login_unavailable",false]] as const) {
     const router = new ProtectedBrowserRouting(async () => { throw new ProtectedLoginError(code); }, async () => "https://portal.test/");
