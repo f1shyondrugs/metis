@@ -63,7 +63,7 @@ systemd unit or Nginx file unchanged to another machine.
 ## Live note editing
 
 Notebooks use the same authenticated custom server for live editing at
-`/api/notes/collaboration`. Forward WebSocket upgrades for this path through
+`/ws/notes`. Forward WebSocket upgrades for this path through
 the existing app proxy. Start with `pnpm start`, not `next start`.
 
 Opening a note joins its live document automatically. Accepted members of its

@@ -519,7 +519,7 @@ const server = http.createServer(async (request, response) => {
 });
 server.on("upgrade", async (request, socket, head) => {
   const url = streamUrl(request);
-  if(url.pathname === "/api/notes/collaboration") {
+  if(url.pathname === "/ws/notes") {
     if(!browserStreamOriginAllowed(request)){socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");socket.destroy();return;}
     noteWebsocketServer.handleUpgrade(request,socket,head,client=>handleNoteCollaborationConnection(noteCollaboration,client,request));return;
   }

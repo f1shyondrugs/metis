@@ -39,7 +39,7 @@ function connect(user:{id:string;username:string},token:string,id=noteId){
  const session=modules[5].getNoteCollaborationSession(id,user)!;
  const document=new Y.Doc();Y.applyUpdate(document,Buffer.from(session.state,"base64"));
  class Socket extends WebSocket{constructor(url:string){super(url,{headers:{cookie:"ai_chat_auth="+token,origin}});}}
- const socket=new NoteCollaborationWebsocket({url:origin.replace("http","ws")+"/api/notes/collaboration",WebSocketPolyfill:Socket,autoConnect:false,maxAttempts:0,initialDelay:0});
+ const socket=new NoteCollaborationWebsocket({url:origin.replace("http","ws")+"/ws/notes",WebSocketPolyfill:Socket,autoConnect:false,maxAttempts:0,initialDelay:0});
  const provider=new NoteCollaborationProvider({websocketProvider:socket,name:session.documentName,document,token:"cookie-session",onClose:({event})=>{if(event.code>=4400)socket.disconnect();}});
  provider.attach();
  provider.awareness?.setLocalStateField("user",session.user);
@@ -114,7 +114,7 @@ test("an authenticated stranger cannot subscribe to a private note or use an unr
  const encoding=await import("lib0/encoding");
  const encode=()=>{const out=encoding.createEncoder();encoding.writeVarString(out,session.documentName);encoding.writeVarUint(out,2);encoding.writeVarUint(out,0);encoding.writeVarString(out,"cookie-session");return encoding.toUint8Array(out);};
  for(const headers of [{cookie:"ai_chat_auth="+token,origin},{cookie:"ai_chat_auth="+tokenA,origin:"https://unrelated.invalid"}]){
-   const ws=new WebSocket(origin.replace("http","ws")+"/api/notes/collaboration",{headers});
+   const ws=new WebSocket(origin.replace("http","ws")+"/ws/notes",{headers});
    let messages=0;ws.on("message",()=>messages++);
    const closed=new Promise<number>(resolve=>ws.on("close",code=>resolve(code)));
    await new Promise<void>(resolve=>ws.once("open",()=>{ws.send(encode());resolve();}));
