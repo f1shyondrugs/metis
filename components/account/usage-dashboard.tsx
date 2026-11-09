@@ -1,4 +1,5 @@
 "use client";
+import { LoadError } from "@/components/load-error";
 import { AnimatedNumber } from "@/components/animated-number";
 import { ChartBoundary } from "@/components/chart-boundary";
 import { useChartMotion } from "@/components/use-chart-motion";
@@ -116,7 +117,7 @@ export function UsageDashboard() {
     </div>
     {filtered ? <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" role="status"><span>{activeProviderCount} of {providers.length} recorded providers included. Totals, charts and CSV use this selection.</span><button type="button" className="min-h-9 underline underline-offset-2 hover:text-foreground" onClick={()=>setExcludedProviders([])}>Reset provider filters</button></div>:null}
     {range==="custom" ? <div className="flex flex-wrap gap-3"><label className="space-y-1 text-xs text-muted-foreground">From<Input type="date" aria-label="Usage from" value={from} onChange={e=>setFrom(e.target.value)} className="h-11" /></label><label className="space-y-1 text-xs text-muted-foreground">To<Input type="date" aria-label="Usage to" value={to} onChange={e=>setTo(e.target.value)} className="h-11" /></label></div>:null}
-    {error ? <p role="alert" className="text-sm text-destructive">{error}</p>:null}
+    {error ? <LoadError message={error} onRetry={()=>setRefresh(n=>n+1)} busy={loading}/>:null}
     <section aria-label="Usage overview" aria-busy={loading} className="rounded-xl border border-border/60">
       <div className="flex flex-wrap gap-1 border-b border-border/60 px-4 sm:px-6">
         {([["costUsd","Cost",Coins],["tokens","Tokens",Hash],["requests","Requests",Send]] as const).filter(([key])=>showCosts || key!=="costUsd").map(([key,label,Icon])=><button key={key} type="button" aria-pressed={activeTab===key} onClick={()=>setMetric(key)}

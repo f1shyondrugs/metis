@@ -273,7 +273,7 @@ test("mobile starts at the category menu except for a requested deep link and sh
   const root = elements(source, "div").find(item => literalAttribute(item, "data-slot") === "settings-mobile-menu");
   assert.ok(root);
   assert.ok(nodes(root, ts.isCallExpression).some(call =>
-    ts.isPropertyAccessExpression(call.expression) && call.expression.name.text === "map" && call.expression.expression.getText(source).startsWith("SETTINGS_TABS.filter")));
+    ts.isPropertyAccessExpression(call.expression) && call.expression.name.text === "map" && call.expression.expression.getText(source) === "visibleSettingsTabs(isHostAdmin)"));
 });
 
 test("General settings no longer expose a Default model control", () => {

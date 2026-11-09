@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RotateCcw, Trash2, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadError } from "@/components/load-error";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { DeletedChat } from "@/lib/chat-trash";
 
@@ -33,7 +34,7 @@ export function RecentlyDeletedChats({onChatsChanged}:{onChatsChanged:()=>void})
   return <section className="space-y-4" aria-labelledby="settings-deleted">
     <div><h3 id="settings-deleted" className="flex items-center gap-2 text-sm font-medium"><Trash2 className="size-4 text-muted-foreground" />Recently deleted</h3>
       <p className="mt-1 text-xs text-muted-foreground">Restore deleted chats, including their messages and workspaces. Chats stay here until you permanently delete them. Incognito chats are not saved here.</p></div>
-    {error ? <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">{error}<Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={()=>void load()}>Retry</Button></div>:null}
+    {error ? <LoadError message={error} onRetry={()=>void load()} busy={Boolean(busy)} />:null}
     {loading ? <p role="status" className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />Loading recently deleted chats…</p>
       : !error && !chats.length ? <p className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">No recently deleted chats.</p>
       : <ul className="divide-y divide-border">{chats.map(chat=><li key={chat.id} className="flex flex-wrap items-center gap-2 py-3">
@@ -41,6 +42,6 @@ export function RecentlyDeletedChats({onChatsChanged}:{onChatsChanged:()=>void})
         <Button variant="outline" size="sm" className="min-h-11" disabled={Boolean(busy)} onClick={()=>void change(chat).catch(()=>{})}><RotateCcw className="size-4" />{busy===chat.id?"Working…":"Restore"}</Button>
         <Button variant="ghost" size="icon-sm" className="size-11 shrink-0 text-muted-foreground hover:text-destructive" disabled={Boolean(busy)} aria-label={`Permanently delete ${chat.title||"chat"}`} onClick={()=>setTarget(chat)}><Trash2 className="size-4" /></Button>
       </li>)}</ul>}
-    <ConfirmDialog open={Boolean(target)} onOpenChange={open=>{if(!open)setTarget(null);}} title="Permanently delete chat?" description={`“${target?.title||"Untitled"}” cannot be restored after permanent deletion.`} confirmLabel="Delete permanently" onConfirm={async()=>{if(target)await change(target,true).catch(()=>{});}} />
+    <ConfirmDialog open={Boolean(target)} onOpenChange={open=>{if(!open)setTarget(null);}} title="Permanently delete chat?" description={`“${target?.title||"Untitled"}” cannot be restored after permanent deletion.`} confirmLabel="Delete permanently" onConfirm={async()=>{if(target)await change(target,true);}} />
   </section>;
 }

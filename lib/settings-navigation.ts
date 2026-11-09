@@ -48,6 +48,10 @@ export const SETTINGS_TABS = [
   { value: "updates", label: "Updates", keywords: "automatic schedule channel stable beta releases aktualisierung automatisch zeitplan" },
 ] as const;
 
+export function visibleSettingsTabs(isHostAdmin: boolean) {
+  return SETTINGS_TABS.filter(tab => isHostAdmin || tab.value !== "admin");
+}
+
 export function visibleSettingsSections(tab: string, isHostAdmin: boolean) {
   return (SETTINGS_SECTIONS[tab] || []).filter(item =>
     isHostAdmin || (item.id !== "settings-users" && item.id !== "settings-maintenance"),
@@ -68,8 +72,7 @@ export type SettingsSearchEntry = {
 };
 
 export function settingsSearchEntries(isHostAdmin: boolean): SettingsSearchEntry[] {
-  return SETTINGS_TABS.flatMap(tab => {
-    if(tab.value === "admin" && !isHostAdmin) return [];
+  return visibleSettingsTabs(isHostAdmin).flatMap(tab => {
     const category = tab.label;
     return [
       { id: tab.value, tab: tab.value, label: category, category: "Settings", keywords: "keywords" in tab ? tab.keywords : undefined },

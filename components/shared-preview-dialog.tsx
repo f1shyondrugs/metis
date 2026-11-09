@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Maximize2, Minimize2, X } from "lucide-react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { OverlayCloseButton } from "@/components/ui/overlay-close-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -18,11 +19,11 @@ export function SharedPreviewDialog({ title, onClose, actions, children }: {
       <DialogHeader className="flex-row items-center gap-2 border-b border-border px-4 py-3">
         <DialogTitle className="min-w-0 flex-1 truncate">{title}</DialogTitle>
         {actions}
-        <Button type="button" size="icon-sm" variant="ghost" onClick={() => setFullscreen(value => !value)}
+        <Button type="button" size="icon-action" variant="ghost" onClick={() => setFullscreen(value => !value)}
           aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"} title={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}>
           {fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
         </Button>
-        <DialogClose asChild><Button size="icon-sm" variant="ghost" aria-label="Close preview"><X className="size-4" /></Button></DialogClose>
+        <DialogClose asChild><OverlayCloseButton aria-label="Close preview" /></DialogClose>
       </DialogHeader>
       <div data-share-preview-content className="min-h-0 min-w-0 overflow-auto overscroll-contain p-4 sm:p-6">{children}</div>
     </DialogContent>
