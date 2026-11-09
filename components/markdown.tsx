@@ -242,7 +242,7 @@ function CodeBlock({
     return <GraphBoard code={code} language={declaredLanguage} readOnly={Boolean(publicShare)} />;
   }
   if (isMermaidSource(declaredLanguage, code)) {
-    return <MermaidDiagram code={code} language={declaredLanguage} publicShare={Boolean(publicShare)} />;
+    return <MermaidDiagram code={code} language={declaredLanguage} publicShare={Boolean(publicShare)} readOnly={!editableFiles} />;
   }
   const detectedLanguage =
     declaredLanguage && hljs.getLanguage(declaredLanguage)
@@ -309,6 +309,8 @@ function TaskCheckbox({
   );
 }
 
+const EMPTY_NOTE_HEADINGS: NotesHeading[] = [];
+
 function MarkdownHeading({ level, headings, node, children, ...props }: HTMLAttributes<HTMLHeadingElement> & {level:number;headings:NotesHeading[];node?:{position?:{start?:{offset?:number}}}}) {
   const id = headings.find((heading) => heading.path === undefined && heading.sourceOffset === node?.position?.start?.offset)?.id;
   return createElement("h" + level,{...props,id},children);
@@ -338,7 +340,7 @@ export const Markdown = memo(function Markdown({
   const { ready, pending } = streaming ? splitStreamingMath(content) : { ready: normalizeMath(content), pending: "" };
   const protectedMath = useMemo(() => protectMathTablePipes(wrapBareMermaid(ready)), [ready]);
   const source = protectedMath.source;
-  const noteHeadings = useMemo(() => source.includes("tableOfContents") && source.includes("metis-block") ? collectNotesMarkdownHeadings(source) : [], [source]);
+  const noteHeadings = useMemo(() => source.includes("tableOfContents") && source.includes("metis-block") ? collectNotesMarkdownHeadings(source) : EMPTY_NOTE_HEADINGS, [source]);
   const markdownComponentsWithCode = useMemo(() => ({
     ...markdownComponents,
     ...(publicShare ? { a: ({href, children, title, className}: AnchorHTMLAttributes<HTMLAnchorElement>) => <PublicMarkdownLink href={href || ""} share={publicShare} title={title} className={className}>{children}</PublicMarkdownLink> } : {}),
