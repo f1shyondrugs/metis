@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkIcon } from "@/components/link-icon";
 import { Fragment, type ReactNode } from "react";
 import katex from "katex";
 import { type EditorNode, readNotesRichBlock } from "@/lib/notes-editor-format";
@@ -18,7 +19,7 @@ function RichLink({ href, children, publicShare }: { href: string; children: Rea
   return <a href={navigation?.href || safe} onClick={(event) => {
     if (navigation) { event.preventDefault(); event.stopPropagation(); window.dispatchEvent(new CustomEvent(navigation.event, { detail: navigation.detail })); }
     else if (/^https?:\/\//i.test(safe) && !event.ctrlKey && !event.metaKey) { event.preventDefault(); window.dispatchEvent(new CustomEvent("ai-chat:open-browser", { detail: safe })); }
-  }}>{children}</a>;
+  }}><LinkIcon href={safe} />{children}</a>;
 }
 function safeColor(value: unknown) { return typeof value === "string" && /^(#[\da-f]{3,8}|(?:rgb|hsl)a?\([\d.,% /-]+\)|[a-z]{3,20})$/i.test(value) ? value : undefined; }
 function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [], publicShare }: { node: EditorNode; depth?: number; headings?: NotesHeading[]; sourceOffset?:number; path?:number[]; publicShare?: PublicMarkdownShare }) {
@@ -76,7 +77,7 @@ function RichNode({ node, depth = 0, headings = [], sourceOffset = 0, path = [],
     case "toggleBlock": return <details {...common} open={attrs.open !== false} className="my-2"><summary className="cursor-pointer font-medium">{stringAttr(node,"title") || "Details"}</summary><div className="pl-5">{children}</div></details>;
     case "columns": return <div {...common} className="my-3 flex flex-col gap-5 sm:flex-row">{children}</div>;
     case "column": return <div className="min-w-0 flex-1">{children}</div>;
-    case "pageReference": return <p {...common} className="my-2"><RichLink href={"note://" + encodeURIComponent(stringAttr(node,"noteId"))} publicShare={publicShare}>↗ {stringAttr(node,"title") || "Page"}</RichLink></p>;
+    case "pageReference": return <p {...common} className="my-2"><RichLink href={"note://" + encodeURIComponent(stringAttr(node,"noteId"))} publicShare={publicShare}>{stringAttr(node,"title") || "Page"}</RichLink></p>;
     case "embedBlock": return <div {...common} className="my-3 rounded border border-border px-3 py-2"><RichLink href={stringAttr(node,"url")} publicShare={publicShare}>{stringAttr(node,"title") || stringAttr(node,"url")}</RichLink></div>;
     case "table": return <div {...common} className="overflow-x-auto"><table><tbody>{children}</tbody></table></div>;
     case "tableRow": return <tr>{children}</tr>;

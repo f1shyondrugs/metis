@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkIcon } from "@/components/link-icon";
 import { createContext, useEffect, useState } from "react";
 import { ClipboardList, LayoutDashboard, NotebookPen, Workflow } from "lucide-react";
 import type { InternalLinkKind, InternalLinkPreview, InternalLinkTarget } from "@/lib/internal-link";
@@ -31,10 +32,10 @@ export function InternalLinkPreviewContent({ target, chatId }: { target: Interna
     return () => controller.abort();
   }, [target.kind, target.id, chatId]);
 
-  const { label, Icon } = kinds[target.kind];
+  const { label } = kinds[target.kind];
   return <div data-internal-preview={target.kind}>
     <div className="flex items-start gap-2.5">
-      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <LinkIcon kind={target.kind} id={target.id} icon={preview?.icon ?? null} className="mt-0.5 !mr-0 !size-4 text-muted-foreground" />
       <div className="min-w-0">
         <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
         {preview ? <div className="mt-0.5 line-clamp-2 break-words text-xs font-medium leading-4 [overflow-wrap:anywhere]">{preview.title}</div> : null}

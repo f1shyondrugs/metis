@@ -111,7 +111,7 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
     }
     return visible;
   },[share,expanded]);
-  const publicShare=useMemo(()=>({noteIds:share?.notes.map(note=>note.id)||[],assets:share?.assets||{},onOpenNote:openNote}),[share,openNote]);
+  const publicShare=useMemo(()=>({noteIds:share?.notes.map(note=>note.id)||[],noteIcons:Object.fromEntries((share?.notes||[]).map(note=>[note.id,note.icon||null])),assets:share?.assets||{},onOpenNote:openNote}),[share,openNote]);
   if(locked)return <SharedNotePasswordGate token={token} onUnlocked={next=>{setShare(next);setLocked(false);setError("");}}/>;
   if(!share||!root||!note)return <main className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center gap-4 px-6 text-center"><FileText className="size-8 text-muted-foreground"/><h1 className="text-xl font-semibold">Shared notes unavailable</h1><p className="text-sm text-muted-foreground">{error||"This link has expired or sharing was stopped."}</p><Button variant="outline" onClick={()=>setRetry(value=>value+1)}>Retry</Button></main>;
   const sharedAssetUrls=new Set(Object.values(share.assets));

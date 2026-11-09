@@ -100,7 +100,7 @@ test("rich containers apply the same share boundary to images, marks, pages and 
   assert.match(html, /<aside/);
   assert.match(html, /src="\/api\/shared-notes\/share-token\/assets\?url=/);
   assert.match(html, /href="#note-child"/);
-  assert.match(html, /<span>↗ Private sibling<\/span>/);
+  assert.match(html, /<span>Private sibling<\/span>/);
   assert.match(html, /<span>Private embed<\/span>/);
   assert.doesNotMatch(html, /(?:href|src)="(?:\/api\/private|\/api\/notes\/sibling|#note-sibling|issue:)/);
   assert.match(html, /href="https:\/\/example.org\/report"[^>]*rel="noopener noreferrer"/);

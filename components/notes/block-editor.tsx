@@ -14,7 +14,7 @@ import { ArrowDown, ArrowUp, Bold, Check, ChevronDown, ChevronRight, Code2, Copy
 import katex from "katex";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Markdown } from "@/components/markdown";
-import { notesEditorExtensions, NotesMathBlock, NotesSourceBlock, NotesToggle, NotesInlineMath, NotesTableOfContents } from "@/lib/notes-editor-extensions";
+import { notesEditorExtensions, NotesMathBlock, NotesSourceBlock, NotesToggle, NotesInlineMath, NotesTableOfContents, NotesPageReference, NotesEmbed } from "@/lib/notes-editor-extensions";
 import { parseNotesMarkdown, createNotesMarkdownSerializer, notesNodeSignature, type EditorNode } from "@/lib/notes-editor-markdown";
 import { findNotesTask, notesSelectionSourceId, planNotesTaskIssueConversion, type NotesIssueContext, type NotesIssueReference } from "@/lib/notes-editor-tasks";
 import { minimalMarkdownChange, replaceEmbeddedSource } from "@/lib/markdown-editor";
@@ -36,6 +36,9 @@ import { parseReferenceLink } from "@/lib/reference-link";
 import { notesReferenceQuery, notesReferenceHref, NOTES_REFERENCE_KINDS } from "@/lib/notes-editor-references";
 import type { ReferenceKind, ReferenceResult } from "@/lib/reference-search";
 import { Type, Heading1, Heading2, Heading3, ListOrdered, ListTodo, Quote, Info, Minus, Table2, ImageIcon, Globe, Sigma, Columns2, ListTree, FilePlus2, CircleDot } from "lucide-react";
+import { LinkIcon } from "@/components/link-icon";
+import { NotesLinkIcons } from "@/lib/notes-link-icons";
+import { EditorLinkIcons } from "@/components/notes/editor-link-icons";
 import { NotesContextToolbar } from "@/components/notes/context-toolbar";
 import "./block-editor.css";
 
@@ -70,6 +73,16 @@ type BlockCommand = { id: string; title: string; detail: string; keywords?: stri
 const paragraph = () => ({ type: "paragraph" });
 const newId = () => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
 const safeUrl = (url: string) => /^(https?:\/\/|mailto:|\/(?!\/)|#)/i.test(url) || Boolean(parseInternalLink(url)) || Boolean(parseReferenceLink(url)) || Boolean(parseWorkspaceFileLink(url));
+
+function LinkBlockView({ node }: NodeViewProps) {
+  const page = node.type.name === "pageReference";
+  const href = page ? "note://" + encodeURIComponent(String(node.attrs.noteId)) : String(node.attrs.url || "");
+  const label = String(node.attrs.title || (page ? "Page" : href));
+  return <NodeViewWrapper data-notes-page={page ? String(node.attrs.noteId) : undefined}
+    data-notes-embed={!page ? "" : undefined} className={page ? "notes-page-reference" : "notes-embed-block"}>
+    {safeUrl(href) ? <a href={href}><LinkIcon href={href}/>{label}</a> : <span>{label}</span>}
+  </NodeViewWrapper>;
+}
 
 function SourceBlockView({ node, updateAttributes, selected, editor }: NodeViewProps) {
   const [editing, setEditing] = useState(false);
@@ -294,8 +307,10 @@ function NotesBlockEditorInstance({
     if (next === latest.current) return;
     latest.current = next; valueSync.current.published(next); setDraft(next); onChangeRef.current(next);
   }, []);
-  const extensions = useMemo(() => notesEditorExtensions().map((extension) => {
+  const extensions = useMemo(() => [...notesEditorExtensions(), NotesLinkIcons].map((extension) => {
     if (extension.name === "image") return markdownDisplayImageExtension((src) => settings.current.resolveUrl?.(src, "image") || src, extension.options);
+    if (extension.name === "pageReference") return NotesPageReference.extend({ addNodeView: () => ReactNodeViewRenderer(LinkBlockView) });
+    if (extension.name === "embedBlock") return NotesEmbed.extend({ addNodeView: () => ReactNodeViewRenderer(LinkBlockView) });
     if (extension.name === "sourceBlock") return NotesSourceBlock.extend({ addNodeView: () => ReactNodeViewRenderer(SourceBlockView) });
     if (extension.name === "mathBlock") return NotesMathBlock.extend({ addNodeView: () => ReactNodeViewRenderer(MathView) });
     if (extension.name === "inlineMath") return NotesInlineMath.extend({ addNodeView: () => ReactNodeViewRenderer(InlineMathView) });
@@ -682,6 +697,7 @@ function NotesBlockEditorInstance({
       else { const navigation = internalLinkNavigation(internal); window.dispatchEvent(new CustomEvent(navigation.event, { detail: navigation.detail })); }
     }
   }}>
+    {!sourceMode && <EditorLinkIcons editor={editor} resolveUrl={resolveUrl} />}
     {previewAnchor && <LinkPreview key={previewAnchor.getAttribute("href")} href={settings.current.resolveUrl?.(previewAnchor.getAttribute("href") || "","link") || previewAnchor.getAttribute("href") || ""} anchorElement={previewAnchor}/>}
     <div className="notes-editor-topbar">
       <div className="notes-editor-mode" role="group" aria-label="Editor mode"><button type="button" className={!sourceMode ? "is-active" : ""} onClick={() => { if (!editor) return; try { const parsed = parseNotesMarkdown(latest.current); editor.schema.nodeFromJSON(parsed).check(); if (serialize(editor.state.doc) !== latest.current) { externalUpdate.current = true; try { editor.commands.setContent(parsed as JSONContent, { emitUpdate: false, errorOnInvalidContent: true }); } finally { externalUpdate.current = false; } } setSourceMode(false); setError(""); } catch { setError("Could not open rich blocks. Your complete Markdown source is preserved."); } }}>Blocks</button><button type="button" className={sourceMode ? "is-active" : ""} onClick={() => setSourceMode(true)}><Code2 size={13} /> Markdown</button></div>

@@ -2,6 +2,7 @@
 export type InternalLinkKind = "plan" | "canvas" | "note" | "automation" | "issue";
 export type InternalLinkTarget = { kind: InternalLinkKind; id: string; blockId?: string };
 export type InternalLinkPreview = InternalLinkTarget & {
+  icon?: string | null;
   title: string;
   description: string;
   details: Array<{ label: string; value: string }>;

@@ -2,6 +2,7 @@ import { parseInternalLink } from "@/lib/internal-link";
 
 export type PublicMarkdownShare = {
   noteIds: readonly string[];
+  noteIcons?: Readonly<Record<string, string | null>>;
   chatShareId?: string;
   /** Exact asset projections supplied by the public share API. */
   assets: Readonly<Record<string, string>>;

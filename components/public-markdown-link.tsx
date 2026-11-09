@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkIcon } from "@/components/link-icon";
 import type { ReactNode } from "react";
 import { publicMarkdownLinkTarget, type PublicMarkdownShare } from "@/lib/public-markdown";
 
@@ -19,5 +20,5 @@ export function PublicMarkdownLink({ href, share, children, title, className }: 
       if (target.kind === "workspace") share.onOpenWorkspace?.(target.id, target.type);
       else share.onOpenNote?.(target.id, target.blockId);
     } : undefined}
-  >{children}</a>;
+  ><LinkIcon href={href} icon={target.kind === "note" ? share.noteIcons?.[target.id] ?? null : null} />{children}</a>;
 }

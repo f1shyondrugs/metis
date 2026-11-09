@@ -36,6 +36,7 @@ import { publicMarkdownAssetUrl, publicMarkdownImageUrl, publicMarkdownLinkTarge
 import { parseFileEmbed, isFileUrl, mimeTypeFromFileName } from "@/lib/file-types";
 import { normalizeMath, splitStreamingMath } from "@/lib/math";
 import { protectMathTablePipes, remarkMathTablePipes } from "@/lib/markdown-math-tables";
+import { LinkIcon } from "@/components/link-icon";
 import { LinkPreview } from "@/components/link-preview";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { GraphBoard } from "@/components/graph-board";
@@ -133,6 +134,7 @@ function MarkdownLink({
         props.onMouseLeave?.(event);
       }}
     >
+      {!sourceTitle && <LinkIcon href={href} />}
       {sourceTitle ? (
         <>
           <Link2 className="size-3 shrink-0" aria-hidden="true" />
