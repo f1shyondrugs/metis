@@ -190,7 +190,7 @@
       "source": "custom",
       "sourceType": "local",
       "skillPath": "skills/manual/korlei-shorts-cutter/SKILL.md",
-      "computedHash": "fa68b5c119c1366d36dca0a3d9ddc50a8b610ec506da023d5fe7e26b04e66491"
+      "computedHash": "15f62f025915b05cb28873e9aa4602f6fe9aa7c142545ec14f7a945d16c5b315"
     },
     "blender-animation": {
       "source": "RobLe3/cc-blender-skill",

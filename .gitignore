@@ -27,6 +27,7 @@ data/artifacts/
 
 # Generated workspace exports can contain private user records.
 /exports/
+/output/
 
 # local secrets / backups
 .deploy.env
