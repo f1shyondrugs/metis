@@ -46,7 +46,7 @@ test("the shared markdown engine supports rendered blocks and editable source", 
   assert.match(blockEditor, /aria-label="Editor mode"/);
   assert.match(blockEditor, /setSourceMode\(false\)/);
   assert.match(blockEditor, /setSourceMode\(true\)/);
-  assert.match(blockEditor, /sourceMode \? <MarkdownSourceEditor value=\{draft\} onChange=\{publish\}/);
+  assert.match(blockEditor, /sourceMode \? <MarkdownSourceEditor value=\{draft\} onChange=\{publishSource\}/);
   assert.match(sourceEditor, /new EditorView/);
   assert.match(sourceEditor, /callback\.current\(current\.current\)/);
 });

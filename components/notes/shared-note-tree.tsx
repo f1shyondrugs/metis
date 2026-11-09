@@ -1,4 +1,5 @@
 "use client";
+import { findNotesSection, scrollNotesSection } from "@/lib/notes-section-navigation";
 import { BannerHeader } from "@/components/banner-image";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -85,8 +86,8 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
   useEffect(()=>{
     if(!blockTarget||note?.id!==blockTarget.noteId)return;
     const frame=requestAnimationFrame(()=>{
-      const block=document.getElementById("block-"+blockTarget.blockId)||document.getElementById(blockTarget.blockId);
-      block?.scrollIntoView({block:"center"});
+      const block=findNotesSection(document,blockTarget.blockId);
+      if(block)scrollNotesSection(block,"auto");
       setBlockTarget(null);
     });
     return()=>cancelAnimationFrame(frame);
@@ -142,7 +143,7 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
       <div data-note-page-scroll className="min-h-0 flex-1 overflow-y-auto">
         {coverColor?<div className="h-36 w-full sm:h-48" style={{backgroundColor:coverColor}}/>:null}
         <BannerHeader value={coverUrl} alt="" bannerClassName="h-36 w-full sm:h-48" gapClassName="mt-0" referrerPolicy="no-referrer">
-        <article key={note.id} className={cn("mx-auto px-5 py-8 sm:px-10",note.fullWidth?"max-w-none":"max-w-[920px]")}>
+        <article data-section-navigation-root key={note.id} className={cn("mx-auto px-5 py-8 sm:px-10",note.fullWidth?"max-w-none":"max-w-[920px]")}>
           {note.icon?<NoteIcon value={note.icon} className="mb-4 size-10 text-4xl" />:null}
           <h1 data-note-title className="mb-2 break-words text-3xl font-semibold tracking-tight">{title(note)}</h1>
           <p className="mb-7 text-xs text-muted-foreground">Updated <time dateTime={note.updatedAt}>{note.updatedAt.slice(0,10)}</time></p>
@@ -152,6 +153,7 @@ export function SharedNoteTree({ token, initialShare }: {token:string;initialSha
             {note.todos.map(todo=><label key={todo.id} className="flex min-h-8 items-start gap-2 text-sm"><input type="checkbox" checked={todo.status==="completed"} disabled className="mt-1"/><span className={cn("min-w-0 flex-1",todo.status==="completed"&&"text-muted-foreground line-through")}>{todo.content}{todo.status==="in_progress"?<span className="ml-2 text-xs text-muted-foreground">In progress</span>:null}</span></label>)}
           </section>:null}
           {note.content.trim()?<Markdown content={note.content} publicShare={publicShare}/>:!note.asset&&!note.todos?.length?<p className="text-sm text-muted-foreground">This page is empty.</p>:null}
+          <div data-note-anchor-spacer aria-hidden="true"/>
         </article>
         </BannerHeader>
       </div>

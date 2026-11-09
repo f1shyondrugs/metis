@@ -18,8 +18,10 @@ export function parseInternalLink(href: string | undefined): InternalLinkTarget 
   try { id = decodeURIComponent(match[2]); } catch { return null; }
   if (!id.trim() || /[\u0000-\u001f\u007f/\\]/.test(id)) return null;
   const kind = match[1].toLowerCase() as InternalLinkKind;
-  const anchor = kind === "note" ? /#block-([A-Za-z0-9_-]+)$/.exec(href) : null;
-  return { kind, id, ...(anchor ? { blockId: anchor[1] } : {}) };
+  const anchor = kind === "note" ? /#([^#]+)$/.exec(href) : null;
+  let blockId: string | undefined;
+  if(anchor) { try { const decoded = decodeURIComponent(anchor[1]).replace(/^block-/,""); if(/^[\p{L}\p{N}_-]{1,200}$/u.test(decoded)) blockId=decoded; } catch { return null; } }
+  return { kind, id, ...(blockId ? { blockId } : {}) };
 }
 
 export function internalLinkNavigation(target: InternalLinkTarget) {

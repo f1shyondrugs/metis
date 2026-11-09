@@ -13,7 +13,7 @@ import { serializeNotesBlock } from "./notes-editor-serialize";
  * Rich-only containers use a fenced metis-block JSON envelope; see notes-editor-format.md.
  */
 export type { EditorNode } from "./notes-editor-format";
-import { type EditorNode, NOTES_SOURCE_METADATA as metadata, NOTES_SEMANTIC_ATTRIBUTES as semanticAttributes, NOTES_RICH_CONTAINERS as containers, validNotesRichNode as validEnvelope } from "./notes-editor-format";
+import { type EditorNode, NOTES_SOURCE_METADATA as metadata, NOTES_SEMANTIC_ATTRIBUTES as semanticAttributes, NOTES_RICH_CONTAINERS as containers, validNotesRichNode as validEnvelope, normalizeNotesLinkAttributes } from "./notes-editor-format";
 type Ast = {
   type: string; value?: string; depth?: number; lang?: string; meta?: string;
   url?: string; title?: string | null; alt?: string | null; ordered?: boolean;
@@ -27,7 +27,7 @@ function clean(node: EditorNode): unknown {
     if ((key === "colspan" || key === "rowspan") && value === 1) return false;
     if (key === "start" && value === 1) return false;
     if (key === "open" && value === true) return false;
-    return (semanticAttributes[node.type] || ["blockId"]).includes(key);
+    return key === "blockColor" || (semanticAttributes[node.type] || ["blockId"]).includes(key);
   }).sort(([a], [b]) => a.localeCompare(b)));
   return {
     type: node.type,
@@ -83,7 +83,7 @@ function block(node: Ast, source: string): EditorNode {
     }
     case "code": {
       if (node.lang === "metis-block") {
-        try { const value = JSON.parse(node.value || ""); if (validEnvelope(value) && !["text", "hardBreak", "inlineMath", "column"].includes(value.type)) { return validateEnvelopeSchema(value); } } catch {}
+        try { const value = normalizeNotesLinkAttributes(JSON.parse(node.value || "")); if (validEnvelope(value) && !["text", "hardBreak", "inlineMath", "column"].includes(value.type)) { return validateEnvelopeSchema(value); } } catch {}
         return raw(sourceFor(), "Invalid metis-block source");
       }
       if (["mermaid", "chart", "graph", "file"].includes(node.lang || "")) return raw(sourceFor(), node.lang || "Source");

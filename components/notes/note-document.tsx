@@ -2,6 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
+import type { NotesSpellcheckChoice } from "@/lib/notes-spellcheck";
 import { NoteSubfiles } from "./note-subfiles";
 import { BannerHeader } from "@/components/banner-image";
 import { Check, Loader2, RefreshCw, AlertCircle, Plus, ListTodo } from "lucide-react";
@@ -16,6 +17,7 @@ import { applyDocumentPatch, possibleDocumentSave, uncertainDocumentConflicts } 
 import { cn } from "@/lib/utils";
 import { parseInternalLink } from "@/lib/internal-link";
 
+const CollaborativeNoteEditor = dynamic(() => import("./collaborative-note-editor").then(module=>module.CollaborativeNoteEditor), {ssr:false,loading:()=><p role="status" className="py-6 text-sm text-muted-foreground">Opening live editor…</p>});
 const NotesBlockEditor = dynamic(() => import("./block-editor").then(mod => mod.NotesBlockEditor), {
   ssr: false,
   loading: () => <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading editor…</div>,
@@ -23,6 +25,7 @@ const NotesBlockEditor = dynamic(() => import("./block-editor").then(mod => mod.
 export type NoteDocumentHandle = { flush: () => Promise<boolean> };
 type Props = {
   subfiles?: readonly TreeNote[];
+  spellcheckChoice?: NotesSpellcheckChoice;
   headerOnly?: boolean;
   afterHeader?: ReactNode;
   note: TreeNote;
@@ -35,9 +38,15 @@ type Props = {
 };
 
 export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteDocument({
-  note, ownerId, onSaved, onCreateSubpage, onOpenNote, onOpenIssue, onCreateIssue, headerOnly = false, afterHeader, subfiles = [],
+  note, ownerId, onSaved, onCreateSubpage, onOpenNote, onOpenIssue, onCreateIssue, headerOnly = false, afterHeader, subfiles = [], spellcheckChoice,
 }, ref) {
   const [document, setDocument] = useState<TreeNote>(note);
+  const [editorMode,setEditorMode] = useState<"loading"|"legacy"|"live">("loading");
+  const [livePending,setLivePending] = useState(false);
+  const liveFlush = useRef<(()=>Promise<boolean>)|null>(null);
+  const liveSource = useRef<((source:string)=>void)|null>(null);
+  const registerLiveSource = useCallback((apply:((source:string)=>void)|null)=>{liveSource.current=apply;},[]);
+  const registerLiveFlush = useCallback((flush:(()=>Promise<boolean>)|null)=>{liveFlush.current=flush;if(flush&&Object.keys(draft.current).length&&!blocked.current){if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>void flushRef.current(),650);}},[]);
   const [status, setStatus] = useState<"saved" | "saving" | "offline" | "conflict">("saved");
   const [error, setError] = useState("");
   const [remoteConflict, setRemoteConflict] = useState<TreeNote | null>(null);
@@ -69,6 +78,7 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
   const flush = useCallback(async function save(): Promise<boolean> {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     persist();
+    if(liveFlush.current && !(await liveFlush.current()))return false;
     if (blocked.current) return false;
     if (saving.current) {
       const ok = await saving.current;
@@ -114,7 +124,7 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
             saveCallback.current(result.note);
           }
         }
-        if (mounted.current) setStatus("saved");
+        if (mounted.current) {setStatus("saved");setEditorMode("live");}
         return true;
       } catch (cause) {
         if (outcomeUnknown) uncertainPatch.current = possibleDocumentSave(confirmed.current, uncertainPatch.current, inFlightPatch.current);
@@ -148,9 +158,10 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
         draft.current = stored.draft;
         uncertainPatch.current = stored.possibleSave || {};
         setDocument(mergeNoteDraft(stored.base, stored.draft));
+        if(stored.draft.content!==undefined||stored.possibleSave?.content!==undefined)setEditorMode("legacy");else setEditorMode("live");
         void flushRef.current();
-      }
-    } catch { setError("A saved local draft could not be read. It has not been overwritten."); }
+      } else setEditorMode("live");
+    } catch { setEditorMode("legacy");setError("A saved local draft could not be read. It has not been overwritten."); }
     const unregister = registerNoteEditorFlush(() => flushRef.current());
     const online = () => { void flushRef.current(); };
     const unload = (event: BeforeUnloadEvent) => {
@@ -195,10 +206,10 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
       const current = mergeNoteDraft(confirmed.current, draft.current);
       const reference = "[" + issue.key + "](issue://" + issue.id + ")";
       const legacyId = sourceId?.startsWith("todo:") ? sourceId.slice(5) : null;
-      update({
-        content: current.content.includes("(issue://" + issue.id + ")") ? current.content : current.content + "\n\n" + reference + "\n",
-        ...(legacyId ? { todos: (current.todos || []).filter(todo => todo.id !== legacyId || todo.content !== text) } : {}),
-      });
+      const content=current.content.includes("(issue://" + issue.id + ")") ? current.content : current.content + "\n\n" + reference + "\n";
+      const todoPatch=legacyId ? { todos: (current.todos || []).filter(todo => todo.id !== legacyId || todo.content !== text) } : {};
+      if(liveSource.current){liveSource.current(content);if(legacyId)update(todoPatch);}
+      else update({content,...todoPatch});
       await flushRef.current();
       return issue;
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not create issue."); }
@@ -228,12 +239,12 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
         <NoteBannerUpload noteId={note.id} value={document.cover} onChange={cover => update({ cover })} />
       </div>
       <span className="flex items-center gap-1.5" role="status">
-        {status === "saving" ? <Loader2 className="size-3 animate-spin" /> : status === "saved" ? <Check className="size-3" /> : <AlertCircle className="size-3" />}
-        {status === "saved" ? "Saved" : status === "saving" ? "Saving…" : status === "conflict" ? "Conflict" : "Draft kept locally"}
+        {status === "saving" || livePending ? <Loader2 className="size-3 animate-spin" /> : status === "saved" ? <Check className="size-3" /> : <AlertCircle className="size-3" />}
+        {status === "conflict" ? "Conflict" : status === "offline" ? "Draft kept locally" : status === "saving" || livePending ? "Saving…" : "Saved"}
       </span>
     </div>
     <input
-      data-note-title aria-label="File title" value={noteDisplayTitle(document.title)} placeholder="Untitled" maxLength={document.issueId ? 300 : 200}
+      data-note-title spellCheck={spellcheckChoice !== "off"} lang={spellcheckChoice && spellcheckChoice !== "auto" && spellcheckChoice !== "off" ? spellcheckChoice : undefined} aria-label="File title" value={noteDisplayTitle(document.title)} placeholder="Untitled" maxLength={document.issueId ? 300 : 200}
       onChange={event => update({ title: noteDisplayTitle(event.target.value) })}
       className="mb-6 w-full border-0 bg-transparent text-3xl font-semibold leading-tight tracking-tight outline-none placeholder:text-muted-foreground/50 sm:text-4xl"
     />
@@ -274,15 +285,22 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
         <Button variant="ghost" size="sm" disabled={creatingIssue} aria-label={"Create issue from " + todo.content} onClick={() => void makeIssue(todo.content, "todo:" + todo.id, "checkbox")}><ListTodo className="size-3.5" /><span className="hidden sm:inline">Create issue</span></Button>
       </div>)}
     </section>}
-    <NotesBlockEditor
-      maxLength={document.issueId ? 100_000 : 50_000}
-      value={document.content}
-      onChange={content => update({ content })}
-      noteId={note.id}
-      onCreateSubpage={() => { persist(); onCreateSubpage(); }}
-      onCreateIssue={(text, context) => makeIssue(text, context?.sourceId, context?.kind)}
-      onOpenNote={(id, blockId) => { persist(); onOpenNote(id, blockId); }}
-    />
+    {editorMode === "live" && !document.archived ? <CollaborativeNoteEditor
+      spellcheckChoice={spellcheckChoice} maxLength={document.issueId ? 100_000 : 50_000}
+      noteId={note.id} ownerId={ownerId} value={document.content}
+      onChange={content=>setDocument(current=>({...current,content}))}
+      registerFlush={registerLiveFlush} registerApplySource={registerLiveSource} onPending={setLivePending}
+      onSaved={saved=>{if(saved.version>=confirmed.current.version){confirmed.current=saved;if(mounted.current)setDocument(current=>({...mergeNoteDraft(saved,draft.current),content:current.content}));saveCallback.current(saved);}}}
+      onCreateSubpage={()=>{persist();onCreateSubpage();}}
+      onCreateIssue={(text,context)=>makeIssue(text,context?.sourceId,context?.kind)}
+      onOpenNote={(id,blockId)=>{persist();onOpenNote(id,blockId);}}
+    /> : editorMode === "loading" ? <p role="status" className="py-6 text-sm text-muted-foreground">Opening editor…</p> : <NotesBlockEditor
+      spellcheckChoice={spellcheckChoice} maxLength={document.issueId ? 100_000 : 50_000}
+      value={document.content} onChange={content=>update({content})} noteId={note.id}
+      onCreateSubpage={()=>{persist();onCreateSubpage();}}
+      onCreateIssue={(text,context)=>makeIssue(text,context?.sourceId,context?.kind)}
+      onOpenNote={(id,blockId)=>{persist();onOpenNote(id,blockId);}}
+    />}
     <Button variant="ghost" size="sm" className="mt-8 text-muted-foreground" onClick={() => { persist(); onCreateSubpage(); }}><Plus className="size-3.5" />Add subfile</Button>
     </>}
   </article>;

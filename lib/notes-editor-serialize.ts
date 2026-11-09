@@ -2,7 +2,7 @@ import { unified } from "unified";
 import remarkStringify from "remark-stringify";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { type EditorNode, NOTES_RICH_CONTAINERS, NOTES_SOURCE_METADATA } from "./notes-editor-format";
+import { type EditorNode, NOTES_RICH_CONTAINERS, NOTES_SOURCE_METADATA, NOTES_SEMANTIC_ATTRIBUTES } from "./notes-editor-format";
 
 type MarkdownNode = {
   type: string; value?: string; children?: MarkdownNode[]; depth?: number; url?: string;
@@ -12,10 +12,10 @@ type MarkdownNode = {
 const stringifier = unified().use(remarkGfm).use(remarkMath).use(remarkStringify, { bullet: "-", emphasis: "_", strong: "*", rule: "-", fences: true, listItemIndent: "one", resourceLink: true });
 const markOrder = ["link", "bold", "italic", "strike", "code"];
 function needsEnvelope(node: EditorNode): boolean {
-  return Boolean((node.type === "paragraph" && !node.content?.length) || (node.type === "heading" && node.content?.some((child) => child.type === "hardBreak")) || (node.type === "taskItem" && node.attrs?.blockId) || node.marks?.some((mark) => ["underline", "textStyle", "highlight"].includes(mark.type)) || node.content?.some(needsEnvelope));
+  return Boolean(node.attrs?.blockColor || (node.type === "paragraph" && !node.content?.length) || (node.type === "heading" && node.content?.some((child) => child.type === "hardBreak")) || (node.type === "taskItem" && node.attrs?.blockId) || node.marks?.some((mark) => ["underline", "textStyle", "highlight"].includes(mark.type)) || node.content?.some(needsEnvelope));
 }
 function stripMetadata(node: EditorNode): EditorNode {
-  return { ...node, ...(node.attrs ? { attrs: Object.fromEntries(Object.entries(node.attrs).filter(([key, value]) => !NOTES_SOURCE_METADATA.has(key) && value !== null && value !== undefined)) } : {}), ...(node.content ? { content: node.content.map(stripMetadata) } : {}) };
+  return { ...node, ...(node.attrs ? { attrs: Object.fromEntries(Object.entries(node.attrs).filter(([key, value]) => !NOTES_SOURCE_METADATA.has(key) && value !== null && value !== undefined)) } : {}), ...(node.marks ? { marks: node.marks.map(mark => ({ ...mark, ...(mark.attrs ? {attrs:Object.fromEntries(Object.entries(mark.attrs).filter(([key,value]) => value != null && (NOTES_SEMANTIC_ATTRIBUTES[mark.type] || []).includes(key)))} : {}) })) } : {}), ...(node.content ? { content: node.content.map(stripMetadata) } : {}) };
 }
 function envelope(node: EditorNode): MarkdownNode { return { type: "code", lang: "metis-block", value: JSON.stringify(stripMetadata(node)) }; }
 function inline(nodes: EditorNode[] = []): MarkdownNode[] {

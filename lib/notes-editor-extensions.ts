@@ -1,3 +1,5 @@
+import { noteBlockStyle } from "./notes-block-style";
+import { uniqueHeadingSlug } from "./notes-section-navigation";
 import { Extension, Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
@@ -10,13 +12,26 @@ import { Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 export const NOTES_BLOCK_TYPES = ["paragraph", "heading", "blockquote", "bulletList", "orderedList", "taskList", "listItem", "taskItem", "codeBlock", "horizontalRule", "table", "tableRow", "tableCell", "tableHeader", "sourceBlock", "mathBlock", "callout", "toggleBlock", "columns", "column", "pageReference", "embedBlock", "tableOfContents"];
-const metadataAttributes = Object.fromEntries(["originalSource", "sourceSignature", "originalGap", "originalTrailing", "blockId"].map((key) => [key, { default: null, rendered: false }]));
+const metadataAttributes = Object.fromEntries(["originalSource", "sourceSignature", "originalGap", "originalTrailing", "blockId", "blockColor"].map((key) => [key, { default: null, rendered: false }]));
 export const NotesSourceMetadata = Extension.create({
   name: "notesSourceMetadata",
   addProseMirrorPlugins() {
     return [new Plugin({ props: { decorations: (state) => {
       const decorations: Decoration[] = [];
-      state.doc.forEach((node, pos) => { if (node.attrs.blockId) decorations.push(Decoration.node(pos, pos + node.nodeSize, { "data-block-id": String(node.attrs.blockId), id: "block-" + node.attrs.blockId })); });
+      const used = new Set<string>();
+      state.doc.descendants(node => { if (node.attrs.blockId) used.add("block-" + node.attrs.blockId); });
+      state.doc.descendants((node, pos) => {
+        if (!node.isBlock) return;
+        const attrs: Record<string,string> = {};
+        if (node.attrs.blockId) { attrs["data-block-id"] = String(node.attrs.blockId); attrs.id = "block-" + node.attrs.blockId; }
+        if (node.type.name === "heading") {
+          const slug = uniqueHeadingSlug(node.textContent, used); attrs["data-section-slug"] = slug;
+          if (!attrs.id) attrs.id = slug;
+        }
+        const style = noteBlockStyle(node.attrs.blockColor);
+        if (style) { attrs["data-block-color"] = String(node.attrs.blockColor); attrs.style = "border-inline-start:" + style.borderInlineStart + ";padding-inline-start:" + style.paddingInlineStart; }
+        if (Object.keys(attrs).length) decorations.push(Decoration.node(pos, pos + node.nodeSize, attrs));
+      });
       return DecorationSet.create(state.doc, decorations);
     } } })];
   },
@@ -87,9 +102,9 @@ export const NotesTableOfContents = Node.create({
   parseHTML() { return [{ tag: "nav[data-notes-toc]" }]; },
   renderHTML() { return ["nav", { "data-notes-toc": "", class: "notes-table-of-contents" }, "Table of contents"]; },
 });
-export function notesEditorExtensions() {
+export function notesEditorExtensions(collaborative = false) {
   return [
-    StarterKit.configure({ trailingNode: false, link: { openOnClick: false, autolink: true, protocols: ["metis", "note", "issue", "workspace"] }, heading: { levels: [1,2,3,4,5,6] } }),
+    StarterKit.configure({ ...(collaborative ? {undoRedo:false as const} : {}), trailingNode: false, link: { openOnClick: false, autolink: true, protocols: ["metis", "note", "issue", "workspace"] }, heading: { levels: [1,2,3,4,5,6] } }),
     TaskList, TaskItem.configure({ nested: true }), TableKit.configure({ table: { resizable: true } }),
     Image.configure({ inline: true, allowBase64: false }), TextStyle, Color, Highlight.configure({ multicolor: true }),
     Placeholder.configure({ placeholder: "Write something, or type / for blocks…", includeChildren: true }),

@@ -12,6 +12,8 @@ import { NoteShareDialog } from "./note-share-dialog";
 import { ProjectIconGlyph } from "@/components/project-avatar";
 import { projectLogoSrc } from "@/lib/project-constants";
 import type { Project } from "@/lib/store";
+import { NotesSpellcheckMenu, useNotesSpellcheck } from "./spellcheck-menu";
+import { findNotesSection, scrollNotesSection } from "@/lib/notes-section-navigation";
 import { NoteDocument, type NoteDocumentHandle } from "./note-document";
 import { NoteBannerUpload, NoteIconPicker } from "./note-appearance-controls";
 import { BannerImage } from "@/components/banner-image";
@@ -61,6 +63,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
   const [pendingBlock, setPendingBlock] = useState<{ noteId: string; blockId: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; position: "before" | "inside" | "after" } | null>(null);
   const doc = useRef<NoteDocumentHandle>(null);
+  const [spellcheckChoice,setSpellcheckChoice] = useNotesSpellcheck(ownerId);
   const importInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const loadSerial = useRef(0);
@@ -185,9 +188,9 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
     if (!pendingBlock || selectedId !== pendingBlock.noteId) return;
     const focus = () => {
       const container = document.querySelector(`[data-note-document="${CSS.escape(pendingBlock.noteId)}"]`);
-      const block = container?.querySelector(`[data-block-id="${CSS.escape(pendingBlock.blockId)}"]`);
+      const block = container && findNotesSection(container,pendingBlock.blockId);
       if (!block) return false;
-      block.scrollIntoView({ block: "center", behavior: "smooth" });
+      if(block instanceof HTMLElement)scrollNotesSection(block);
       setPendingBlock(null);
       return true;
     };
@@ -453,7 +456,9 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
           {crumbs.map((note, index) => <span key={note.id}><ChevronRight className="mx-1 inline size-3 align-middle" /><button className={cn("max-w-[160px] truncate align-middle hover:text-foreground", index === crumbs.length - 1 && "text-foreground")} onClick={() => void openNote(note.id)}>{label(note)}</button></span>)}
         </div>
         {selected && !selected.archived && <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs" aria-label="Share note tree" onClick={()=>{void flush().then(ok=>{if(ok)setShareNote(selected);});}}><Share2 className="size-3.5"/><span className="hidden sm:inline">Share</span></Button>}
-        {selected && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="File options"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+        {selected && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="File options"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="min-w-56">
+          <NotesSpellcheckMenu value={spellcheckChoice} onChange={setSpellcheckChoice}/>
+          <DropdownMenuItem onClick={()=>{void flush().then(ok=>{if(ok)setShareNote(selected);});}}>Live editing…</DropdownMenuItem>
           <DropdownMenuItem onClick={() => { setIcon(selected.icon || ""); setCover(selected.cover || ""); setFullWidth(Boolean(selected.fullWidth)); setAppearance(true); }}><Settings2 className="size-4" />Page appearance…</DropdownMenuItem>
           <DropdownMenuItem onClick={() => setPinNote(selected)}><Pin className="size-4" />Pin in chats…</DropdownMenuItem>
           <DropdownMenuItem onClick={() => { void navigator.clipboard.writeText(window.location.origin + "/?c=notes#note-" + selected.id).catch(() => setError("Could not copy link.")); }}><Copy className="size-4" />Copy file link</DropdownMenuItem>
@@ -463,12 +468,12 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
       {error && <div role="alert" className="flex shrink-0 items-center gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"><span className="min-w-0 flex-1">{error}</span><Button variant="outline" size="sm" onClick={() => void load(projectId)}>Retry</Button><Button variant="ghost" size="icon" className="size-7" aria-label="Dismiss error" onClick={() => setError("")}><X className="size-3.5" /></Button></div>}
       {working && <div role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground"><Loader2 className="size-3 animate-spin" />Saving changes…</div>}
       {selected?.kind==="issuebook"&&!selected.archived && ownerId ? <div data-note-page-scroll className="min-h-0 flex-1 overflow-y-auto">
-        <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} subfiles={subfiles} ownerId={ownerId} headerOnly onSaved={saved} onCreateSubpage={() => setCreation({parentId:selected.id,kind:"note",title:""})} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
+        <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} subfiles={subfiles} spellcheckChoice={spellcheckChoice} ownerId={ownerId} headerOnly onSaved={saved} onCreateSubpage={() => setCreation({parentId:selected.id,kind:"note",title:""})} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
         <IssuesView className="h-auto min-h-[24rem]" key={selected.id} projectId={projectId} issuebookId={selected.id} onOpenNote={id=>{void openNote(id);}} onOpenDocument={id=>{void openNote(id);}}/>
       </div> : <div data-note-page-scroll className="min-h-0 flex-1 overflow-y-auto">
         {selected && ownerId ? <>
           {selected.archived && <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-5 py-3 text-sm"><span>This file is in trash.</span><Button variant="outline" size="sm" onClick={() => void archive(selected, false)}><RotateCcw className="size-3.5" />Restore</Button></div>}
-          <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} subfiles={subfiles} ownerId={ownerId} afterHeader={selected.issueId ? <IssueFileProperties key={selected.id} issueId={selected.issueId} projectId={projectId} onOpenNote={id=>{void openNote(id);}} onBeforeChange={flush} onChanged={()=>{void load(projectId,true);}}/> : undefined} onSaved={saved} onCreateSubpage={() => { setCreation({parentId:selected.id,kind:"note",title:""}); }} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
+          <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} subfiles={subfiles} spellcheckChoice={spellcheckChoice} ownerId={ownerId} afterHeader={selected.issueId ? <IssueFileProperties key={selected.id} issueId={selected.issueId} projectId={projectId} onOpenNote={id=>{void openNote(id);}} onBeforeChange={flush} onChanged={()=>{void load(projectId,true);}}/> : undefined} onSaved={saved} onCreateSubpage={() => { setCreation({parentId:selected.id,kind:"note",title:""}); }} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
 
           {backlinks.length > 0 && <section className={cn("mb-12 border-t border-border py-5", selected.issueId || selected.kind === "issuebook" ? "w-full px-4 sm:px-6" : "mx-auto max-w-[920px] px-5 sm:px-10")}><h3 className="mb-2 text-xs font-medium text-muted-foreground">Linked from</h3>{backlinks.map(note => <button className="mr-3 text-sm underline underline-offset-4" key={note.id} onClick={() => void openNote(note.id)}>{label(note)}</button>)}</section>}
         </> : <div className="mx-auto flex min-h-[420px] max-w-md flex-col items-center justify-center px-8 py-16 text-center">

@@ -78,36 +78,26 @@ export async function isAuthenticated(req?: Request): Promise<boolean> {
   return Boolean(await getAuthenticatedUser(req));
 }
 
-export async function getAuthenticatedUser(req?: Request): Promise<User | null> {
-  const legacyPassword = req?.headers.get("x-chat-password");
-  const legacyUser = req?.headers.get("x-chat-username")?.trim();
-  const migrated = users();
-  if (
-    process.env.CHAT_LEGACY_HEADER_AUTH === "true" &&
-    legacyPassword &&
-    passwordMatches(legacyPassword)
-  ) {
-    // Off by default. The shared password plus a caller-chosen username is an
-    // impersonation path; keep it only as an explicit migration bridge.
-    if (!legacyUser) return null;
-    return migrated.find((user) => user.username === legacyUser) ?? null;
+/** Synchronous request path also guards each live-note WebSocket send. */
+export function getRequestAuthenticatedUser(req: Request): User | null {
+  const legacyPassword = req.headers.get("x-chat-password");
+  const legacyUser = req.headers.get("x-chat-username")?.trim();
+  if (process.env.CHAT_LEGACY_HEADER_AUTH === "true" && legacyPassword && passwordMatches(legacyPassword)) {
+    return legacyUser ? users().find(user => user.username === legacyUser) ?? null : null;
   }
-  const requestCookie = req?.headers.get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${CHAT_COOKIE}=`))
-    ?.slice(CHAT_COOKIE.length + 1);
-  const token = req
-    ? requestCookie
-    : (await cookies())?.get(CHAT_COOKIE)?.value;
-  if (!token) return null;
+  const token = req.headers.get("cookie")?.split(";").map(part => part.trim()).find(part => part.startsWith(CHAT_COOKIE+"="))?.slice(CHAT_COOKIE.length+1);
+  if(!token)return null;
   const session = getDatabase().prepare(
-    `SELECT s.user_id as userId, s.expires_at as expiresAt,
-            u.id, u.username, u.password_hash as passwordHash, u.created_at as createdAt
-     FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
+    "SELECT s.user_id as userId,s.expires_at as expiresAt,u.id,u.username,u.password_hash as passwordHash,u.created_at as createdAt FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?"
   ).get(tokenHash(token)) as (Session & User) | undefined;
-  return session && new Date(session.expiresAt).getTime() > Date.now() ? session : null;
+  return session && Date.parse(session.expiresAt)>Date.now() ? session : null;
 }
+export async function getAuthenticatedUser(req?: Request): Promise<User | null> {
+  if(req)return getRequestAuthenticatedUser(req);
+  const token=(await cookies())?.get(CHAT_COOKIE)?.value;
+  return token ? getRequestAuthenticatedUser(new Request("http://session.local",{headers:{cookie:CHAT_COOKIE+"="+token}})) : null;
+}
+
 
 export function revokeRequestSession(req: Request) {
   const token = req.headers.get("cookie")?.split(";")

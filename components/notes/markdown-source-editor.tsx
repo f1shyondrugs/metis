@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { Compartment, EditorState } from "@codemirror/state";
+import { useContext, useEffect, useMemo, useRef } from "react";
+import { Compartment, EditorState, Transaction } from "@codemirror/state";
 import { Decoration, EditorView, keymap, placeholder } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
@@ -10,12 +10,15 @@ import { minimalMarkdownChange } from "@/lib/markdown-editor";
 import { markdownLengthChangeFitsLimit } from "@/lib/shared-markdown-editor";
 import { resolveMarkdownSourceLocation } from "@/lib/markdown-source-location";
 import type { WorkspaceFileLocation } from "@/lib/workspace-file-link";
+import { NotesSpellcheckContext } from "./spellcheck-context";
+import { notesSpellcheckAttributes } from "@/lib/notes-spellcheck";
 import "./block-editor.css";
 
 export function MarkdownSourceEditor({ value, onChange, disabled, maxLength, ariaLabel, placeholderText, autoFocus, sourceLocation, onExceeded, onFiles }: {
   value: string; onChange: (value: string) => void; disabled: boolean; maxLength: number; ariaLabel: string; placeholderText?: string;
   autoFocus?: boolean; sourceLocation?: WorkspaceFileLocation | null; onExceeded: () => void; onFiles: (files: File[]) => Promise<void>;
 }) {
+  const spellcheckChoice = useContext(NotesSpellcheckContext);
   const host = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null);
   const callback = useRef(onChange), current = useRef(value), syncing = useRef(false);
   const valueSync = useRef(createEditorValueSync(value));
@@ -30,7 +33,7 @@ export function MarkdownSourceEditor({ value, onChange, disabled, maxLength, ari
         markdown(), history(), keymap.of([...defaultKeymap, ...historyKeymap]), EditorView.lineWrapping,
         EditorState.lineSeparator.of(current.current.includes("\r\n") ? "\r\n" : "\n"),
         config.of([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled),
-          placeholder(placeholderText || "Write Markdown…"), EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: "true" })]),
+          placeholder(placeholderText || "Write Markdown…"), EditorView.contentAttributes.of({ "aria-label": ariaLabel, ...notesSpellcheckAttributes(spellcheckChoice) })]),
         highlights.of([]),
         EditorState.changeFilter.of((transaction) => {
           if (syncing.current) return true;
@@ -64,15 +67,15 @@ export function MarkdownSourceEditor({ value, onChange, disabled, maxLength, ari
     const instance = view.current; if (!instance) return;
     instance.dispatch({ effects: config.reconfigure([
       EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled), placeholder(placeholderText || "Write Markdown…"),
-      EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: "true" }),
+      EditorView.contentAttributes.of({ "aria-label": ariaLabel, ...notesSpellcheckAttributes(spellcheckChoice) }),
     ]) });
-  }, [ariaLabel, config, disabled, placeholderText]);
+  }, [ariaLabel, config, disabled, placeholderText, spellcheckChoice]);
   useEffect(() => {
     if (!valueSync.current.receive(value)) return;
     current.current = value;
     const instance = view.current; if (!instance) return;
     const change = minimalMarkdownChange(instance.state.doc.toString(), instance.state.toText(value).toString());
-    if (change) { syncing.current = true; try { instance.dispatch({ changes: change }); } finally { syncing.current = false; } }
+    if (change) { syncing.current = true; try { instance.dispatch({ changes: change, annotations: Transaction.addToHistory.of(false) }); } finally { syncing.current = false; } }
   }, [value]);
   useEffect(() => {
     const instance = view.current; if (!instance || !sourceLocation) return;
