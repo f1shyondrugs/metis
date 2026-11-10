@@ -89,6 +89,9 @@ export class SecureBrowserInputs {
         if (missing.length) {
           if (Date.now() >= deadline) throw new CredentialFieldsNotVisible(missing);
         } else {
+          // Explicit login selectors can name otherwise ordinary-looking inputs.
+          // Mark the validated controls before any private-browser image is taken.
+          await Promise.all(targets.map(target=>target.field.evaluate(el=>el.setAttribute("data-metis-sensitive","true"))));
           const input = {requestId:randomUUID(), origin, expiresAt:new Date(Date.now() + this.ttl).toISOString(), fields:[...new Set(requested)]};
           this.requests.set(input.requestId, {...input, owner, chat, page, url:page.url(), field:targets[0].field, targets, filled:false});
           kept = true;

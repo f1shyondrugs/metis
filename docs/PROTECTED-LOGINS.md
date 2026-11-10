@@ -105,7 +105,7 @@ configured executable instead of assuming a machine-specific toolchain path.
 
 The private browser uses a DNS-checked public-network proxy and Chromium sandbox.
 Private addresses, unsupported ports, arbitrary JavaScript, downloads, browser
-batches and screenshot/image streams are unavailable in protected sessions.
+batches are unavailable in protected sessions. Screenshots and live image streams\nuse the same sensitive-field masking as the ordinary browser; the active vault\nsession alone does not block images.
 Known secret representations and sensitive form values are redacted from DOM
 results. This is not a universal information-flow guarantee against a malicious
 login site; the trusted site necessarily receives the credentials it accepts.
@@ -131,7 +131,7 @@ closes the protected context. Pre-login public resources may be replayed locally
 from the bounded session cache instead of making new third-party requests after
 credential entry.
 
-Closing the protected tab returns to the ordinary browser without copying private cookies or page state. Listing tabs uses metadata rather than requesting a forbidden private screenshot. A blocked navigation returns a fixed actionable error instead of a successful empty page. Unsupported workers close the credential context while still paused.\n\nOrdinary browser screenshots leave normal inputs, textareas and editable text visible. Native concealed password bullets need no extra field mask. Revealed passwords, login identities, payment/token fields and explicitly marked sensitive controls are masked. Known values reflected outside their field block capture, and inspection failures remain fail-closed. Private credential sessions retain their separate no-image boundary. Hidden fields remain redacted throughout DOM results. Hidden routing flags do not join the screenshot history or by themselves imply that visible pixels contain credentials. The private login target and entry origin come from trusted app-owned tab state, independent of redacted display URLs.\n\n## Verification and rollback
+Closing the protected tab returns to the ordinary browser without copying private cookies or page state. Listing tabs uses metadata rather than requesting a forbidden private screenshot. A blocked navigation returns a fixed actionable error instead of a successful empty page. Unsupported workers close the credential context while still paused.\n\nOrdinary browser screenshots leave normal inputs, textareas and editable text visible. Native concealed password bullets need no extra field mask. Revealed passwords, login identities, payment/token fields and explicitly marked sensitive controls are masked. Known values reflected outside their field block capture, and inspection failures remain fail-closed. The same screenshot policy applies to protected credential sessions. Images are captured from the actual private browser, retaining account/chat isolation, and never substituted with a stale ordinary tab. Hidden fields remain redacted throughout DOM results. Hidden routing flags do not join the screenshot history or by themselves imply that visible pixels contain credentials. The private login target and entry origin come from trusted app-owned tab state, independent of redacted display URLs.\n\n## Verification and rollback
 
 Run `pnpm run test:protected-login`, `pnpm run typecheck`, the complete test suite
 and `pnpm run build` against the contributed tree with isolated test data.

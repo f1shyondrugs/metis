@@ -17,6 +17,7 @@ const formControlSchema = z.object({
 const formSchema=z.object({text:z.string(),controls:z.array(formControlSchema)});
 export type ProtectedFormControl=z.infer<typeof formControlSchema>;
 
+export const MAX_PROTECTED_LOGIN_REPLY_BYTES=8*1024*1024;
 const replySchema = z.object({
   url:z.string().optional(),
   tabs:z.array(z.object({id:z.string(),url:z.string(),title:z.string()})).optional(),
@@ -30,6 +31,7 @@ const replySchema = z.object({
   secureInput: protectedInputSchema.optional(),
   filled: z.boolean().optional(),
   scope: z.enum(["permanent", "chat"]).optional(),
+  screenshot: z.string().max(MAX_PROTECTED_LOGIN_REPLY_BYTES).optional(),
   snapshot: z.string().optional(),
   form: formSchema.optional(),
 }).passthrough();

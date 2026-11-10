@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { SecureBrowserInputs, CredentialFieldsNotVisible, browserInputSecrets, browserHasSecureInput, retainBrowserSecrets,type CredentialField } from "../../lib/browser-secure-input";
 import { ProtectedLoginError } from "../../lib/protected-login-errors";
+import {screenshotPage} from "../../lib/browser-screenshot-policy";
 import { publicBrowserProxy } from "./public-proxy";
 import { browserSecretRepresentations, loginNavigationOrigins, protectedRequestAllowed, withOperatorReturnOrigins } from "./navigation-policy";
 import {ScopedCredentials} from "./scoped-credentials";
@@ -18,7 +19,7 @@ type LoginInput = Record<string, unknown> & {
   kind?:string; origin?:string; password?:string; username?:string; email?:string;
   entryOrigin?:string; requestId?:string; persist?:boolean; replace?:boolean; url?:string; fields?:CredentialField[];
   selector?:string; usernameSelector?:string; emailSelector?:string; action?:string;
-  text?:string; key?:string; value?:string|string[]; includeSnapshot?:boolean;
+  text?:string; key?:string; value?:string|string[]; includeSnapshot?:boolean; includeScreenshot?:boolean; quality?:number;
   deltaY?:number; width?:number; height?:number;
 };
 type Payload = { owner: string; chat?: string; operation: string; input?: LoginInput };
@@ -280,8 +281,8 @@ export class SavedBrowserLogins {
     else if (action === "wait_for") await page.locator(requiredText(input.selector)).waitFor();
     else if (action === "scroll") await page.evaluate(y=>scrollBy(0,y),Number(input.deltaY)||600);
     else if (action === "resize") await page.setViewportSize({width:Math.max(320,Math.min(2560,Number(input.width)||1280)),height:Math.max(240,Math.min(1600,Number(input.height)||800))});
-    else if (action === "screenshot" || action === "download" || action === "batch" || action === "upload_file" || action === "upload_files" || action === "drop_files") throw new ProtectedLoginError("protected_action_unavailable");
-    else if (!["snapshot","extract_text","form_state","select_tab"].includes(action ?? "")) throw new ProtectedLoginError("protected_action_unavailable");
+    else if (action === "download" || action === "batch" || action === "upload_file" || action === "upload_files" || action === "drop_files") throw new ProtectedLoginError("protected_action_unavailable");
+    else if (!["screenshot","snapshot","extract_text","form_state","select_tab"].includes(action ?? "")) throw new ProtectedLoginError("protected_action_unavailable");
     if(action==="click"||action==="press")await page.waitForLoadState("domcontentloaded",{timeout:8000});
     const result=await this.state(session);
     if (action==="form_state") {
@@ -304,6 +305,13 @@ export class SavedBrowserLogins {
       });
     }
     if (["snapshot","extract_text"].includes(action ?? "") || input.includeSnapshot) result.snapshot=this.scrub(page,(await page.locator("body").innerText()).slice(0,120000));
+    // A vault session is not itself sensitive pixels. Use the same masking and
+    // reflection checks as ordinary screenshots, never the stale public tab.
+    if(action==="screenshot"||input.includeScreenshot===true){
+      try{
+        result.screenshot=(await screenshotPage(page,{type:"jpeg",quality:Math.max(35,Math.min(90,Number(input.quality)||70))})).toString("base64");
+      }catch{throw new ProtectedLoginError("screenshot_unavailable");}
+    }
     return result;
   }
   async close() { for(const s of this.sessions.values())await s.browser.close();this.sessions.clear();this.credentials.clear();this.proxy?.close();this.db.close(); }

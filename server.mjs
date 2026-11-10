@@ -216,12 +216,9 @@ async function handleBrowserEngine(request, response) {
 async function sendFrame(socket, context, tabId, quality, streamState, includeMetadata = false) {
   if (socket.readyState !== 1 || socket.bufferedAmount > 2_000_000 || streamState.awaitingAck) return tabId;
   const protectedSession=protectedBrowserRouting.has(context.userId,context.chatId) || tabId === "protected";
-  if(protectedSession) {
-    if(streamState.metadataKey!=="protected")socket.send(JSON.stringify({type:"error",message:"Protected login: browser images are unavailable. The agent uses page controls; credentials stay in the protected browser."}));
-    streamState.metadataKey="protected";
-    return "protected";
-  }
-  const frame = await captureBrowserFrame(context.userId, context.chatId, tabId, quality, includeMetadata);
+  const frame = protectedSession
+    ? await protectedBrowserRouting.captureFrame(context.userId,context.chatId,quality)
+    : await captureBrowserFrame(context.userId, context.chatId, tabId, quality, includeMetadata);
   if (socket.readyState !== 1) return;
   if (includeMetadata) {
     const metadataKey = JSON.stringify({

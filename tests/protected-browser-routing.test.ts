@@ -68,6 +68,26 @@ test("expired or restarted private sessions release routing and can be explicitl
   }
 });
 
+test("private image routing preserves owner/chat identity and never reads the public tab",async()=>{
+ const calls:unknown[][]=[];
+ const router=new ProtectedBrowserRouting(async(...args)=>{
+   calls.push(args);
+   return {tabId:"protected",activeTabId:"protected",url:"https://portal.test/task",screenshot:Buffer.from([255,216,255]).toString("base64")};
+ },async()=>{throw Error("Must not read a stale ordinary tab");});
+ const frame=await router.captureFrame("owner-a","chat-a",80);
+ assert.deepEqual(calls[0],["owner-a","chat-a","action",{action:"screenshot",tabId:"protected",includeScreenshot:true,quality:80}]);
+ assert.deepEqual(frame.data,Buffer.from([255,216,255]));
+ assert.equal(frame.tabId,"protected");
+ assert.equal(frame.url,"https://portal.test/task");
+ assert.equal("screenshot" in frame,false);
+ assert.equal(router.has("owner-a","chat-b"),false);
+});
+test("a missing or failed private image is never replaced with a public screenshot",async()=>{
+ for(const reply of [{status:"protected_browser_ready"},new ProtectedLoginError("screenshot_unavailable"),new ProtectedLoginError("session_unavailable")]){
+  const router=new ProtectedBrowserRouting(async()=>{if(reply instanceof Error)throw reply;return reply;},async()=>{throw Error("Must not access public browser");});
+  await assert.rejects(router.captureFrame("owner","chat"),error=>error instanceof ProtectedLoginError);
+ }
+});
 test("explicit protected tab restores routing without reading or creating an ordinary tab", async () => {
   const calls: string[] = [];
   const router = new ProtectedBrowserRouting(async (_owner,_chat,operation,input) => {

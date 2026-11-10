@@ -525,9 +525,9 @@ async function waitForLocatorAcrossFrames(
   }
 }
 
-import {BROWSER_CREDENTIAL_SELECTOR,screenshotFieldMasks} from "./browser-screenshot-policy";
+import {BROWSER_CREDENTIAL_SELECTOR,screenshotPage} from "./browser-screenshot-policy";
 import {browserInputSecrets,retainBrowserSecrets} from "./browser-secure-input";
-export {BROWSER_CREDENTIAL_SELECTOR} from "./browser-screenshot-policy";
+export {BROWSER_CREDENTIAL_SELECTOR,screenshotPage} from "./browser-screenshot-policy";
 // Preserve hidden-token redaction in DOM results. Only actual credential fields
 // join the screenshot history; public hidden routing flags are not visible pixels.
 export const BROWSER_SENSITIVE_SELECTOR = BROWSER_CREDENTIAL_SELECTOR + ', input[type="hidden"]';
@@ -665,11 +665,6 @@ export async function collectFormState(page: Page): Promise<{ text: string; cont
   const redact=await browserTextRedactor(page);
   const scrub=(value:unknown):unknown=>typeof value==='string'?redact(value):Array.isArray(value)?value.map(scrub):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,scrub(item)])):value;
   return scrub({text:textChunks.join('\n\n').slice(0,60_000),controls}) as {text:string;controls:BrowserFormControl[]};
-}
-
-export async function screenshotPage(page: Page, options: { type: "png" } | { type: "jpeg"; quality: number }) {
-  const mask=await screenshotFieldMasks(page);
-  return page.screenshot({ ...options, mask, maskColor: "#222222", timeout: 15_000 });
 }
 
 async function pageInfo(state: BrowserContextState, tabId: string) {

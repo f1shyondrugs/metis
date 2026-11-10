@@ -99,7 +99,14 @@ function backendHarness(capture: (attempt: number) => Promise<StreamFrame>, acti
   const timers = new Map<number, { callback: () => unknown; delay: number }>();
   const subscribers = new Map<string, Set<(event: { tabId: string }) => void>>();
   const captures: unknown[][] = [], actions: unknown[][] = [];
-  const protectedBrowserRouting=new ProtectedBrowserRouting(async()=>({status:"protected_browser_ready"}),async()=>{throw Error("No ordinary tab is needed for this fixture");});
+  const protectedCaptures:unknown[][]=[];
+  const protectedBrowserRouting=new ProtectedBrowserRouting(async(...args)=>{
+    if(args[2]==="action"&&args[3]?.action==="screenshot"){
+      protectedCaptures.push(args);
+      return {...streamFrame(),tabId:"protected",activeTabId:"protected",url:"https://fixture.test/private",screenshot:Buffer.from([9,8,7]).toString("base64")};
+    }
+    return {status:"protected_browser_ready"};
+  },async()=>{throw Error("No ordinary tab is needed for this fixture");});
   let nextTimer = 0;
   const context = {
     protectedBrowserRouting,
@@ -111,7 +118,7 @@ function backendHarness(capture: (attempt: number) => Promise<StreamFrame>, acti
   };
   const connectHandler = new Function(...Object.keys(context), sendFrameDeclaration.getText(serverTree) + ";return (" + connectionCallback.getText(serverTree) + ");")(...Object.values(context));
   return {
-    timers, subscribers, captures, actions, protectedBrowserRouting,
+    timers, subscribers, captures, actions, protectedBrowserRouting, protectedCaptures,
     connect(options: Record<string, unknown> = {}) {
       const socket = new StreamSocket();
       const done = connectHandler(socket, {}, { userId: "owner", chatId: "chat" }, { tabId: "browser-1", realtime: false, ...options }) as Promise<void>;
@@ -128,15 +135,21 @@ function backendHarness(capture: (attempt: number) => Promise<StreamFrame>, acti
   };
 }
 
-test("protected sessions never capture or send images, including restoration by explicit tab identity",async()=>{
+test("vault sessions stream private masked frames, including restoration by explicit tab identity",async()=>{
   for(const explicitTab of [false,true]){
     const h=backendHarness(async()=>streamFrame());
     if(!explicitTab)await h.protectedBrowserRouting.prepare("owner","chat",{tabId:"protected"});
     const {socket,done}=h.connect({tabId:explicitTab?"protected":"browser-1",frameAck:true});
     await done;
     assert.equal(h.captures.length,0);
-    assert.equal(socket.frames().length,0);
-    assert.match(socket.errors()[0]?.message??"",/Protected login/);
+    assert.equal(h.protectedCaptures.length,1);
+    assert.deepEqual(h.protectedCaptures[0].slice(0,3),["owner","chat","action"]);
+    assert.deepEqual(h.protectedCaptures[0][3],{action:"screenshot",tabId:"protected",includeScreenshot:true,quality:70});
+    assert.equal(socket.frames().length,1);
+    assert.deepEqual(socket.frames()[0].data,Buffer.from([9,8,7]));
+    assert.equal(socket.errors().length,0);
+    // No next image is encoded until the current one is acknowledged.
+    h.notify();await settleStream();assert.equal(h.protectedCaptures.length,1);
     socket.close();
   }
 });

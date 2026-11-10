@@ -1,5 +1,5 @@
 import http from "node:http";
-import {parseProtectedLoginReply,type ProtectedLoginReply} from "./protected-login-contract";
+import {MAX_PROTECTED_LOGIN_REPLY_BYTES,parseProtectedLoginReply,type ProtectedLoginReply} from "./protected-login-contract";
 import {requireProtectedLoginIsolation} from "./native-isolation-policy";
 import { ProtectedLoginError } from "./protected-login-errors";
 
@@ -23,7 +23,7 @@ export function browserLoginRequest(owner: string, chat: string | undefined, ope
     const request=http.request({socketPath:process.env.METIS_BROWSER_LOGIN_SOCKET || "/run/metis-browser-login/client.sock",path:"/",method:"POST",agent:false,
       headers:{"Content-Type":"application/json","Content-Length":Buffer.byteLength(body),Connection:"close"},timeout:60000},response=>{
       let size=0;const chunks:Buffer[]=[];
-      response.on("data",chunk=>{size+=chunk.length;if(size>1024*1024)response.destroy();else chunks.push(chunk);});
+      response.on("data",chunk=>{size+=chunk.length;if(size>MAX_PROTECTED_LOGIN_REPLY_BYTES)response.destroy(new Error("Protected reply exceeds its transport limit"));else chunks.push(chunk);});
       response.on("error",()=>reject(new ProtectedLoginError()));
       response.on("end",()=>{
         let result: ProtectedLoginReply;

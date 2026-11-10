@@ -7,6 +7,7 @@ const messages = {
   credential_unavailable: "This saved login is no longer available. Refresh the vault and try again.",
   navigation_blocked: "The protected login could not complete a safe website navigation. Close this browser tab, reopen the original website and try again.",
   protected_action_unavailable: "This action is unavailable in the protected login browser. Use page controls, or close the protected tab before opening another website.",
+  screenshot_unavailable: "Browser image is unavailable because sensitive content could not be masked or the page could not be inspected. Try again after the page finishes loading.",
   session_limit: "The protected browser session limit has been reached. Close an unused protected browser and retry.",
   page_unavailable: "The protected login page could not be opened. Check the website and retry.",
   https_required: "Protected login requires an HTTPS website without URL credentials or a nonstandard port.",

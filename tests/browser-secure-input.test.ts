@@ -87,10 +87,12 @@ test("real HTTPS browser: secure input, encrypted save, automatic per-owner/per-
   assert.equal((await call("fill",{requestId:requireProtectedInput(first).requestId,password,persist:true},true)).status,"filled_and_saved");
   await assert.rejects(call("fill",{requestId:requireProtectedInput(first).requestId,password},true));
   const form=await call("action",{action:"form_state"});assert(!JSON.stringify(form).includes(password));assert(JSON.stringify(form).includes("REDACTED"));
-  await assert.rejects(call("action",{action:"screenshot"}));await assert.rejects(call("action",{action:"download",url:"https://portal.test/login"}));
-  await assert.rejects(call("user_frame",{},true),'No screenshot export, even through an impersonated browser session');
+  const image=await call("action",{action:"screenshot"});assert.equal(Buffer.from(String(image.screenshot),"base64").subarray(0,2).toString("hex"),"ffd8");
+  await assert.rejects(call("action",{action:"download",url:"https://portal.test/login"}));
+  await assert.rejects(call("user_frame",{},true),'Unsupported raw export operations stay denied');
   await call("action",{action:"click",selector:"#submit"});assert.equal(received,password);
   const text=await call("action",{action:"extract_text"});assert(!JSON.stringify(text).includes(password));assert(!JSON.stringify(text).includes("TEST-ONLY-SESSION-COOKIE"));
+  await assert.rejects(call("action",{action:"screenshot"}),error=>error instanceof Error&&"code" in error&&error.code==="screenshot_unavailable");
   assert.deepEqual((await call("list",{},true)).credentials?.map((site:{origin:string})=>site.origin),["https://portal.test"]);
   await core.close();core=new SavedBrowserLogins(key,database,proxyUrl);
   assert(!fs.readFileSync(database).includes(Buffer.from(password)));

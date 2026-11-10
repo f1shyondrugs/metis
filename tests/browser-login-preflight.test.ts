@@ -12,6 +12,7 @@ import https from "node:https";
 import net from "node:net";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import sharp from "sharp";
 import { SavedBrowserLogins } from "../services/browser-login/core";
 
 const origin = "https://portal.test";
@@ -38,7 +39,11 @@ async function fixture(t: TestContext, operatorReturns: Record<string, string[]>
       let body=""; for await (const chunk of req) body+=chunk;
       credentialPosts.push({host:req.headers.host||"",body});
     }
-    if (pathname === "/public-redirect") {
+    if(pathname==="/images"){
+      res.end('<body style="margin:0;background:white"><h1 style="color:green">Vault image fixture</h1><form action="/images-done" method="post"><input id="image-user" name="account" style="position:fixed;left:20px;top:70px;width:300px;height:40px"><input id="image-pass" name="password" type="password" style="position:fixed;left:20px;top:130px;width:300px;height:40px"><button id="image-submit" style="position:fixed;left:20px;top:250px">Login</button></form><textarea style="position:fixed;left:20px;top:190px;width:300px;height:40px">Visible test draft</textarea></body>');
+    }else if(pathname==="/images-done"){res.end('<h1>Authenticated image fixture</h1>');}
+    else if(pathname==="/images-reflected"){res.end('<p>TEST-IMAGE-PRIVATE-PASSWORD-9842</p>');}
+    else if (pathname === "/public-redirect") {
       res.writeHead(302, { Location: "https://other.test/login" }); res.end();
     } else if (pathname === "/sso-task") {
       res.end('<h1>Authenticated task</h1><script src="/task-menu.js"></script>');
@@ -145,6 +150,29 @@ test("protected login preflight keeps school selection and credentials in the pr
   }
   const retry = await call("prepare", { fields, usernameSelector: usernameControl.selector, selector: passwordControl.selector, replace: true });
   assert.equal(retry.status, "input_required");
+});
+
+test("vault screenshots survive preflight, filled credentials and login while retaining field masks",async t=>{
+  const {call}=await fixture(t);
+  const prepared=await call("prepare",{url:origin+"/images",fields:["username","password"],usernameSelector:"#image-user",selector:"#image-pass"});
+  const before=await call("action",{action:"screenshot"});
+  assert.equal(Buffer.from(String(before.screenshot),"base64").subarray(0,2).toString("hex"),"ffd8");
+  await call("fill",{requestId:requireProtectedInput(prepared).requestId,username:"TEST-IMAGE-PRIVATE-USER",password:"TEST-IMAGE-PRIVATE-PASSWORD-9842",persist:false},true);
+  const image=await call("action",{action:"screenshot",quality:90});
+  const bytes=Buffer.from(String(image.screenshot),"base64");
+  const {data,info}=await sharp(bytes).removeAlpha().raw().toBuffer({resolveWithObject:true});
+  function rgb(x:number,y:number){return [...data.subarray((y*info.width+x)*info.channels,(y*info.width+x)*info.channels+3)];}
+  assert.ok(rgb(30,80).every(value=>Math.abs(value-34)<5),"username is visibly masked");
+  assert.ok(rgb(300,150).every(value=>value>230),"native password bullets need no full black mask");
+  assert.ok(rgb(300,210).every(value=>value>230),"ordinary draft is not masked");
+  fs.mkdirSync("output/vault-ui",{recursive:true});
+  fs.writeFileSync("output/vault-ui/protected-login-images.png",await sharp(bytes).png().toBuffer());
+  assert.equal((await call("action",{action:"form_state",includeScreenshot:false})).screenshot,undefined);
+  await call("action",{action:"click",selector:"#image-submit",includeScreenshot:true});
+  assert.ok((await call("action",{action:"screenshot"})).screenshot,"active authenticated session keeps producing images");
+  await assert.rejects(call("action",{action:"screenshot"} ,false,"other-owner"),error=>error instanceof Error&&"code" in error&&error.code==="session_unavailable");
+  await call("action",{action:"navigate",url:origin+"/images-reflected"});
+  await assert.rejects(call("action",{action:"screenshot"}),error=>error instanceof Error&&"code" in error&&error.code==="screenshot_unavailable"&&!error.message.includes("9842"));
 });
 
 test("protected login waits for dynamically displayed credential fields", async t => {

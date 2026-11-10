@@ -32,6 +32,11 @@ export class ProtectedBrowserRouting {
       throw error;
     }
   }
+  async captureFrame(owner:string,chat:string,quality=70){
+    const {screenshot,...state}=await this.action(owner,chat,{action:"screenshot",tabId:"protected",includeScreenshot:true,quality});
+    if(typeof screenshot!=="string"||!screenshot)throw new ProtectedLoginError("screenshot_unavailable");
+    return {...state,tabId:"protected",activeTabId:"protected",data:Buffer.from(screenshot,"base64")};
+  }
   async action(owner: string, chat: string, action: Partial<SharedBrowserAction>) {
     const key = `${owner}:${chat}`;
     // An explicit protected tab also restores routing after an app restart.

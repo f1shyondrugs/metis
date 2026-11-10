@@ -23,6 +23,7 @@ export type SharedBrowserAction = {
   exact?: boolean;
   timeoutMs?: number;
   includeScreenshot?: boolean;
+  quality?: number;
   includeSnapshot?: boolean;
   steps?: SharedBrowserAction[];
   frame?: string;
