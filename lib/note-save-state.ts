@@ -1,3 +1,4 @@
+import { createClientId } from "./client-id";
 import type { NoteTodo, SharedNote } from "@/lib/store";
 
 export type NoteDraft = Partial<Pick<SharedNote, "title" | "content" | "todos" | "position" | "size" | "color" | "archived" | "icon" | "cover">> & { projectId?: string | null };
@@ -113,8 +114,7 @@ export function clearSavedNoteDraft(draft: NoteDraft, patch: NoteDraft): NoteDra
 }
 
 export function createNoteMutationId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return createClientId();
 }
 
 export function stableNoteIdempotencyKey(noteId: string, mutationId: string): string {

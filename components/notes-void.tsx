@@ -1,4 +1,5 @@
 "use client";
+import { createClientId } from "@/lib/client-id";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Paperclip, ExternalLink, LayoutGrid, Maximize2, Palette, Pin, PinOff, Plus, RefreshCw, Search, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
@@ -39,9 +40,7 @@ type DragState =
 const NOTE_COLORS = ["#fef08a", "#bfdbfe", "#bbf7d0", "#fecdd3", "#ddd6fe", "#fed7aa"];
 
 function requestKey() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random()}`;
+  return createClientId();
 }
 
 export function NotesVoid({

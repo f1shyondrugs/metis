@@ -1,4 +1,5 @@
 "use client";
+import { createClientId } from "@/lib/client-id";
 import {NotebookPresenceContext,type NotebookEditorStatus} from "./notebook-presence-context";
 import {useNotebookPresence} from "./use-notebook-presence";
 import {NotebookPresenceBar,NotebookFollowFrame,ParticipantButton} from "./notebook-presence-bar";
@@ -236,11 +237,11 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
       const parent=notes.find(note=>note.id===parentId);
       let note:TreeNote;
       if(parent?.kind==="issuebook"&&input?.kind!=="issuebook") {
-        const {issue}=await json<{issue:{noteId:string}}>("/api/issues",{method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify({projectId:container,issuebookId:parentId,title:input?.title||"Untitled issue",description:input?.content||"",status:"todo"})});
+        const {issue}=await json<{issue:{noteId:string}}>("/api/issues",{method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":createClientId()},body:JSON.stringify({projectId:container,issuebookId:parentId,title:input?.title||"Untitled issue",description:input?.content||"",status:"todo"})});
         note=(await json<{note:TreeNote}>("/api/notes/"+issue.noteId)).note;
       } else {
         ({note}=await json<{ note: TreeNote }>("/api/notes", {
-          method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+          method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": createClientId() },
           body: JSON.stringify({ title: input?.title || (input?.kind==="issuebook"?"Untitled issuebook":"Untitled"), content: input?.content || "", kind: input?.kind || "note", scope: "global", projectId: container, parentId }),
         }));
       }
@@ -257,7 +258,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
     if (!(await flush())) return;
     const current = await json<{ note: TreeNote }>("/api/notes/" + encodeURIComponent(note.id));
     const body = await json<{ note: TreeNote }>("/api/notes/" + encodeURIComponent(note.id), {
-      method: "PATCH", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+      method: "PATCH", headers: { "Content-Type": "application/json", "Idempotency-Key": createClientId() },
       body: JSON.stringify({ ...fields, version: current.note.version }),
     });
     saved(body.note);
@@ -279,7 +280,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
     try {
       const current = await json<{ note: TreeNote }>("/api/notes/" + encodeURIComponent(note.id));
       const body = await json<{ notes: TreeNote[]; rootId: string }>("/api/notes/" + encodeURIComponent(note.id) + "/duplicate", {
-        method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+        method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": createClientId() },
         body: JSON.stringify({ version: current.note.version }),
       });
       const key = scopeKey(note.projectId || null);
@@ -351,7 +352,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
   async function createIssue(text: string, sourceId: string, kind: "selection" | "checkbox") {
     if (!selectedId) throw new Error("Open a file first.");
     const body = await json<{ issue: { id: string; key?: string; identifier?: string } }>("/api/issues", {
-      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": createClientId() },
       body: JSON.stringify({ projectId, issuebookId: selected?.issueId ? selected.parentId : undefined, title: text.split("\n")[0].slice(0, 200), description: text, source: { noteId: selectedId, sourceId, kind, excerpt: text } }),
     });
     void load(projectId, true);

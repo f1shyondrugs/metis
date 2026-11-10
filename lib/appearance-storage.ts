@@ -1,3 +1,4 @@
+import { createClientId } from "./client-id";
 import {
   DEFAULT_THEME_ID,
   MAX_THEME_JSON_BYTES,
@@ -203,8 +204,7 @@ export function createCustomTheme(state: AppearanceState, theme: ThemeDefinition
   if (state.customThemes.length >= MAX_CUSTOM_THEMES) {
     throw new Error("You can save up to " + MAX_CUSTOM_THEMES + " custom themes. Delete one before adding another.");
   }
-  const customId = id ?? "custom-" + (globalThis.crypto?.randomUUID?.() ??
-    Date.now().toString(36) + "-" + Math.random().toString(36).slice(2));
+  const customId = id ?? "custom-" + createClientId();
   if (!CUSTOM_THEME_ID.test(customId) || hasTheme(state, customId)) {
     throw new Error("The custom theme ID is invalid or already exists.");
   }

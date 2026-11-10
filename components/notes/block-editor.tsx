@@ -1,4 +1,5 @@
 "use client";
+import { createClientId } from "@/lib/client-id";
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useId, type ReactNode, type PointerEventHandler } from "react";
 import { createPortal } from "react-dom";
@@ -74,7 +75,7 @@ type SlashMenu = MenuPosition & { from: number; to: number; query: string };
 type HoverBlock = { pos: number; top: number };
 type BlockCommand = { id: string; title: string; detail: string; keywords?: string; run: (editor: Editor) => void };
 const paragraph = () => ({ type: "paragraph" });
-const newId = () => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+const newId = createClientId;
 const safeUrl = (url: string) => /^(https?:\/\/|mailto:|\/(?!\/)|#)/i.test(url) || Boolean(parseInternalLink(url)) || Boolean(parseReferenceLink(url)) || Boolean(parseWorkspaceFileLink(url));
 
 function LinkBlockView({ node }: NodeViewProps) {

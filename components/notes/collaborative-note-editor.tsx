@@ -1,4 +1,5 @@
 "use client";
+import { createClientId } from "@/lib/client-id";
 import {useNotebookPresenceContext} from "./notebook-presence-context";
 import {ProfileAvatar} from "@/components/account/account-menu";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -84,7 +85,7 @@ export function CollaborativeNoteEditor(props:Props) {
     while(Date.now()<deadline){
       if(!client.provider.isSynced){setError("Reconnect before leaving. Your local changes stay on this device.");return false;}
       if(client.provider.hasUnsyncedChanges){await new Promise(resolve=>setTimeout(resolve,50));continue;}
-      const requestId=crypto.randomUUID();
+      const requestId=createClientId();
       const saved=await new Promise<boolean>(resolve=>{
         const timer=setTimeout(()=>{requestAcks.current.delete(requestId);resolve(false);},3000);
         requestAcks.current.set(requestId,ok=>{clearTimeout(timer);resolve(ok);});

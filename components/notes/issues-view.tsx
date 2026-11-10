@@ -1,4 +1,5 @@
 "use client";
+import { createClientId } from "@/lib/client-id";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { Circle, CircleDashed, Columns3, List, Plus, Search, SlidersHorizontal, X, ExternalLink, Trash2, Loader2, MessageSquare, Link2, CalendarDays, Flag, UserRound, Bookmark, Settings2, SquareCheck } from "lucide-react";
@@ -184,7 +185,7 @@ export function IssuesView({projectId,issuebookId,onOpenNote,onOpenDocument,focu
 
     </div>
     <IssuePanel key={projectId||"none"} issueId={openId} issues={issues} members={members} projectId={projectId} onClose={()=>{setOpenId(null);surfaceRef.current?.focus();}} onOpenIssue={setOpenId} onOpenNote={onOpenNote} onChanged={()=>{void refresh();changed(projectId);}}/>
-    <Dialog open={saveOpen} onOpenChange={setSaveOpen}><DialogContent><DialogHeader><DialogTitle>Save issue view</DialogTitle><DialogDescription>Save these filters for this project and your account.</DialogDescription></DialogHeader><form className="space-y-3" onSubmit={event=>{event.preventDefault();if(!viewName.trim())return;const id=crypto.randomUUID();setSettings(previous=>({...previous,savedViews:[...previous.savedViews,{id,name:viewName.trim(),filters:{...previous.filters}}].slice(-30)}));setActiveView(id);setSaveOpen(false);}}><Input autoFocus aria-label="View name" placeholder="View name" maxLength={80} value={viewName} onChange={event=>setViewName(event.target.value)}/><Button type="submit" disabled={!viewName.trim()}>Save view</Button></form></DialogContent></Dialog>
+    <Dialog open={saveOpen} onOpenChange={setSaveOpen}><DialogContent><DialogHeader><DialogTitle>Save issue view</DialogTitle><DialogDescription>Save these filters for this project and your account.</DialogDescription></DialogHeader><form className="space-y-3" onSubmit={event=>{event.preventDefault();if(!viewName.trim())return;const id=createClientId();setSettings(previous=>({...previous,savedViews:[...previous.savedViews,{id,name:viewName.trim(),filters:{...previous.filters}}].slice(-30)}));setActiveView(id);setSaveOpen(false);}}><Input autoFocus aria-label="View name" placeholder="View name" maxLength={80} value={viewName} onChange={event=>setViewName(event.target.value)}/><Button type="submit" disabled={!viewName.trim()}>Save view</Button></form></DialogContent></Dialog>
   </div>;
 }
 
