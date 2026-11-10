@@ -10,5 +10,5 @@ test("Linux protected console rejects the credential interceptor and fragment le
     encoding: "utf8", timeout: 30000,
   });
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stderr, /Ran 5 tests/);
+  assert.match(result.stderr, /Ran 7 tests/);
 });

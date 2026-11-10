@@ -31,6 +31,25 @@ class ConsoleBoundaryTests(unittest.TestCase):
         console.STATE = self.previous_state
         self.temp.cleanup()
 
+    def test_target_inspection_does_not_start_or_replace_a_console(self):
+        session = self.output_session()
+        before_used = session.used
+        with patch.object(console, "host_key", return_value=("synthetic public key", "SHA256:fixture")), patch.object(console, "Session", side_effect=AssertionError("Inspection must not create a PTY")):
+            result = console.dispatch({"owner": "alice", "chat": "chat", "operation": "describe", "input": {"method": "ssh", "host": "Host.Test", "port": 2222, "user": "root"}})
+        self.assertEqual(result["target"], '["ssh","host.test",2222,"root","root","SHA256:fixture"]')
+        self.assertIs(console.SESSIONS[("alice", "chat")], session)
+        self.assertEqual(session.used, before_used)
+
+    def test_local_target_identifies_the_actual_password_account(self):
+        for method in ["su", "sudo"]:
+            result = console.describe_target(method, "root")
+            expected = "root" if method == "su" else console.pwd.getpwuid(os.getuid()).pw_name
+            self.assertEqual(result["auth_user"], expected)
+            self.assertEqual(console.json.loads(result["target"]), [method, console.socket.gethostname(), 0, expected, "root", "local"])
+        for port in [True, 0, 65536]:
+            with self.assertRaises(ValueError):
+                console.describe_target("ssh", "root", "host.test", port)
+
     def output_session(self):
         session = console.Session.__new__(console.Session)
         session.buffer, session.pending_output, session.secrets = "", "", [SECRET]

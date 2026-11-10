@@ -20,7 +20,7 @@ values exist only in memory for the same owner, chat and target, for at most
 24 hours, ending on broker restart or chat deletion. Selecting it saves an
 encrypted record per owner and exact HTTPS origin. Settings → Security →
 Credential vault lists saved browser and console entries and supports replacement
-and deletion. The + button also creates a website login directly, using its HTTPS sign-in address and optional username/email. Paths are normalized to the exact origin; an existing entry is never overwritten by Add. Draft values remain in the form after a failed save and are cleared on success or cancellation. Changing a login identity does not silently reuse a password bound
+and deletion. The + button creates Website, SSH and Local terminal logins. Website entries use an HTTPS sign-in address and optional username/email; paths normalize to the exact origin. SSH entries use host, port and account, show the checked host-key fingerprint for verification, and bind the password to that exact key. Local terminal entries use a target account and su/sudo method on the Metis server; checking the target identifies the actual password account (the target for su, the console service account for sudo). Checking a target never creates or replaces a console. Save rechecks its exact binding, so a changed host key or target rejects the draft. Existing entries are never overwritten by Add. Draft values remain in the form after a failed save and are cleared on success or cancellation. Changing a login identity does not silently reuse a password bound
 to a different identity. Multiple accounts or tenants sharing one login origin
 are not separate saved profiles.
 
@@ -28,6 +28,8 @@ The browser-login service keeps its own Chromium context; it does not copy the
 ordinary browser's profile, cookies or local storage. A successful login must be
 verified there. Rejected credentials stop the login attempt; CAPTCHA and MFA
 remain website-controlled steps.
+
+Agents can discover usable saved entries with `credential_vault_list`, which returns account-scoped routing metadata and the matching login tool, without passwords, tokens or credential envelopes. The tool is bound to the current owner, chat and running-job lease. Website entries are consumed through `browser_request_login`; SSH and local entries through `console_connect` / `console_authenticate`, followed by `console_read` and `console_command`. This enables saved credentials within their supported sign-in workflow; it does not export secrets to arbitrary commands or grant access to additional targets.
 
 Console credentials use the same protected form and encrypted storage. They bind
 to the SSH host, account, authentication method and host key, or to a local PAM

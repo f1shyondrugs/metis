@@ -8,6 +8,7 @@ import {screenshotPage} from "../../lib/browser-screenshot-policy";
 import { publicBrowserProxy } from "./public-proxy";
 import { browserSecretRepresentations, loginNavigationOrigins, protectedRequestAllowed, withOperatorReturnOrigins } from "./navigation-policy";
 import {ScopedCredentials} from "./scoped-credentials";
+import {consoleConnectionSchema,consoleTargetInfo,savedLoginSummaries,type SavedLogin} from "../../lib/credential-vault";
 import {secureConsole} from "./console-client";
 import { snapshotOperatorReturnOrigins, type OperatorReturnOrigins } from "./operator-return-origins";
 import { installProtectedRedirectGuard } from "./redirect-guard";
@@ -151,7 +152,16 @@ export class SavedBrowserLogins {
     this.locks.set(lock,next);
     try { return await next; } finally { if (this.locks.get(lock)===next) this.locks.delete(lock); }
   }
+  private async inspectConsole(owner:string,value:unknown){
+    const connection=consoleConnectionSchema.parse(value);
+    const reply=await secureConsole(owner,"vault","describe",connection).catch(()=>{throw new ProtectedLoginError("console_target_unavailable");});
+    const target=requiredText(reply.target),info=consoleTargetInfo(target),label=requiredText(reply.label);
+    if(!info||JSON.stringify(info.connection)!==JSON.stringify(connection))throw Error("Invalid console target");
+    return {target,label};
+  }
   private async perform({owner,chat,operation,input={}}: Payload, management: boolean): Promise<ProtectedLoginReply> {
+    if(operation==="inspect_console"&&management)return this.inspectConsole(owner,input.connection);
+    if(operation==="vault_list"&&chat)return parseProtectedLoginReply({credentials:savedLoginSummaries(this.credentials.list(owner) as SavedLogin[])});
     if (operation === "list" && management) return parseProtectedLoginReply({credentials:this.credentials.list(owner)});
     if (operation === "delete" && management) {
       if(input.kind==="console"){
@@ -164,6 +174,16 @@ export class SavedBrowserLogins {
       return {status:"deleted"};
     }
     if (operation === "create" && management) {
+      if(input.kind==="console"){
+        try{
+          if(typeof input.password!=="string"||!input.password||input.password.length>4096)throw Error("Invalid credentials");
+          const description=await this.inspectConsole(owner,input.connection);
+          if(input.target!==description.target)throw new ProtectedLoginError("credential_target_changed");
+          if(this.db.prepare("SELECT 1 FROM console_logins WHERE owner=? AND target=?").get(owner,description.target))throw new ProtectedLoginError("console_credential_exists");
+          this.credentials.save(owner,"","console",description.target,input.password,true,description.label);
+          return {status:"created",origin:description.target,kind:"console"};
+        }finally{input.password="";}
+      }
       if(input.kind && input.kind!=="browser")throw Error("Invalid credential kind");
       const origin=this.site(input.origin).origin;
       if(this.db.prepare("SELECT 1 FROM website_logins WHERE owner=? AND origin=?").get(owner,origin))throw new ProtectedLoginError("credential_exists");

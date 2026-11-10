@@ -22,10 +22,14 @@ test("Vault UI: add, safe errors, retry, duplicate protection, cancellation and 
    res.setHeader("Content-Type","application/json");
    if(req.method==="GET")return res.end(JSON.stringify({credentials:entries}));
    let raw="";for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);
+   if(body.action==="inspect"){
+    const c=body.connection,auth=c.method==="sudo"?"fixture-service":c.user,host=c.method==="ssh"?c.host:"fixture-host",port=c.method==="ssh"?c.port:0,fp=c.method==="ssh"?"SHA256:synthetic-fingerprint":"local";
+    return res.end(JSON.stringify({target:JSON.stringify([c.method,host,port,auth,c.user,fp]),label:c.method+": "+auth+"@"+host}));
+   }
    if(failOnce){failOnce=false;res.writeHead(503);return res.end(JSON.stringify({error:"The protected credential service is unavailable."}));}
-   const origin=new URL(body.origin).origin;
+   const origin=body.kind==="console"?body.target||body.origin:new URL(body.origin).origin;
    if(body.action==="create"&&entries.some(entry=>entry.origin===origin)){res.writeHead(409);return res.end(JSON.stringify({error:"A login already exists for this website. Edit the existing entry instead."}));}
-   if(body.action==="create")entries.push({origin});
+   if(body.action==="create")entries.push({origin,...(body.kind==="console"?{kind:"console",label:JSON.parse(origin)[0]+": "+JSON.parse(origin)[4]+"@"+JSON.parse(origin)[1]}:{})});
    return res.end(JSON.stringify({status:"created"}));
   }
   res.setHeader("Content-Type","text/html");res.end('<html class="dark"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/theme.css"></head><body style="margin:0;background:var(--background);color:var(--foreground);font-family:system-ui"><main style="max-width:780px;margin:24px auto;padding:16px"><div id="root"></div></main><script src="/bundle.js"></script></body></html>');
@@ -56,6 +60,41 @@ test("Vault UI: add, safe errors, retry, duplicate protection, cancellation and 
  await dialog.getByRole("button",{name:"Save login",exact:true}).click();await dialog.getByRole("alert").waitFor();
  assert.equal(entries.length,1);assert.match(await dialog.getByRole("alert").innerText(),/already exists/);
  await dialog.getByRole("button",{name:"Cancel",exact:true}).click();
+ await page.getByRole("button",{name:"Add login",exact:true}).click();
+ await dialog.getByRole("button",{name:"SSH",exact:true}).click();
+ assert.equal(await dialog.getByLabel("Login website",{exact:true}).count(),0);
+ await dialog.getByLabel("Host",{exact:true}).fill("server.test");
+ await dialog.getByLabel("Port",{exact:true}).fill("2222");
+ await dialog.getByLabel("SSH account",{exact:true}).fill("root");
+ await dialog.getByRole("button",{name:"Check host key",exact:true}).click();
+ const confirmed=dialog.getByRole("checkbox",{name:"I verified this host key using a trusted source."});
+ await confirmed.waitFor();
+ await dialog.getByLabel("Password",{exact:true}).fill("SYNTHETIC-SSH-SECRET");
+ assert(await dialog.getByRole("button",{name:"Save login",exact:true}).isDisabled());
+ await dialog.getByLabel("Host",{exact:true}).fill("changed.test");
+ assert.equal(await confirmed.count(),0,"changing the target invalidates its fingerprint check");
+ assert.equal(await dialog.getByLabel("Password",{exact:true}).count(),0);
+ await dialog.getByRole("button",{name:"Check host key",exact:true}).click();await confirmed.waitFor();await confirmed.check();
+ await dialog.getByLabel("Password",{exact:true}).fill("SYNTHETIC-SSH-SECRET");
+ await dialog.getByRole("button",{name:"Save login",exact:true}).click();await dialog.waitFor({state:"hidden"});
+ assert.equal(entries.length,2);
+ await page.getByRole("button",{name:"Add login",exact:true}).click();
+ await dialog.getByRole("button",{name:"Local terminal",exact:true}).click();
+ assert.equal(await dialog.getByLabel("Login website",{exact:true}).count(),0);
+ assert.equal(await dialog.getByLabel("Host",{exact:true}).count(),0);
+ await dialog.getByLabel("Authentication method").selectOption("sudo");
+ await dialog.getByLabel("Target account",{exact:true}).fill("root");
+ await dialog.getByRole("button",{name:"Check local target",exact:true}).click();
+ await dialog.getByText("fixture-service",{exact:true}).waitFor();
+ await dialog.getByLabel("Password",{exact:true}).fill("SYNTHETIC-SUDO-SECRET");
+ await dialog.getByRole("button",{name:"Save login",exact:true}).click();await dialog.waitFor({state:"hidden"});
+ assert.equal(entries.length,3);
+ const local=page.locator("article").filter({hasText:"sudo:"});
+ await local.getByRole("button",{name:"Edit login",exact:true}).click();
+ assert.equal(await dialog.getByLabel("Login website",{exact:true}).count(),0);
+ assert.equal(await dialog.getByLabel("New username (optional)",{exact:true}).count(),0);
+ await dialog.getByLabel("New password",{exact:true}).fill("SYNTHETIC-SUDO-REPLACEMENT");
+ await dialog.getByRole("button",{name:"Save changes",exact:true}).click();await dialog.waitFor({state:"hidden"});
  mkdirSync(artifacts,{recursive:true});
  for(const width of [1440,768,390]){
   await page.setViewportSize({width,height:width===768?1024:width===390?844:960});
@@ -66,6 +105,12 @@ test("Vault UI: add, safe errors, retry, duplicate protection, cancellation and 
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   const bounds=await dialog.boundingBox();assert(bounds.x>=0&&bounds.x+bounds.width<=width+1);
   await page.screenshot({path:path.join(artifacts,"vault-add-"+width+".png"),animations:"disabled"});
+  for(const kind of ["SSH","Local terminal"]){
+   await dialog.getByRole("button",{name:kind,exact:true}).click();
+   const bounds=await dialog.boundingBox();assert(bounds.x>=0&&bounds.x+bounds.width<=width+1);
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+   await page.screenshot({path:path.join(artifacts,"vault-"+kind.toLowerCase().replace(" ","-")+"-"+width+".png"),animations:"disabled"});
+  }
   await dialog.getByRole("button",{name:"Cancel",exact:true}).click();
  }
  assert(!await page.evaluate(value=>JSON.stringify([localStorage,sessionStorage]).includes(value),secret));

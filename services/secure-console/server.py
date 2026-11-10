@@ -54,6 +54,23 @@ def host_key(host, port):
     return f"{address} {public[1]} {public[2]}\n", fingerprint
 
 
+def describe_target(method, account, host=None, port=22):
+    if method not in {"ssh", "sudo", "su"} or not isinstance(account, str) or not USER.fullmatch(account):
+        raise ValueError("Invalid authentication")
+    known, fingerprint = None, "local"
+    if method == "ssh":
+        if not isinstance(host, str) or not HOST.fullmatch(host) or type(port) is not int or not 1 <= port <= 65535:
+            raise ValueError("Invalid SSH target")
+        host = host.lower()
+        known, fingerprint = host_key(host, port)
+    else:
+        host, port = socket.gethostname(), 0
+    auth_user = pwd.getpwuid(os.getuid()).pw_name if method == "sudo" else account
+    target = json.dumps([method, host, port, auth_user, account, fingerprint], separators=(",", ":"))
+    label = f"{method}: {auth_user}@{host}" + (f":{port} · {fingerprint}" if method == "ssh" else f" → {account}")
+    return {"target": target, "label": label, "host": host, "port": port, "auth_user": auth_user, "fingerprint": fingerprint, "known": known}
+
+
 class Session:
     def __init__(self, owner, chat, method, account, host=None, port=22, transport=None):
         if method not in {"ssh", "sudo", "su"} or not USER.fullmatch(account):
@@ -65,8 +82,8 @@ class Session:
         self.pending_ansi = ""
         self.ready, self.closed, self.used = False, False, time.time()
         self.request, self.filled = None, False
-        self.host = host.lower() if host else socket.gethostname()
-        self.port, self.fingerprint = port, "local"
+        description = describe_target(method, account, host, port)
+        self.host, self.port, self.fingerprint = description["host"], description["port"], description["fingerprint"]
         self.remote_user = account if method == "ssh" else None
         marker = f"METIS_AUTH_{self.nonce}"
         self.marker = marker
@@ -74,22 +91,17 @@ class Session:
         if method == "ssh":
             if not host or not HOST.fullmatch(host) or not 1 <= port <= 65535:
                 raise ValueError("Invalid SSH target")
-            known, self.fingerprint = host_key(host, port)
+            known = description["known"]
             known_path = STATE / (self.id + ".known_hosts")
             known_path.write_text(known); os.chmod(known_path, 0o600)
             self.known_path = known_path
             command = ["/usr/bin/ssh", "-F", "/dev/null", "-tt", "-p", str(port), "-o", "BatchMode=no", "-o", "PubkeyAuthentication=no", "-o", "IdentityAgent=none", "-o", "PreferredAuthentications=password,keyboard-interactive", "-o", "NumberOfPasswordPrompts=1", "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={known_path}", "-o", "GlobalKnownHostsFile=/dev/null", "-o", "ConnectTimeout=10", "-o", "ClearAllForwardings=yes", "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "PermitLocalCommand=no", "-o", "ControlMaster=no", f"{account}@{host}", "/bin/sh -c " + shlex.quote(shell)]
-            auth_user = account
         elif method == "su":
             command = ["/usr/bin/su", "-", account, "-s", "/bin/bash", "-c", shell]
-            auth_user = account
         else:
             command = ["/usr/bin/sudo", "-k", "-p", f"METIS_PASSWORD_{self.nonce}: ", "-u", account, "--", "/bin/bash", "--noprofile", "--norc", "-c", shell]
-            auth_user = pwd.getpwuid(os.getuid()).pw_name
-        self.auth_user = auth_user
-        self.target = json.dumps([method, self.host, port if method == "ssh" else 0, auth_user, account, self.fingerprint], separators=(",", ":"))
-        self.label = f"{method}: {auth_user}@{self.host}" + (f":{port}" if method == "ssh" else f" → {account}")
-        if method == "ssh": self.label += " · " + self.fingerprint
+        self.auth_user = description["auth_user"]
+        self.target, self.label = description["target"], description["label"]
         pid, master = pty.fork()
         if pid == 0:
             os.chdir(str(STATE))
@@ -213,6 +225,9 @@ def dispatch(body):
     owner, chat = identity(body.get("owner")), identity(body.get("chat"))
     operation, value = body.get("operation"), body.get("input") or {}
     key = (owner, chat)
+    if operation == "describe":
+        description = describe_target(value.get("method"), value.get("user"), value.get("host"), value.get("port", 22))
+        return {"target": description["target"], "label": description["label"]}
     with LOCK:
         for old_key, old in list(SESSIONS.items()):
             if time.time() - old.used > 1800: old.close(); del SESSIONS[old_key]

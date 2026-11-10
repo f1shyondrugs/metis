@@ -277,6 +277,7 @@ export const CORE_MCP_TOOL_ALLOWLIST = [
   "browser_batch",
   "browser_form_state",
   "browser_request_login",
+  "credential_vault_list",
   "console_connect",
   "console_authenticate",
   "console_request_password",

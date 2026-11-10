@@ -122,7 +122,7 @@ test("selectBridgeTools keeps a core Cursor-like set and drops the rest", () => 
   for (const name of [
     "search_tools", "call_mcp_tool", "write_todos", "read_file", "execute_command",
     "browser_navigate", "browser_snapshot", "browser_click", "browser_type",
-    "browser_wait_for", "browser_fill_form", "browser_form_state", "browser_tabs",
+    "browser_wait_for", "browser_fill_form", "browser_form_state", "browser_tabs", "credential_vault_list",
   ]) {
     assert.ok(
       CORE_MCP_TOOL_ALLOWLIST.includes(name as typeof CORE_MCP_TOOL_ALLOWLIST[number]) || name === "search_tools",
