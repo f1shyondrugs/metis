@@ -1,0 +1,7 @@
+html:has(.desktop-assistant),html:has(.desktop-assistant) body { background:transparent!important; }
+.desktop-assistant { height:100dvh; display:flex; align-items:flex-end; padding:8px; background:transparent; color:var(--foreground); }
+.assistant-panel { width:100%; max-height:100%; overflow:clip; border:1px solid var(--border); border-radius:16px; background:var(--background); box-shadow:0 8px 28px #0003; animation:assistant-slide 420ms cubic-bezier(.2,.7,.2,1) both; }
+.assistant-answer { max-height:320px; overflow:auto; font-size:14px; }
+.assistant-fallback { padding:24px; font-size:14px; }
+@keyframes assistant-slide { from { opacity:0; transform:translateY(36px); } to { opacity:1; transform:translateY(0); } }
+@media(prefers-reduced-motion:reduce) { .assistant-panel {animation:none;} }

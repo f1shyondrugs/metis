@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {SETTINGS_SECTIONS, SETTINGS_TABS, searchSettings, settingsOverviewSections, settingsSearchEntries, visibleSettingsSections} from "../lib/settings-navigation";
+import {SETTINGS_SECTIONS, SETTINGS_TABS, visibleSettingsTabs, searchSettings, settingsOverviewSections, settingsSearchEntries, visibleSettingsSections} from "../lib/settings-navigation";
 
 test("every visible settings section and top-level tab is searchable with its navigation destination", () => {
   for (const isAdmin of [false, true]) {
     const entries = settingsSearchEntries(isAdmin);
     assert.equal(new Set(entries.map(entry => entry.id)).size, entries.length);
-    for (const tab of SETTINGS_TABS) {
+    for (const tab of visibleSettingsTabs(isAdmin)) {
       if(tab.value !== "admin" || isAdmin) assert.ok(entries.some(entry => entry.id === tab.value && entry.tab === tab.value && !entry.sectionId));
       for (const section of visibleSettingsSections(tab.value, isAdmin)) {
         const result = searchSettings(entries, section.label).find(entry => entry.id === section.id);
@@ -15,7 +15,7 @@ test("every visible settings section and top-level tab is searchable with its na
         assert.equal(result.sectionId, section.id);
       }
     }
-    assert.equal(entries.length, SETTINGS_TABS.length - (isAdmin ? 0 : 1) + Object.keys(SETTINGS_SECTIONS).flatMap(tab => visibleSettingsSections(tab, isAdmin)).length);
+    assert.equal(entries.length, visibleSettingsTabs(isAdmin).length + Object.keys(SETTINGS_SECTIONS).flatMap(tab => visibleSettingsSections(tab, isAdmin)).length);
   }
 });
 

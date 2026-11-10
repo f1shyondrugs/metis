@@ -79,6 +79,7 @@ test("overview sections preserve navigation order and each visible section has a
   }));
   for (const tab of SETTINGS_TABS) {
     const overview = tabElement(tab.value);
+    if(tab.value==="remote-client"){assert.equal(elements(overview,"DesktopClientSettings").length,1);continue;}
     assert.equal(elements(overview, "SettingsOverview").length, 1, tab.value);
     const expected = settingsOverviewSections(tab.value, true).map(item => item.id);
     assert.deepEqual(tabIds(tab.value).filter(id => expected.includes(id!)), expected, tab.value);
@@ -273,7 +274,7 @@ test("mobile starts at the category menu except for a requested deep link and sh
   const root = elements(source, "div").find(item => literalAttribute(item, "data-slot") === "settings-mobile-menu");
   assert.ok(root);
   assert.ok(nodes(root, ts.isCallExpression).some(call =>
-    ts.isPropertyAccessExpression(call.expression) && call.expression.name.text === "map" && call.expression.expression.getText(source) === "visibleSettingsTabs(isHostAdmin)"));
+    ts.isPropertyAccessExpression(call.expression) && call.expression.name.text === "map" && call.expression.expression.getText(source) === "visibleSettingsTabs(isHostAdmin, desktopAvailable)"));
 });
 
 test("General settings no longer expose a Default model control", () => {

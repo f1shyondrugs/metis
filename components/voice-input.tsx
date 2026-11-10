@@ -27,6 +27,8 @@ type VoiceInputProps = {
   realtime?: boolean;
   endpoint?: string;
   connectionId?: string;
+  /** External hold-to-talk control. Undefined leaves the ordinary button behavior. */
+  captureRequested?: boolean;
   stopSignal?: number;
   cancelSignal?: number;
   onOpenSettings?: () => void;
@@ -65,6 +67,7 @@ export function VoiceInput({
   realtime = false,
   endpoint,
   connectionId,
+  captureRequested,
   stopSignal = 0,
   cancelSignal = 0,
   onOpenSettings,
@@ -504,6 +507,17 @@ export function VoiceInput({
     onWaveformLevelChange?.(0);
     onPreviewChange?.("");
   }, [cleanup, discard, onStateChange, onWaveformLevelChange, onPreviewChange, setRecording]);
+
+  const startCaptureRef = useRef(start);
+  startCaptureRef.current = start;
+  const externalCaptureRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    if (captureRequested === undefined || captureRequested === externalCaptureRef.current) return;
+    externalCaptureRef.current = captureRequested;
+    if (captureRequested) { if (enabled && (state === "idle" || state === "error")) void startCaptureRef.current(); }
+    else if (state === "recording") stop();
+    else if (state === "permission") discard();
+  }, [captureRequested, enabled, state, stop, discard]);
 
   if (!enabled) return null;
 

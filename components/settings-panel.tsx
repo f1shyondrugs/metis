@@ -1,5 +1,7 @@
 "use client";
 import { LoadError } from "@/components/load-error";
+import { DesktopClientSettings } from "@/components/desktop-client-settings";
+import { useDesktopAvailable } from "@/lib/desktop-bridge";
 import { DesktopDeviceSettings } from "@/components/desktop-device-settings";
 import { RecentlyDeletedChats } from "@/components/recently-deleted-chats";
 import { SavedWebsiteLogins } from "@/components/saved-website-logins";
@@ -432,7 +434,7 @@ function settingsCategoryIcon(value: string): LucideIcon {
     : value === "security" ? ShieldCheck
     : value === "models" ? KeyRound
     : value === "agent" ? Puzzle
-    : value === "devices" ? PlugZap
+    : value === "devices" || value === "remote-client" ? PlugZap
     : value === "chats" ? MessageSquare
     : value === "updates" ? RefreshCw
     : Users;
@@ -448,6 +450,7 @@ const SETTINGS_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   models: "Providers, usage and CLI versions",
   agent: "Runtime, delegation and memories",
   devices: "Remote clients and permissions",
+  "remote-client": "Local connection and desktop assistant",
   chats: "Archived, recently deleted and shared chats",
   admin: "Users and maintenance",
   updates: "Update channels, schedule and history",
@@ -780,6 +783,7 @@ export function SettingsPanel({
     localStorage: Array<{ key: string; value: string }>;
     sessionStorage: Array<{ key: string; value: string }>;
   };
+  const desktopAvailable = useDesktopAvailable();
   const [browserStorage, setBrowserStorage] = useState<BrowserStorageItem[]>([]);
   const [browserStorageLoading, setBrowserStorageLoading] = useState(false);
   const [expandedBrowserOrigin, setExpandedBrowserOrigin] = useState<string | null>(null);
@@ -1631,7 +1635,7 @@ export function SettingsPanel({
     <>
       <section aria-label="Settings" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="shrink-0 border-b border-border px-4 py-3 sm:px-8 sm:py-4 sm:pr-12">
-          <SettingsSearch key={String(open)} isHostAdmin={isHostAdmin} mobile={mobile} onSelect={openSettingsSearchResult} />
+          <SettingsSearch key={String(open)} isHostAdmin={isHostAdmin} mobile={mobile} desktop={desktopAvailable} onSelect={openSettingsSearchResult} />
         </header>
 
         <UpdateStatusProbe isHostAdmin={Boolean(isHostAdmin)} onUpdateAvailableChange={setUpdateAvailable} />
@@ -1639,7 +1643,7 @@ export function SettingsPanel({
           <div ref={settingsContentRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto" data-slot="settings-mobile-menu">
             <div className="flex min-h-full flex-col gap-4 px-3 py-3">
               <nav aria-label="Settings categories" className="divide-y divide-border/60">
-                {visibleSettingsTabs(isHostAdmin).map(tab => (
+                {visibleSettingsTabs(isHostAdmin, desktopAvailable).map(tab => (
                   <SettingsTile key={tab.value} id={`settings-category-${tab.value}`}
                     title={settingsCategoryLabel(tab, isHostAdmin, updateAvailable)}
                     meta={tab.value === "admin" && isHostAdmin ? "Users and maintenance" : tab.value === "updates" && !isHostAdmin ? "Managed by your host administrator" : SETTINGS_CATEGORY_DESCRIPTIONS[tab.value]}
@@ -1667,12 +1671,12 @@ export function SettingsPanel({
               onValueChange={openSettingsCategory}
               ariaLabel="Settings section"
               className="h-10 w-full"
-              options={visibleSettingsTabs(isHostAdmin).map(tab => ({ value: tab.value, label: settingsCategoryLabel(tab, isHostAdmin, updateAvailable) }))}
+              options={visibleSettingsTabs(isHostAdmin, desktopAvailable).map(tab => ({ value: tab.value, label: settingsCategoryLabel(tab, isHostAdmin, updateAvailable) }))}
             />
           </div>
           )}
           <TabsList className="hidden h-auto w-full shrink-0 flex-wrap justify-start gap-1.5 rounded-none border-b border-border bg-muted/20 px-3 py-3 lg:flex lg:h-full lg:min-h-0 lg:flex-nowrap lg:flex-col lg:items-stretch lg:justify-start lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-4">
-           {visibleSettingsTabs(isHostAdmin).map((tab) => {
+           {visibleSettingsTabs(isHostAdmin, desktopAvailable).map((tab) => {
            const Icon = settingsCategoryIcon(tab.value);
            const label = settingsCategoryLabel(tab, isHostAdmin, updateAvailable);
            const expanded = settingsTab === tab.value;
@@ -2741,6 +2745,7 @@ export function SettingsPanel({
  ) : (
  <>
 
+{desktopAvailable ? <TabsContent value="remote-client" className="mt-0"><DesktopClientSettings /></TabsContent> : null}
 <TabsContent value="security" className="mt-0">
  <SettingsOverview title="Security">
   <SettingsTile id="settings-credential-vault" title="Credential vault" meta="Manage encrypted website and console logins" icon={ShieldCheck} onOpen={() => openSettingsPane("credential-vault")} />

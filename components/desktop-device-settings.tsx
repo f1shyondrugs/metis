@@ -4,12 +4,7 @@ import { useEffect, useState } from "react";
 import { Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type DesktopBridge = { openDeviceSettings: () => Promise<void> };
-
-function desktopBridge(): DesktopBridge | undefined {
-  const bridge = (window as Window & { metisApp?: DesktopBridge }).metisApp;
-  return typeof bridge?.openDeviceSettings === "function" ? bridge : undefined;
-}
+import { desktopBridge } from "@/lib/desktop-bridge";
 
 export function DesktopDeviceSettings() {
   const [available, setAvailable] = useState(false);

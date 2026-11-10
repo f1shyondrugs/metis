@@ -43,13 +43,14 @@ export const SETTINGS_TABS = [
   { value: "models", label: "Models", keywords: "modelle" },
   { value: "agent", label: "Agent" },
   { value: "devices", label: "Devices", keywords: "geräte" },
+  { value: "remote-client", label: "Remote Client", keywords: "desktop assistant local device hotkey voice" },
   { value: "chats", label: "Chats", keywords: "archive deleted trash sharing chats" },
   { value: "admin", label: "Admin" },
   { value: "updates", label: "Updates", keywords: "automatic schedule channel stable beta releases aktualisierung automatisch zeitplan" },
 ] as const;
 
-export function visibleSettingsTabs(isHostAdmin: boolean) {
-  return SETTINGS_TABS.filter(tab => isHostAdmin || tab.value !== "admin");
+export function visibleSettingsTabs(isHostAdmin: boolean, desktop = false) {
+  return SETTINGS_TABS.filter(tab => (isHostAdmin || tab.value !== "admin") && (desktop || tab.value !== "remote-client"));
 }
 
 export function visibleSettingsSections(tab: string, isHostAdmin: boolean) {
@@ -71,8 +72,8 @@ export type SettingsSearchEntry = {
   sectionId?: string;
 };
 
-export function settingsSearchEntries(isHostAdmin: boolean): SettingsSearchEntry[] {
-  return visibleSettingsTabs(isHostAdmin).flatMap(tab => {
+export function settingsSearchEntries(isHostAdmin: boolean, desktop = false): SettingsSearchEntry[] {
+  return visibleSettingsTabs(isHostAdmin, desktop).flatMap(tab => {
     const category = tab.label;
     return [
       { id: tab.value, tab: tab.value, label: category, category: "Settings", keywords: "keywords" in tab ? tab.keywords : undefined },
