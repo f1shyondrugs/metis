@@ -39,6 +39,9 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit --pretty false
 
+      - name: Verify CPU telemetry and monitor history
+        run: pnpm exec tsx --test tests/server-cpu.test.ts tests/server-monitor.test.tsx
+
       - name: Verify notebook serialization and presence recovery
         run: pnpm exec tsx --test tests/note-collaboration.test.ts tests/note-collaboration-roundtrip.test.ts tests/notebook-presence.test.ts tests/notebook-presence-connection.test.ts tests/notes-editor-markdown.test.ts tests/notes-editor-performance.test.ts
 

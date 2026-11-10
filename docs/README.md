@@ -14,6 +14,7 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 | [REMOTE-CLIENT-SECURITY.md](./REMOTE-CLIENT-SECURITY.md) | Remote-client permission model |
 | [DEPLOY.md](./DEPLOY.md) | Deploy notes (secrets stay out of git) |
 | [WORKER.md](./WORKER.md) | Durable worker, concurrency, recovery |
+| [CPU-PARALLELISM.md](./CPU-PARALLELISM.md) | Per-core monitoring, current execution model and measured scaling recommendations |
 | [PROTECTED-LOGINS.md](./PROTECTED-LOGINS.md) | Protected credential forms, encrypted browser/console reuse and deployment requirements |
 | [NATIVE-RUNTIME-ISOLATION.md](./NATIVE-RUNTIME-ISOLATION.md) | Native provider isolation and protected file boundaries |
 | [LONG-CHAT-PERFORMANCE.md](./LONG-CHAT-PERFORMANCE.md) | Long-history pagination, data preservation and performance measurements |

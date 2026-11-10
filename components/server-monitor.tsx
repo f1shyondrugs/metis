@@ -11,10 +11,10 @@ type Series = { label: string; color: string; value: (row: ServerMetric) => numb
 const timeLabel = (time: number) => new Date(time).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const percent = (value: number | null) => value === null ? "—" : `${value.toFixed(1)}%`;
 
-export function MetricTooltip({ metric, kind, gpuId }: { metric: ServerMetric; kind: Kind; gpuId?: string }) {
+export function MetricTooltip({ metric, kind, gpuId, coreId }: { metric: ServerMetric; kind: Kind; gpuId?: string; coreId?: number }) {
   const gpu = metric.gpus.find(item => item.id === gpuId);
   const rows: Array<[string, string]> = kind === "cpu" ? [
-    ["CPU", percent(metric.cpuPercent)], ["Load · 1 / 5 / 15 min", metric.load.map(n => n.toFixed(2)).join(" / ")],
+    [coreId === undefined ? "CPU · total" : `CPU ${coreId}`, percent(coreId === undefined ? metric.cpuPercent : metric.cpuCores?.find(core => core.id === coreId)?.percent ?? null)], ["Load · 1 / 5 / 15 min", metric.load.map(n => n.toFixed(2)).join(" / ")],
   ] : kind === "ram" ? [
     ["RAM", percent(ramPercent(metric))], ["Used", formatMetricBytes(metric.ramUsedBytes)],
     ["Total", formatMetricBytes(metric.ramTotalBytes)], ["Available", formatMetricBytes(metric.ramTotalBytes - metric.ramUsedBytes)],
@@ -32,8 +32,8 @@ export function MetricTooltip({ metric, kind, gpuId }: { metric: ServerMetric; k
   </div>;
 }
 
-function MonitorChart({ title, rows, series, kind, end, minutes, gpuId }: {
-  title: string; rows: MonitorRow[]; series: Series[]; kind: Kind; end: number; minutes: MonitorRange; gpuId?: string;
+function MonitorChart({ title, rows, series, kind, end, minutes, gpuId, coreId }: {
+  title: string; rows: MonitorRow[]; series: Series[]; kind: Kind; end: number; minutes: MonitorRange; gpuId?: string; coreId?: number;
 }) {
   const data = rows.map(row => Object.fromEntries([["time", row.time], ["metric", row.metric],
     ...series.map((line, index) => [`s${index}`, row.metric ? line.value(row.metric) : null])]));
@@ -53,12 +53,35 @@ function MonitorChart({ title, rows, series, kind, end, minutes, gpuId }: {
           <YAxis domain={kind === "cpu" || kind === "ram" || kind === "gpu" ? [0, 100] : [0, "auto"]} width={kind === "network" ? 66 : 42} tickFormatter={value => kind === "network" ? formatMetricBytes(value) : kind === "load" ? String(value) : `${value}%`} tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} axisLine={false} tickLine={false} />
           <Tooltip isAnimationActive={false} wrapperStyle={{ zIndex: 20, maxWidth: "calc(100% - 8px)" }} cursor={{ stroke: "var(--muted-foreground)", strokeDasharray: "3 3" }} content={({ active, payload }) => {
             const metric = payload?.[0]?.payload?.metric as ServerMetric | null | undefined;
-            return active && metric ? <MetricTooltip metric={metric} kind={kind} gpuId={gpuId} /> : null;
+            return active && metric ? <MetricTooltip metric={metric} kind={kind} gpuId={gpuId} coreId={coreId} /> : null;
           }} />
           {series.map((line, index) => <Line key={line.label} dataKey={`s${index}`} name={line.label} type="linear" stroke={line.color} strokeWidth={1.8} dot={data.length === 1 ? { r: 3 } : false} activeDot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />)}
         </LineChart>
       </ResponsiveContainer>
     </div> : <p className="flex h-48 items-center justify-center text-xs text-muted-foreground">No samples in this time window.</p>}
+  </section>;
+}
+
+export function CpuMonitor({ current, ...chart }: { current: ServerMetric; rows: MonitorRow[]; end: number; minutes: MonitorRange }) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const cores = current.cpuCores ?? [];
+  const coreId = cores.some(core => core.id === selected) ? selected! : undefined;
+  const series: Series[] = [{ label: coreId === undefined ? "CPU utilization · total" : `CPU ${coreId} utilization`, color: "#22d3ee",
+    value: row => coreId === undefined ? row.cpuPercent : row.cpuCores?.find(core => core.id === coreId)?.percent ?? null }];
+  return <section className="space-y-2" aria-label="CPU cores">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div><h3 className="text-xs font-medium">CPU cores</h3><p className="text-[11px] text-muted-foreground">{cores.length ? `${cores.length} logical CPUs · Host-wide utilization · Select a core for its history` : "Per-core measurements are unavailable for this sample."}</p></div>
+      <button type="button" aria-pressed={coreId === undefined} onClick={() => setSelected(null)} className={`min-h-11 shrink-0 rounded-md border px-3 text-xs hover:bg-secondary focus-visible:outline-2 focus-visible:outline-ring ${coreId === undefined ? "border-primary bg-primary/10" : "border-border"}`}>Total {percent(current.cpuPercent)}</button>
+    </div>
+    {cores.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="Logical CPUs">
+      {cores.map(core => <button key={core.id} type="button" data-cpu-core={core.id} aria-pressed={coreId === core.id} onClick={() => setSelected(core.id)}
+        className={`min-h-11 min-w-0 rounded-md border px-2.5 py-2 text-left focus-visible:outline-2 focus-visible:outline-ring ${coreId === core.id ? "border-primary bg-primary/10" : "border-border/50 hover:bg-secondary"}`}>
+        <span className="flex justify-between gap-2 text-xs"><span>CPU {core.id}</span><span className="font-mono tabular-nums">{percent(core.percent)}</span></span>
+        <span aria-hidden="true" className="mt-1.5 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-primary" style={{ width: `${core.percent ?? 0}%` }} /></span>
+        {core.percent === null && <span className="mt-1 block text-[10px] text-muted-foreground">Waiting for next sample</span>}
+      </button>)}
+    </div>}
+    <MonitorChart title={coreId === undefined ? "CPU · total" : `CPU ${coreId}`} kind="cpu" coreId={coreId} series={series} {...chart} />
   </section>;
 }
 
@@ -69,7 +92,6 @@ export function ServerMonitorView({ data, error, now = Date.now() }: { data: Ser
   const stale = current && now - Date.parse(current.timestamp) > METRIC_INTERVAL_MS * 3;
   const warning = error || data.warning || (stale ? "Updates are delayed. Showing the last available measurements." : null);
   const chart = { rows, end: now, minutes };
-  const cpu: Series[] = [{ label: "CPU utilization", color: "#22d3ee", value: row => row.cpuPercent }];
   const ram: Series[] = [{ label: "RAM utilization", color: "#a78bfa", value: ramPercent }];
   const load: Series[] = [1, 5, 15].map((duration, index) => ({ label: `${duration} min`, color: ["#fbbf24", "#fb923c", "#f87171"][index], value: row => row.load[index] ?? null }));
   const network: Series[] = [{ label: "Receive ↓", color: "#34d399", value: row => row.networkRxBytesPerSecond }, { label: "Send ↑", color: "#60a5fa", value: row => row.networkTxBytesPerSecond }];
@@ -89,7 +111,7 @@ export function ServerMonitorView({ data, error, now = Date.now() }: { data: Ser
         ].map(({ label, value, detail, Icon }) => <div key={label} className="min-w-0 rounded-lg border border-border/50 px-3 py-2"><span className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Icon className="size-3.5" />{label}</span><p className="mt-1 break-words text-sm font-medium tabular-nums">{value}</p><p className="mt-0.5 break-words text-[10px] text-muted-foreground">{detail}</p></div>)}
       </div>
       <p className="flex flex-wrap justify-between gap-1 text-[10px] text-muted-foreground"><span>{rows.filter(row => row.metric).length} samples · Last {minutes} min</span><span>Updated {timeLabel(Date.parse(current.timestamp))}</span></p>
-      <MonitorChart title="CPU" kind="cpu" series={cpu} {...chart} />
+      <CpuMonitor current={current} {...chart} />
       <MonitorChart title="RAM" kind="ram" series={ram} {...chart} />
       <MonitorChart title="Network · bytes/s" kind="network" series={network} {...chart} />
       <MonitorChart title="System load" kind="load" series={load} {...chart} />

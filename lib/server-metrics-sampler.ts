@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { METRIC_INTERVAL_MS, METRIC_RETENTION_MS, recentMetrics, type ServerMetric, type ServerMetricsPayload } from "./server-metrics-history";
+import { METRIC_INTERVAL_MS, METRIC_RETENTION_MS, METRIC_MAX_FILE_BYTES, recentMetrics, type ServerMetric, type ServerMetricsPayload } from "./server-metrics-history";
 
 type SamplerOptions = {
   filePath: string; sample: () => Promise<ServerMetric>;
@@ -45,7 +45,7 @@ export function createServerMetricsSampler(options: SamplerOptions) {
     if (startup) return startup;
     startup = (async () => {
       try {
-        if ((await stat(options.filePath)).size <= 2 * 1024 * 1024) {
+        if ((await stat(options.filePath)).size <= METRIC_MAX_FILE_BYTES) {
           const saved = JSON.parse(await readFile(options.filePath, "utf8"));
           if (saved.version === 1 && Array.isArray(saved.history)) history = recentMetrics(saved.history, now());
         }

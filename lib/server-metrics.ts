@@ -6,10 +6,11 @@ import path from "node:path";
 import { config } from "./config";
 import { createServerMetricsSampler } from "./server-metrics-sampler";
 import type { ServerMetric } from "./server-metrics-history";
+import { createCpuSampler } from "./server-cpu";
 export type { ServerMetric } from "./server-metrics-history";
 
 const execFileAsync = promisify(execFile);
-let previousCpu: { total: number; idle: number } | null = null;
+const sampleCpu = createCpuSampler();
 let previousNetwork: { rx: number; tx: number; timestamp: number } | null = null;
 function numberOrNull(value: string | undefined) {
   if (!value || !Number.isFinite(Number(value))) return null;
@@ -18,15 +19,7 @@ function numberOrNull(value: string | undefined) {
 
 async function readCpuPercent() {
   const content = await readFile("/proc/stat", "utf8");
-  const line = content.split("\n").find((item) => item.startsWith("cpu ")) || "";
-  const values = line.trim().split(/\s+/).slice(1).map(Number);
-  const idle = (values[3] || 0) + (values[4] || 0);
-  const total = values.reduce((sum, value) => sum + value, 0);
-  const result = previousCpu && total > previousCpu.total
-    ? Math.max(0, Math.min(100, ((total - previousCpu.total - (idle - previousCpu.idle)) / (total - previousCpu.total)) * 100))
-    : 0;
-  previousCpu = { total, idle };
-  return result;
+  return sampleCpu(content);
 }
 
 async function readMemory() {
@@ -99,7 +92,7 @@ async function readAmd() {
 }
 
 async function sample(): Promise<ServerMetric> {
-  const [cpuPercent, memory, network, gpus] = await Promise.all([
+  const [cpu, memory, network, gpus] = await Promise.all([
     readCpuPercent(),
     readMemory(),
     readNetwork(),
@@ -107,7 +100,7 @@ async function sample(): Promise<ServerMetric> {
   ]);
   const metric: ServerMetric = {
     timestamp: new Date().toISOString(),
-    cpuPercent,
+    ...cpu,
     ramUsedBytes: memory.used,
     ramTotalBytes: memory.total,
     load: os.loadavg().map((value) => Number(value.toFixed(2))),

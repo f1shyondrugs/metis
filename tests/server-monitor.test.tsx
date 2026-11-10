@@ -7,7 +7,7 @@ import path from "node:path";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServerMetricsSampler } from "../lib/server-metrics-sampler";
-import { METRIC_MAX_SAMPLES, METRIC_RETENTION_MS, recentMetrics, type ServerMetric } from "../lib/server-metrics-history";
+import { METRIC_MAX_SAMPLES, METRIC_RETENTION_MS, METRIC_MAX_FILE_BYTES, MAX_CPU_CORES, isServerMetric, recentMetrics, type ServerMetric } from "../lib/server-metrics-history";
 import { monitorRows } from "../lib/server-monitor-view";
 import { MetricTooltip, ServerMonitorView } from "../components/server-monitor";
 Object.assign(globalThis, { React });
@@ -142,6 +142,36 @@ test("monitor exposes time selection and explicit loading/error states", () => {
   assert.match(failed, /role="alert"/); assert.match(failed, /Retrying automatically/);
 });
 
+test("per-core telemetry validates bounds and stable identities while legacy samples remain valid",()=>{
+ const base=metric(Date.now());
+ assert.ok(isServerMetric(base));
+ assert.ok(isServerMetric({...base,cpuCores:[{id:0,percent:null},{id:7,percent:100}]}));
+ for(const cpuCores of [[{id:0,percent:101}],[{id:0,percent:-1}],[{id:-1,percent:5}],[{id:0.5,percent:5}],[{id:0,percent:NaN}],[{id:0,percent:5},{id:0,percent:6}],Array.from({length:MAX_CPU_CORES+1},(_,id)=>({id,percent:1}))])assert.equal(isServerMetric({...base,cpuCores}),false);
+});
+test("per-core history larger than the legacy cache limit survives a restart",async()=>{
+ const {directory,filePath}=await temporary(),now=Date.now();
+ const history=Array.from({length:METRIC_MAX_SAMPLES},(_,i)=>({...metric(now-(METRIC_MAX_SAMPLES-1-i)*5000),cpuCores:Array.from({length:MAX_CPU_CORES},(_,id)=>({id,percent:12.3}))}));
+ const content=JSON.stringify({version:1,history});assert(content.length>2*1024*1024&&content.length<METRIC_MAX_FILE_BYTES);
+ await writeFile(filePath,content);
+ let release!:(value:ServerMetric)=>void;
+ const sampler=createServerMetricsSampler({filePath,now:()=>now,sample:()=>new Promise(resolve=>{release=resolve;})});
+ try{const result=await sampler.read();assert.equal(result.history.length,METRIC_MAX_SAMPLES);assert.equal(result.current?.cpuCores?.length,MAX_CPU_CORES);}
+ finally{release(metric(now));await sampler.stop();await rm(directory,{recursive:true,force:true});}
+});
+test("CPU tooltips use the selected logical CPU, including CPU zero and unavailable historical readings",()=>{
+ const base={...metric(Date.now()),cpuCores:[{id:0,percent:98.4},{id:7,percent:null}]};
+ const render=(coreId:number)=>renderToStaticMarkup(<MetricTooltip metric={base} kind="cpu" coreId={coreId}/>);
+ assert.match(render(0),/CPU 0/);assert.match(render(0),/98.4%/);assert.doesNotMatch(render(0),/25.0%/);
+ assert.match(render(7),/—/);assert.match(render(9),/—/);
+});
+test("old telemetry shows a per-core unavailable state; warmup readings remain unknown",()=>{
+ const old=renderToStaticMarkup(<ServerMonitorView data={{current:metric(Date.now()),history:[]}}/>);
+ assert.match(old,/Per-core measurements are unavailable/);assert.doesNotMatch(old,/data-cpu-core=/);
+ const warmup={...metric(Date.now()),cpuCores:[{id:0,percent:null}]};
+ const html=renderToStaticMarkup(<ServerMonitorView data={{current:warmup,history:[warmup]}}/>);
+ assert.match(html,/Waiting for next sample/);assert.match(html,/CPU 0/);assert.match(html,/logical CPUs/);
+});
+
 test("real app startup samples before HTTP requests; monitor auth and cache headers stay intact", async () => {
   const { directory } = await temporary();
   Object.assign(process.env, { AI_CHAT_ROOT: directory, AI_CHAT_INSTALL_DIR: directory, CHAT_DATA_DIR: directory,
@@ -167,6 +197,8 @@ test("real app startup samples before HTTP requests; monitor auth and cache head
     assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
     const payload = await response.json();
     assert.ok(payload.history.length >= 2); assert.equal(payload.retentionMs, METRIC_RETENTION_MS);
+    assert.equal(payload.current.cpuCores.length, os.cpus().length);
+    assert.ok(payload.current.cpuCores.every((core: {id:number;percent:number|null}) => Number.isInteger(core.id) && core.percent !== null && Number.isFinite(core.percent)));
   } finally {
     const shared = globalThis as typeof globalThis & { __metisServerMetricsSampler?: ReturnType<typeof createServerMetricsSampler> };
     await shared.__metisServerMetricsSampler?.stop(); delete shared.__metisServerMetricsSampler;
