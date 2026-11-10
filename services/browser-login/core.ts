@@ -11,6 +11,7 @@ import {ScopedCredentials} from "./scoped-credentials";
 import {secureConsole} from "./console-client";
 import { snapshotOperatorReturnOrigins, type OperatorReturnOrigins } from "./operator-return-origins";
 import { installProtectedRedirectGuard } from "./redirect-guard";
+import { installSinglePageNavigation } from "./single-page-navigation";
 
 type PublicResource={body:Buffer;headers:Record<string,string>};
 function publicResourceKey(value:string){const url=new URL(value);if(/^\d+$/.test(url.searchParams.get("_")||""))url.searchParams.delete("_");return url.href;}
@@ -77,6 +78,7 @@ export class SavedBrowserLogins {
         proxy:{server:this.testProxy || this.proxy!.url, bypass:"<-loopback>"},
         args:["--disable-quic", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"] });
       const context = await browser.newContext({serviceWorkers:"block",acceptDownloads:false,ignoreHTTPSErrors:Boolean(this.testProxy)});
+      await installSinglePageNavigation(context);
       const page = await context.newPage();
       session = { browser, context, page, origin:target.origin, navigationOrigins, declaredOrigins, publicResources:new Map(),resourceBytes:0,used:Date.now() };
       const current = session;
@@ -114,6 +116,8 @@ export class SavedBrowserLogins {
         } catch { return route.abort(); }
       });
       await context.routeWebSocket("**/*", socket => socket.close());
+      // The init script routes ordinary popup navigation through the guarded
+      // page. Unexpected targets still cannot outlive this single-page session.
       context.on("page", extra => { if (extra !== page) void extra.close(); });
       try { await installProtectedRedirectGuard(context,page,()=>({credentialOrigin:current.origin,origins:current.navigationOrigins})); }
       catch { await browser.close(); throw new ProtectedLoginError("page_unavailable"); }
@@ -267,7 +271,17 @@ export class SavedBrowserLogins {
       await page.goto(target.href,{waitUntil:"domcontentloaded"});
     } else if (action === "click") {
       if (!input.selector) throw Error("Use a DOM selector");
-      await page.locator(input.selector).click();
+      const locator=page.locator(input.selector);
+      const destination=await locator.evaluate(el=>{
+        const link=el.closest("a[href],area[href]") as HTMLAnchorElement|HTMLAreaElement|null;
+        return link?.href || null;
+      });
+      // A blocked link must not look like a successful click on the old page.
+      if(destination&&!/^javascript:/i.test(destination)){
+        const target=this.site(destination);
+        if(!session.navigationOrigins.has(target.origin)||browserHasSecureInput(page)&&!protectedRequestAllowed(page,{url:()=>target.href,postData:()=>null},session.origin,session.navigationOrigins))throw new ProtectedLoginError("navigation_blocked");
+      }
+      await locator.click();
     } else if (action === "type") {
       if (!input.selector) throw Error("Use a DOM selector");
       const target=page.locator(input.selector);

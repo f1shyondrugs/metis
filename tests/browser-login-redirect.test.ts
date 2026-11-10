@@ -57,7 +57,18 @@ async function fixture(t: TestContext, enteredPassword = secret) {
       res.writeHead(302, { location: "https://foreign.test/final" }); res.end();
     } else if (url.pathname === "/final") {
       res.setHeader("Content-Type", "text/html");
-      res.end('<h1>Authenticated destination</h1><script src="/task.js"></script>');
+      res.end('<h1>Authenticated destination</h1><script src="/task.js"></script>' +
+        '<a id="course-link" target="_blank" href="/course?ticket=SYNTHETIC-COURSE-TICKET">Moodle</a>' +
+        '<a id="base-link" href="/course">Base target course</a>' +
+        '<a id="foreign-link" target="_blank" href="https://foreign.test/course">Foreign</a>' +
+        '<a id="secret-link" target="_blank" href="https://return.test/course?value='+encodeURIComponent(enteredPassword)+'">Unsafe link</a>' +
+        '<a id="script-link" href="javascript:void(0)" onclick="window.open(\'/course\',\'moodle-course\')">Script course</a>' +
+        '<button id="empty-window" onclick="const tab=window.open();tab.location.href=\'/course\'">Deferred course</button>' +
+        '<form id="course-form" target="_blank" action="/course" method="post"><input name="assertion" type="hidden" value="SYNTHETIC-SSO-ASSERTION"><button id="course-submit" formtarget="course-window">Open course</button></form>' +
+        '<button id="native-submit" onclick="document.querySelector(\'#course-form\').submit()">Native submit</button>');
+    } else if (url.pathname === "/course") {
+      res.setHeader("Content-Type","text/html");
+      res.end('<title>Authenticated course</title><h1 id="course-ready">Course ready</h1><input type="hidden" value="SYNTHETIC-COURSE-TICKET">');
     } else if (url.pathname === "/task.js") {
       res.setHeader("Content-Type", "application/javascript");
       res.end("fetch('/task-data').then(r=>r.text()).then(text=>document.body.insertAdjacentHTML('beforeend','<p id=task-ready>'+text+'</p>'))");
@@ -134,6 +145,54 @@ for (const destination of ["return302", "return303"]) {
   });
 }
 
+for(const selector of ["#course-link","#script-link","#empty-window","#course-submit","#native-submit","#base-link"]){
+ test("protected SSO "+selector+" stays in the guarded page with authenticated cookies",async t=>{
+  const {submit,call,page,arrivals}=await fixture(t);
+  await submit("return302");
+  if(selector==="#base-link")await page().evaluate(()=>{const base=document.createElement("base");base.target="_blank";document.head.append(base);});
+  const initialPage=page();
+  await call("action",{action:"click",selector});
+  await call("action",{action:"wait_for",selector:"#course-ready"});
+  const state=await call("action",{action:"form_state"});
+  assert.equal(state.url,"https://return.test/course");
+  assert.equal(state.title,"Authenticated course");
+  assert.equal(page(),initialPage);assert.equal(page().context().pages().length,1);
+  assert.equal(state.tabs?.length,1);
+  assert(!JSON.stringify(state).includes("SYNTHETIC-COURSE-TICKET"));
+  const course=arrivals.find(request=>request.path==="/course");
+  assert(course?.cookie.includes("return_session=SYNTHETIC-RETURN-SESSION"));
+  if(["#course-submit","#native-submit"].includes(selector)){
+   assert.equal(course?.method,"POST");assert(course?.body.includes("SYNTHETIC-SSO-ASSERTION"));
+  }
+ });
+}
+test("a login form targeting a new window still posts once and safely follows SSO",async t=>{
+ const {prepare,call,page,arrivals}=await fixture(t);
+ await prepare("return302");
+ await page().locator("form").evaluate(form=>(form as HTMLFormElement).target="_blank");
+ await call("action",{action:"click",selector:"#submit"});
+ await call("action",{action:"wait_for",selector:"#task-ready"});
+ assert.equal(page().context().pages().length,1);
+ assert.equal(arrivals.filter(request=>request.method==="POST").length,1);
+ assert.equal((await call("action",{action:"form_state"})).url,"https://return.test/final");
+});
+test("popup links cannot expand return origins or carry the password to another origin",async t=>{
+ const {submit,call,arrivals}=await fixture(t);
+ await submit("return302");
+ for(const selector of ["#foreign-link","#secret-link"]){
+  await assert.rejects(call("action",{action:"click",selector}),error=>error instanceof Error&&"code" in error&&error.code==="navigation_blocked");
+ }
+ assert.equal(arrivals.filter(request=>request.host==="foreign.test"||request.path==="/course").length,0);
+ assert.equal((await call("action",{action:"form_state"})).url,"https://return.test/final");
+});
+test("a popup-target credential POST cannot bypass the 307 password guard",async t=>{
+ const {prepare,call,page,arrivals}=await fixture(t);
+ await prepare("return307");
+ await page().locator("form").evaluate(form=>(form as HTMLFormElement).target="_blank");
+ await call("action",{action:"click",selector:"#submit"}).catch(()=>{});
+ assert.equal(arrivals.filter(request=>request.method==="POST").length,1);
+ assert.equal(arrivals.filter(request=>request.path==="/final").length,0);
+});
 for (const destination of ["foreign302", "chain302", "query302", "return307", "return308", "url-307", "base64-307", "hex-307", "form-base64-307"]) {
   test("redirect policy blocks " + destination + " before destination egress", async t => {
     const { arrivals, submit } = await fixture(t);
