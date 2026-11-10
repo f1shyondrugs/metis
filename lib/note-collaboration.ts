@@ -1,6 +1,6 @@
 /** Shared wire types, no account or database dependencies. */
 export const NOTE_COLLABORATION_PATH = "/ws/notes";
-export type NoteCollaborationUser = { id:string; name:string; color:string };
+export type NoteCollaborationUser = { id:string; name:string; color:string; username?:string; avatar?:string|null };
 export type NoteCollaborationSession = {
   documentName:string; state:string; user:NoteCollaborationUser; projectId?:string; maxLength:number;
 };

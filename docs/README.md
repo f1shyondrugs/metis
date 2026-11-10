@@ -18,6 +18,7 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 | [NATIVE-RUNTIME-ISOLATION.md](./NATIVE-RUNTIME-ISOLATION.md) | Native provider isolation and protected file boundaries |
 | [LONG-CHAT-PERFORMANCE.md](./LONG-CHAT-PERFORMANCE.md) | Long-history pagination, data preservation and performance measurements |
 | [NOTE-PIN-PERFORMANCE.md](./NOTE-PIN-PERFORMANCE.md) | Note pinning with many chats: measured bottlenecks and changed-only writes |
+| [NOTEBOOK-PRESENCE.md](./NOTEBOOK-PRESENCE.md) | Account avatars, notebook-wide presence and permission-scoped follow mode |
 | [RELEASE-TESTING.md](./RELEASE-TESTING.md) | Release and upgrade checks |
 
 ## Architecture (historical + current)

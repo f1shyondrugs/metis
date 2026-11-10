@@ -2,7 +2,7 @@ import type { IncomingMessage as HttpRequest } from "node:http";
 import { Hocuspocus, IncomingMessage, MessageType } from "@hocuspocus/server";
 import { createDecoder, readVarUint, readVarString } from "lib0/decoding";
 import { browserStreamOriginAllowed } from "./request-network";
-import { getAccountProfile } from "./account-profile";
+import { noteParticipantIdentity } from "./note-participant";
 import * as Y from "yjs";
 import type WebSocket from "ws";
 import { getRequestAuthenticatedUser } from "./auth";
@@ -19,7 +19,8 @@ export function createNoteCollaborationServer() {
     async onAuthenticate({documentName,request}) {
       const user=getRequestAuthenticatedUser(webRequest(request));
       if(!user||!authorizeNoteCollaboration(documentName,user.id))throw Error("Note unavailable.");
-      return {userId:user.id,userName:(getAccountProfile(user.id,user.username).displayName||user.username).slice(0,80)};
+      const identity=noteParticipantIdentity(user);
+      return {userId:user.id,userName:identity.name,userAvatar:identity.avatar,userUsername:identity.username};
     },
     async onLoadDocument({documentName,context}) {
       const resolved=authorizeNoteCollaboration(documentName,String(context.userId||""));if(!resolved)throw Error("Note unavailable.");
@@ -43,14 +44,14 @@ export function createNoteCollaborationServer() {
         for(let index=0;index<count;index++){
           const clientId=readVarUint(decoder),clock=readVarUint(decoder);
           const encoded=readVarString(decoder);if(encoded.length>8192)throw Error("Presence is too large.");
-          const state=JSON.parse(encoded) as {user?:{id?:string;name?:string;color?:string}}|null;
+          const state=JSON.parse(encoded) as {user?:{id?:string;name?:string;color?:string;avatar?:string|null;username?:string}}|null;
           const known=connection.document.awareness.getStates().get(clientId) ?? null;
           const meta=connection.document.awareness.meta.get(clientId);
           if(meta && clock<=meta.clock && JSON.stringify(state)===JSON.stringify(known))continue;
-          const context=connection.context as {userId:string;userName:string;clientId?:number};
+          const context=connection.context as {userId:string;userName:string;userAvatar:string|null;userUsername:string;clientId?:number};
           if(context.clientId!==undefined&&context.clientId!==clientId)throw Error("Invalid presence identity.");
           if(connection.document.getConnections().some(other=>other!==connection&&(other.context as {clientId?:number}).clientId===clientId))throw Error("Presence identity is already in use.");
-          if(state?.user&&(state.user.id!==user.id||state.user.name!==context.userName||!/^#[0-9a-f]{6}$/i.test(state.user.color||"")))throw Error("Invalid participant.");
+          if(state?.user&&(state.user.id!==user.id||state.user.name!==context.userName||state.user.avatar!==undefined&&state.user.avatar!==context.userAvatar||state.user.username!==undefined&&state.user.username!==context.userUsername||!/^#[0-9a-f]{6}$/i.test(state.user.color||"")))throw Error("Invalid participant.");
           context.clientId=clientId;
         }
       }

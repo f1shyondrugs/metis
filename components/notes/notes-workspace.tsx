@@ -1,4 +1,7 @@
 "use client";
+import {NotebookPresenceContext,type NotebookEditorStatus} from "./notebook-presence-context";
+import {useNotebookPresence} from "./use-notebook-presence";
+import {NotebookPresenceBar,NotebookFollowFrame,ParticipantButton} from "./notebook-presence-bar";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import Image from "next/image";
@@ -118,13 +121,20 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
     try { setRecent(JSON.parse(localStorage.getItem("metis:notes:recent:" + ownerId) || "[]")); } catch { setRecent([]); }
   }, [ownerId]);
 
+  const workspaceRoot=useRef<HTMLDivElement>(null);
+  const stopPresence=useRef<()=>void>(()=>{});
+  const selectedNoteRef=useRef(selectedId);selectedNoteRef.current=selectedId;
+  const [editorStatus,setEditorStatus]=useState<NotebookEditorStatus|null>(null);
+  const reportEditor=useCallback((status:NotebookEditorStatus|null,id:string)=>{if(id===selectedNoteRef.current)setEditorStatus(status);},[]);
+  const presenceContext=useMemo(()=>({reportEditor}),[reportEditor]);
   const flush = useCallback(async () => (await doc.current?.flush()) ?? true, []);
-  const openNote = useCallback(async (id: string, blockId?: string) => {
+  const openNote = useCallback(async (id: string, blockId?: string, canNavigate?:()=>boolean) => {
+    if(!canNavigate)stopPresence.current();
     const serial = ++navigationSerial.current;
-    if (!(await flush()) || serial !== navigationSerial.current) return;
+    if (!(await flush()) || serial !== navigationSerial.current || canNavigate?.()===false) return false;
     try {
       const { note } = await json<{ note: TreeNote }>("/api/notes/" + encodeURIComponent(id));
-      if (serial !== navigationSerial.current) return;
+      if (serial !== navigationSerial.current || canNavigate?.()===false) return false;
       const container = note.projectId || null;
       setProjectId(container);
       setCache(current => {
@@ -140,9 +150,14 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
       });
       setError("");
       if (!embedded) window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search + "#note-" + encodeURIComponent(id) + (blockId ? "/block-" + encodeURIComponent(blockId) : ""));
-    } catch (cause) { if (serial === navigationSerial.current) setError(cause instanceof Error ? cause.message : "Could not open file."); }
+      return true;
+    } catch (cause) { if (serial === navigationSerial.current) setError(cause instanceof Error ? cause.message : "Could not open file."); return false; }
   }, [embedded, flush, ownerId]);
 
+  const presence=useNotebookPresence({ownerId,noteId:selected&&!selected.archived?selected.id:null,active,root:workspaceRoot,openNote});
+  const stopNotebookFollow=presence.stop;
+  const stopFollowing=useCallback(()=>stopNotebookFollow(),[stopNotebookFollow]);
+  stopPresence.current=stopFollowing;
   const openIssue = useCallback(async (id: string) => {
     const serial = ++navigationSerial.current;
     if (!(await flush()) || serial !== navigationSerial.current) return;
@@ -393,6 +408,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
           <span className="truncate">{label(note)}</span>
           {note.favorite && <Star className="size-3 shrink-0 text-amber-500" />}
         </button>
+        {presence.peers.filter(peer=>peer.note.id===note.id).map(peer=><ParticipantButton key={peer.user.id} small peer={peer} following={presence.following} onFollow={presence.follow} onStop={stopFollowing}/>)}
         <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label={"Actions for " + label(note)} className="flex size-7 items-center justify-center text-muted-foreground opacity-70 group-hover:opacity-100"><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {note.archived ? <DropdownMenuItem onClick={() => void archive(note, false)}><RotateCcw className="size-4" />Restore file and subfiles</DropdownMenuItem> : <>
@@ -414,7 +430,10 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
     </div>;
   }
 
-  return <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background" data-notes-workspace data-embedded={embedded || undefined}>
+  return <NotebookPresenceContext.Provider value={presenceContext}><div ref={workspaceRoot} className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background" data-notes-workspace data-embedded={embedded || undefined} data-following={presence.following?.user.id}>
+    <NotebookFollowFrame peer={presence.following} onStop={stopFollowing}/>
+    <div data-follow-point hidden aria-hidden="true" className="pointer-events-none absolute z-40 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background ring-2 ring-foreground/30"/>
+    <div className="relative flex min-h-0 flex-1">
     {sidebar && <button type="button" className={cn("absolute inset-0 z-20 bg-black/40", !embedded && "lg:hidden")} aria-label="Close file browser" onClick={() => setSidebar(false)} />}
     <aside aria-label="Notes file browser" className={cn("absolute inset-y-0 left-0 z-30 w-[280px] max-w-full shrink-0 flex-col border-r border-border bg-background", !embedded && "lg:relative lg:z-0 lg:flex lg:w-[260px]", sidebar ? "flex" : "hidden")}>
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
@@ -465,6 +484,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
           <DropdownMenuItem asChild><a href={"/api/notes/" + selected.id + "/export"} download><Download className="size-4" />Download Markdown</a></DropdownMenuItem>
         </DropdownMenuContent></DropdownMenu>}
       </header>
+      <NotebookPresenceBar peers={presence.peers} self={presence.self} connected={presence.connected} status={editorStatus?.noteId===selectedId?editorStatus.label:undefined} notice={presence.notice} following={presence.following} onFollow={presence.follow} onStop={stopFollowing} onReconnect={presence.reconnect}/>
       {error && <div role="alert" className="flex shrink-0 items-center gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"><span className="min-w-0 flex-1">{error}</span><Button variant="outline" size="sm" onClick={() => void load(projectId)}>Retry</Button><Button variant="ghost" size="icon" className="size-7" aria-label="Dismiss error" onClick={() => setError("")}><X className="size-3.5" /></Button></div>}
       {working && <div role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground"><Loader2 className="size-3 animate-spin" />Saving changes…</div>}
       {selected?.kind==="issuebook"&&!selected.archived && ownerId ? <div data-note-page-scroll className="min-h-0 flex-1 overflow-y-auto">
@@ -485,6 +505,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
         </div>}
       </div>}
     </main>
+    </div>
     <Dialog open={Boolean(creation)} onOpenChange={open=>{if(!open&&!working)setCreation(null);}}><DialogContent><DialogHeader><DialogTitle>Create file or issuebook</DialogTitle></DialogHeader>
       <form className="space-y-4" onSubmit={event=>{event.preventDefault();if(creation)void createFile(creation.parentId,creation);}}>
         <div role="radiogroup" aria-label="File type" className="grid grid-cols-2 gap-3">
@@ -509,5 +530,5 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={fullWidth} onChange={event => setFullWidth(event.target.checked)} />Full width</label>
       <DialogFooter><Button variant="outline" onClick={() => setAppearance(false)}>Cancel</Button><Button onClick={() => { if (selected) void patch(selected, { icon: icon || null, cover: cover || null, fullWidth }).then(note => { if (note) setAppearance(false); }).catch(cause => setError(cause.message)); }}>Save</Button></DialogFooter>
     </DialogContent></Dialog>
-  </div>;
+  </div></NotebookPresenceContext.Provider>;
 }

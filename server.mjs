@@ -14,6 +14,7 @@ if (!globalThis.AsyncLocalStorage) {
 const { browserLoginRequest } = await importServerModule("./lib/browser-login-client.ts");
 const { ProtectedBrowserRouting } = await importServerModule("./lib/protected-browser-routing.ts");
 const { ProtectedLoginError, protectedLoginFailure } = await importServerModule("./lib/protected-login-errors.ts");
+const { createNotebookPresenceServer } = await importServerModule("./lib/notebook-presence-server.ts");
 const { createNoteCollaborationServer, handleNoteCollaborationConnection } = await importServerModule("./lib/note-collaboration-server.ts");
 const { verifyBrowserUserAction } = await importServerModule("./lib/browser-user-capability.ts");
 const {
@@ -63,6 +64,7 @@ remoteClientWebsocketServer.on("error", (error) => {
     stack: error.stack,
   });
 });
+const notebookPresence = createNotebookPresenceServer();
 const noteCollaboration = createNoteCollaborationServer();
 const noteWebsocketServer = new WebSocketServer({noServer:true,maxPayload:2*1024*1024});
 noteWebsocketServer.on("error",error=>logError({level:"error",source:"ws",message:"Note collaboration WebSocket error: "+error.message,stack:error.stack}));
@@ -525,7 +527,7 @@ server.on("upgrade", async (request, socket, head) => {
   const url = streamUrl(request);
   if(url.pathname === "/ws/notes") {
     if(!browserStreamOriginAllowed(request)){socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");socket.destroy();return;}
-    noteWebsocketServer.handleUpgrade(request,socket,head,client=>handleNoteCollaborationConnection(noteCollaboration,client,request));return;
+    noteWebsocketServer.handleUpgrade(request,socket,head,client=>url.searchParams.get("presence")==="1"?notebookPresence.handle(client,request):handleNoteCollaborationConnection(noteCollaboration,client,request));return;
   }
   if (url.pathname === "/ws/remote-client") {
     remoteClientWebsocketServer.handleUpgrade(request, socket, head, (client) => {

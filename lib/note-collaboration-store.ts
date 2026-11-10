@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import * as Y from "yjs";
 import { getDatabase, transaction } from "./sqlite";
 import { getNote, updateNote, MAX_NOTE_CONTENT_LENGTH } from "./shared-context";
-import { getAccountProfile } from "./account-profile";
+import { noteParticipantIdentity } from "./note-participant";
 import { createNoteCollaborationDocument, noteCollaborationCandidate, MAX_NOTE_COLLAB_BYTES } from "./note-collaboration-document";
 import { noteCollaborationName, parseNoteCollaborationName, type NoteCollaborationSession } from "./note-collaboration";
 import type { SharedNote } from "./store";
@@ -35,10 +35,8 @@ function ensure(note:SharedNote) {
 export function getNoteCollaborationSession(id:string,user:{id:string;username:string}):NoteCollaborationSession|null {
   return transaction(()=>{
     const note=editableCollaborationNote(id,user.id);if(!note)return null;
-    const row=ensure(note),profile=getAccountProfile(user.id,user.username);
-    const colors=["#2563eb","#dc2626","#16a34a","#9333ea","#c2410c","#0891b2"];
-    const hash=[...user.id].reduce((value,char)=>(value*31+char.charCodeAt(0))>>>0,0);
-    return {documentName:noteCollaborationName(id,row.generation),state:Buffer.from(row.state).toString("base64"),user:{id:user.id,name:(profile.displayName||user.username).slice(0,80),color:colors[hash%colors.length]},projectId:note.projectId,maxLength:note.issueId?100_000:MAX_NOTE_CONTENT_LENGTH};
+    const row=ensure(note);
+    return {documentName:noteCollaborationName(id,row.generation),state:Buffer.from(row.state).toString("base64"),user:noteParticipantIdentity(user),projectId:note.projectId,maxLength:note.issueId?100_000:MAX_NOTE_CONTENT_LENGTH};
   });
 }
 export function authorizeNoteCollaboration(name:string,userId:string) {

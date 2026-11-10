@@ -1,4 +1,6 @@
 "use client";
+import {useNotebookPresenceContext} from "./notebook-presence-context";
+import {ProfileAvatar} from "@/components/account/account-menu";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
@@ -15,6 +17,7 @@ import type { TreeNote } from "@/lib/notes-tree";
 type Props=NotesBlockEditorProps & {noteId:string;ownerId:string;onSaved:(note:TreeNote)=>void;registerFlush:(flush:(()=>Promise<boolean>)|null)=>void;onPending:(pending:boolean)=>void;registerApplySource:(apply:((source:string)=>void)|null)=>void};
 type Client={document:Y.Doc;provider:HocuspocusProvider;session:NoteCollaborationSession};
 export function CollaborativeNoteEditor(props:Props) {
+  const notebook=useNotebookPresenceContext();
   const [client,setClient]=useState<Client|null>(null),[error,setError]=useState(""),[connected,setConnected]=useState(false),[fatal,setFatal]=useState(false);
   const [people,setPeople]=useState<NoteCollaborationUser[]>([]),[attempt,setAttempt]=useState(0),[previousDraft,setPreviousDraft]=useState("");
   const current=useRef(props);current.current=props;
@@ -108,11 +111,13 @@ export function CollaborativeNoteEditor(props:Props) {
     const url=URL.createObjectURL(new Blob([text],{type:"text/markdown;charset=utf-8"}));
     const anchor=window.document.createElement("a");anchor.href=url;anchor.download="note-draft.md";anchor.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
   };
+  const liveLabel=client?(connected&&!fatal?"Live editing":"Offline · draft kept on this device"):"Opening live editor…";
+  useEffect(()=>{notebook?.reportEditor({noteId:props.noteId,label:liveLabel},props.noteId);return()=>notebook?.reportEditor(null,props.noteId);},[notebook,props.noteId,liveLabel]);
   return <div className="min-w-0" data-note-live-editor>
-    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground" role="status">
+    {!notebook&&<div className="sticky top-0 z-20 mb-3 flex flex-wrap items-center gap-2 border-b border-border bg-background py-2 text-xs text-muted-foreground" role="status">
       <Users className="size-4" aria-hidden="true"/><span>{client?(connected&&!fatal?"Live editing":"Offline · draft kept on this device"):"Opening live editor…"}</span>
-      <span className="ml-auto flex items-center -space-x-1">{people.map(person=><span key={person.id} title={person.name} aria-label={person.name} className="flex size-7 items-center justify-center rounded-full border-2 border-background text-[10px] text-white" style={{backgroundColor:person.color}}>{person.name.slice(0,2).toLocaleUpperCase("en")}</span>)}</span>
-    </div>
+      <span className="ml-auto flex items-center -space-x-1">{people.map(person=><span key={person.id} title={person.name} aria-label={person.name} className="flex size-7 items-center justify-center rounded-full border-2 border-background text-[10px] text-white" style={{backgroundColor:person.color}}><ProfileAvatar profile={{displayName:person.name,avatar:person.avatar||null}} name={person.username||person.name} className="size-full"/></span>)}</span>
+    </div>}
     {error&&<div role="alert" className="mb-3 rounded border border-border p-3 text-sm"><p>{error}</p><div className="mt-2 flex flex-wrap gap-2">
       <button type="button" className="inline-flex min-h-10 items-center gap-1 rounded border px-3" onClick={()=>download(latestDraft.current)}><Download className="size-3.5"/>Download local draft</button>
       <button type="button" className="inline-flex min-h-10 items-center gap-1 rounded border px-3" onClick={()=>{setPreviousDraft(latestDraft.current);setAttempt(value=>value+1);}}><RefreshCw className="size-3.5"/>Reconnect</button>
