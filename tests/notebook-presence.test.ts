@@ -6,7 +6,8 @@ import path from "node:path";
 import http from "node:http";
 import WebSocket,{WebSocketServer} from "ws";
 import sharp from "sharp";
-import {NotebookFollowNavigation,notebookView,uniqueNotebookPeers,type NotebookSnapshot,type NotebookPeer} from "../lib/notebook-presence";
+import {NotebookPresenceConnection} from "../lib/notebook-presence-connection";
+import {NotebookFollowNavigation,notebookScrollPosition,notebookView,uniqueNotebookPeers,type NotebookSnapshot,type NotebookPeer} from "../lib/notebook-presence";
 test("pending follow navigation rejects rapid A-B-A responses, Stop and participant changes",async()=>{
  const navigation=new NotebookFollowNavigation();
  navigation.move("amy","alpha");
@@ -67,6 +68,33 @@ after(async()=>{
  modules[4].getDatabase().close();rmSync(root,{recursive:true,force:true});
 });
 let a:Client,b:Client,c:Client;
+test("the browser presence transport recovers a real lost socket and republishes safe scroll positions",async()=>{
+ const original=Object.getOwnPropertyDescriptor(globalThis,"WebSocket")!;
+ const opened:WebSocket[]=[];
+ class BrowserSocket extends WebSocket {
+  constructor(url:string){super(url,{headers:{cookie:"ai_chat_auth="+tokenA,origin}});opened.push(this);sockets.push(this);}
+ }
+ Object.defineProperty(globalThis,"WebSocket",{value:BrowserSocket,configurable:true,writable:true});
+ const snapshots:NotebookSnapshot[]=[];
+ let connected=0,disconnected=0;
+ const transport=new NotebookPresenceConnection({
+  ownerId:owner.id,url:origin.replace("http","ws"),
+  onConnected:()=>{
+   connected++;
+   transport.send({type:"update",noteId:noteA,view:{scroll:notebookScrollPosition({scrollTop:-50,scrollHeight:1000,clientHeight:200})}});
+  },
+  onDisconnected:()=>disconnected++,
+  onPacket:packet=>{if(packet.type==="presence")snapshots.push(packet as unknown as NotebookSnapshot);},
+ });
+ try{
+  transport.start();
+  await until(()=>connected===1&&snapshots.some(snapshot=>snapshot.peers.some(peer=>peer.note.id===noteA)),"presence handshake and elastic scroll accepted");
+  opened[0].terminate();
+  await until(()=>disconnected===1&&connected===2,"reconnected actual socket");
+  assert.equal(transport.connected,true);assert.equal(opened.length,2);
+  await pause(100);assert.equal(disconnected,1,"valid scroll did not close the new connection");
+ }finally{transport.destroy();Object.defineProperty(globalThis,"WebSocket",original);}
+});
 test("cross-note presence uses canonical account profiles, exposes no document text and no strangers",async()=>{
  a=await connect(tokenA);b=await connect(tokenB);c=await connect(tokenC);
  await until(()=>!!a.snapshot()&&!!b.snapshot()&&!!c.snapshot(),"initial identities");

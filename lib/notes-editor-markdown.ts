@@ -6,7 +6,7 @@ import { protectMathTablePipes, restoreMathTablePipes } from "./markdown-math-ta
 import { getSchema } from "@tiptap/core";
 import { type Schema, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { notesEditorExtensions } from "./notes-editor-extensions";
-import { serializeNotesBlock } from "./notes-editor-serialize";
+import { serializeNotesBlock, serializeNotesRichBlock } from "./notes-editor-serialize";
 
 /** The persisted contract is Markdown. Unedited source is retained byte for byte.
  * Unsupported syntax stays in a visible, editable source block, never discarded.
@@ -157,16 +157,29 @@ export function parseNotesMarkdown(source: string): EditorNode {
   doc.attrs = { ...doc.attrs, originalSource: source, sourceSignature: notesNodeSignature(doc) };
   return doc;
 }
-type SerializedBlock = { signature: string; source: string; gap: string; emptyParagraph: boolean };
+type SerializedBlock = { signature: string; source: string; gap: string; emptyParagraph: boolean; type: string; richSource: () => string };
+function blockSourceMatches(source: string, node: EditorNode): boolean {
+  // ProseMirror merges adjacent text nodes and supplies default attributes.
+  const signature = (doc: EditorNode) => notesNodeSignature(validateEnvelopeSchema(doc));
+  try {
+    return signature(parseNotesMarkdown(source)) === signature({type: "doc", content: [node]});
+  } catch { return false; }
+}
 function serializeBlock(node: EditorNode): SerializedBlock {
   const signature = notesNodeSignature(node);
+  let source: string;
+  if (node.attrs?.sourceSignature === signature && typeof node.attrs.originalSource === "string") {
+    source = node.attrs.originalSource;
+  } else {
+    source = serializeNotesBlock(node) + (node.attrs?.blockId ? "\n\n<!-- metis:block:" + node.attrs.blockId + " -->" : "");
+    if (!blockSourceMatches(source, node)) source = serializeNotesRichBlock(node);
+  }
+  let richSource: string | undefined;
   return {
-    signature,
-    source: node.attrs?.sourceSignature === signature && typeof node.attrs.originalSource === "string"
-      ? node.attrs.originalSource
-      : serializeNotesBlock(node) + (node.attrs?.blockId ? "\n\n<!-- metis:block:" + node.attrs.blockId + " -->" : ""),
+    signature, source, type: node.type,
+    richSource: () => richSource ??= serializeNotesRichBlock(node),
     gap: typeof node.attrs?.originalGap === "string" ? node.attrs.originalGap : "",
-    emptyParagraph: node.type === "paragraph" && !node.content?.length && !node.attrs?.blockId,
+    emptyParagraph: node.type === "paragraph" && !node.content?.length && !node.attrs?.blockId && !node.attrs?.blockColor,
   };
 }
 function serializeDocument(doc: EditorNode, blocks: SerializedBlock[]): string {
@@ -174,8 +187,15 @@ function serializeDocument(doc: EditorNode, blocks: SerializedBlock[]): string {
   const signature = blocks.length ? header.slice(0, -1) + ',"content":[' + blocks.map(block => block.signature).join(",") + "]}" : header;
   if (doc.attrs?.sourceSignature === signature && typeof doc.attrs.originalSource === "string") return doc.attrs.originalSource;
   if (blocks.length === 1 && blocks[0].emptyParagraph) return "";
-  return blocks.map((block, index) => (index === 0 ? block.gap : block.gap || "\n\n") + block.source).join("")
-    + (typeof doc.attrs?.originalTrailing === "string" ? doc.attrs.originalTrailing : "");
+  return blocks.map((block, index) => {
+    const previous = blocks[index - 1];
+    // Markdown otherwise joins independently dragged/split lists or quotations.
+    const list = (type: string) => ["bulletList", "taskList", "orderedList"].includes(type);
+    const joins = previous && (list(previous.type) && list(block.type) || previous.type === "blockquote" && block.type === "blockquote");
+    let gap = index === 0 ? block.gap : block.gap || "\n\n";
+    if (previous?.type === "paragraph" && block.type === "paragraph" && !/\n[ \t]*\n/.test(gap)) gap = "\n\n";
+    return gap + (joins ? block.richSource() : block.source);
+  }).join("") + (typeof doc.attrs?.originalTrailing === "string" ? doc.attrs.originalTrailing : "");
 }
 export function serializeNotesMarkdown(doc: EditorNode): string {
   return serializeDocument(doc, (doc.content || []).map(serializeBlock));

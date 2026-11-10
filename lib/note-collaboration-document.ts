@@ -33,7 +33,7 @@ export function noteCollaborationMarkdown(document:Y.Doc,maxLength:number) {
   for(const child of node.toJSON().content||[])if(!validNotesRichNode(normalizeNotesLinkAttributes(child)))throw Error("Unsupported block data.");
   const content=createNotesMarkdownSerializer()(node);
   if(content.length>maxLength)throw Error("Document is full. Remove some content before adding more.");
-  if(notesNodeSignature(parseNotesMarkdown(content))!==notesNodeSignature(node.toJSON()))throw Error("Document source does not match its blocks.");
+  if(notesNodeSignature(schema.nodeFromJSON(parseNotesMarkdown(content)).toJSON())!==notesNodeSignature(node.toJSON()))throw Error("Document source does not match its blocks.");
   return content;
 }
 export function noteCollaborationCandidate(state:Uint8Array,update:Uint8Array,maxLength:number) {

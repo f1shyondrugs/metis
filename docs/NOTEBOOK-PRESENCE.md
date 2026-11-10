@@ -16,6 +16,10 @@ Before changing notes, following uses the existing NoteDocument flush path. An u
 - `/api/notes/presence/avatar/[userId]` reuses existing project-peer profile visibility and rechecks access before conditional 304 responses.
 - Connections/messages are bounded, view updates go to followers, metadata/profile refreshes are coalesced, and mutual follow cycles are rejected.
 
+The browser waits for an account-bound presence snapshot before reporting the connection as live. A missing handshake (10 seconds) or missing subsequent server packets (20 seconds) closes the stale socket and retries with bounded backoff. Transient network errors recover automatically, rate-limit responses wait at least 10 seconds, and an authentication rejection waits for explicit Retry after sign-in. Returning online or to the visible page wakes a pending connection. Late events from replaced sockets cannot update the UI. Follow remains stopped after a disconnect; document drafts are independent.
+
+Outgoing scroll fractions are clamped to 0–1, including elastic overscroll and changing/zero-size page dimensions. The server retains strict validation of incoming view data.
+
 Older clients need a fresh browser load to announce notebook-wide presence. Following synchronizes location; document edits retain the existing authorized collaborative editor.
 
 ## Implementation owners

@@ -6,6 +6,8 @@ Standard paragraphs, headings, lists, tasks, quotes, rules, code, links, inline 
 
 Rich containers (toggleBlock, callout, columns, pageReference, embedBlock and tableOfContents) use a fenced code block whose info string is metis-block. The body is one JSON editor node. The same envelope preserves underline, text colors and highlights, explicit empty blocks, multiline headings, or a table whose widths, headers or spans cannot be represented as a simple GFM table. Nested content is part of the JSON node. The shared Metis Markdown renderer displays these blocks through a safe, read-only React preview. This keeps the persisted content inspectable; generic Markdown readers show the JSON source.
 
+Changed blocks are checked against the editor schema after Markdown parsing. A block that Markdown cannot reproduce exactly (for example a final hard break or edited source block) uses the same rich envelope. Separately moved lists and quotations retain their block boundaries instead of merging after reload. Untouched source remains byte-identical; the server still rejects forged source metadata. Ordered-list types are limited to the native 1/a/A/i/I values.
+
 An explicit block link persists a comment after its block: <!-- metis:block:IDENTIFIER -->.
 Its link is metis://note/NOTE_ID#block-IDENTIFIER. Page references use a noteId and title in their envelope. Ordinary internal inline links accept [Title](note://NOTE_ID), metis://note/NOTE_ID and issue://ISSUE_ID.
 

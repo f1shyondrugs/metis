@@ -4,6 +4,12 @@ export type NotebookPerson={id:string;username:string;name:string;avatar:string|
 export type NotebookView={scroll:number;blockId?:string;point?:{x:number;y:number;seq:number}};
 export type NotebookPeer={sessionId:string;user:NotebookPerson;note:{id:string;title:string;projectId?:string};view?:NotebookView};
 export type NotebookSnapshot={type:"presence";self:NotebookPerson;sessionId:string;peers:NotebookPeer[]};
+/** Elastic scrolling and a resizing page can temporarily exceed its scroll range. */
+export function notebookScrollPosition(scroller: {scrollTop:number;scrollHeight:number;clientHeight:number}|null): number {
+ const range=scroller ? scroller.scrollHeight-scroller.clientHeight : 0;
+ if(!scroller||!Number.isFinite(range)||range<=0||!Number.isFinite(scroller.scrollTop))return 0;
+ return Math.max(0,Math.min(1,scroller.scrollTop/range));
+}
 export function notebookView(value:unknown):NotebookView|null{
  if(!value||typeof value!=="object"||Array.isArray(value))return null;
  const v=value as Record<string,unknown>;

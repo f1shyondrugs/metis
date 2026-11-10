@@ -12,7 +12,7 @@ export const NOTES_SOURCE_METADATA = new Set(["originalSource", "sourceSignature
 export const NOTES_RICH_CONTAINERS = new Set(["callout", "toggleBlock", "columns", "column", "pageReference", "embedBlock", "tableOfContents"]);
 export const NOTES_SEMANTIC_ATTRIBUTES: Record<string, string[]> = {
   tableOfContents: ["version", "blockId"],
-  heading: ["level", "blockId"], orderedList: ["start", "blockId"], taskItem: ["checked", "blockId"],
+  heading: ["level", "blockId"], orderedList: ["start", "type", "blockId"], taskItem: ["checked", "blockId"],
   codeBlock: ["language", "meta", "blockId"], image: ["src", "alt", "title", "blockId"],
   link: ["href", "title"], textStyle: ["color"], highlight: ["color"],
   sourceBlock: ["source", "label", "blockId"], inlineMath: ["latex"], mathBlock: ["latex", "blockId"],
@@ -29,6 +29,7 @@ function validAttributes(attrs: Record<string, unknown>) {
     if (key === "version") return value === 1;
     if (key === "colwidth") return Array.isArray(value) && value.every((width) => Number.isInteger(width) && Number(width) >= 0);
     if (["level","start","colspan","rowspan"].includes(key)) return typeof value === "number" && Number.isInteger(value) && (key === "level" ? value >= 1 && value <= 6 : key === "start" ? value >= 0 : value >= 1);
+    if (key === "type") return ["1", "a", "A", "i", "I"].includes(String(value));
     if (key === "checked" || key === "open") return typeof value === "boolean";
     if (key === "align") return ["left","center","right"].includes(String(value));
     if (key === "blockId") return typeof value === "string" && /^[a-zA-Z0-9_-]+$/.test(value);

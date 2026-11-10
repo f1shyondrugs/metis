@@ -18,6 +18,10 @@ function stripMetadata(node: EditorNode): EditorNode {
   return { ...node, ...(node.attrs ? { attrs: Object.fromEntries(Object.entries(node.attrs).filter(([key, value]) => !NOTES_SOURCE_METADATA.has(key) && value !== null && value !== undefined)) } : {}), ...(node.marks ? { marks: node.marks.map(mark => ({ ...mark, ...(mark.attrs ? {attrs:Object.fromEntries(Object.entries(mark.attrs).filter(([key,value]) => value != null && (NOTES_SEMANTIC_ATTRIBUTES[mark.type] || []).includes(key)))} : {}) })) } : {}), ...(node.content ? { content: node.content.map(stripMetadata) } : {}) };
 }
 function envelope(node: EditorNode): MarkdownNode { return { type: "code", lang: "metis-block", value: JSON.stringify(stripMetadata(node)) }; }
+/** Preserve valid editor states which plain Markdown cannot represent exactly. */
+export function serializeNotesRichBlock(node: EditorNode): string {
+  return stringifier.stringify({ type: "root", children: [envelope(node)] } as Parameters<typeof stringifier.stringify>[0]).replace(/\n$/, "");
+}
 function inline(nodes: EditorNode[] = []): MarkdownNode[] {
   const result: MarkdownNode[] = [];
   const append = (target: MarkdownNode[], marks: NonNullable<EditorNode["marks"]>, leaf: MarkdownNode) => {

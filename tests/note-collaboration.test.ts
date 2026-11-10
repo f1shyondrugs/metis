@@ -6,6 +6,9 @@ import path from "node:path";
 import http from "node:http";
 import WebSocket,{WebSocketServer} from "ws";
 import * as Y from "yjs";
+import {getSchema} from "@tiptap/core";
+import {prosemirrorJSONToYXmlFragment} from "@tiptap/y-tiptap";
+import {notesEditorExtensions} from "../lib/notes-editor-extensions";
 import {HocuspocusProvider,HocuspocusProviderWebsocket} from "@hocuspocus/provider";
 
 const root=mkdtempSync(path.join(os.tmpdir(),"metis-note-collab-"));
@@ -88,6 +91,19 @@ test("save confirmation returns the actual durable note version",async()=>{
  a.provider.on("stateless",callback);a.provider.sendStateless(JSON.stringify({type:"flush",requestId:ticket}));
  await until(()=>result?.requestId===ticket,"save confirmation");a.provider.off("stateless",callback);
  assert.equal(result!.note!.version,modules[3].getNote(noteId,owner.id)!.version);
+});
+test("Shift+Enter and independent numbered lists persist over the real WebSocket without a fatal close",async()=>{
+ const schema=getSchema(notesEditorExtensions());
+ const paragraph=(value:string)=>({type:"paragraph",content:[{type:"text",text:value}]});
+ const numbered=(value:string)=>({type:"orderedList",content:[{type:"listItem",content:[paragraph(value)]}]});
+ const content=[{type:"paragraph",content:[{type:"text",text:"Before break"},{type:"hardBreak"}]},numbered("First list"),numbered("Second list")];
+ prosemirrorJSONToYXmlFragment(schema,{type:"doc",content},a.document.getXmlFragment("default"));
+ await until(()=>!a.provider.hasUnsyncedChanges&&text(a.document)===text(b.document)&&text(b.document).includes("Before break"),"lossless durable edit");
+ assert.equal(a.provider.isSynced,true);assert.equal(b.provider.isSynced,true);
+ const saved=modules[3].getNote(noteId,owner.id)!;
+ assert.equal(saved.content,text(a.document));assert.match(saved.content,/metis-block/);
+ const restored=new Y.Doc();Y.applyUpdate(restored,modules[5].noteCollaborationRow(noteId)!.state);
+ assert.equal(text(restored),saved.content);restored.destroy();
 });
 test("oversized/unsupported edits are rejected before changing canonical Markdown",()=>{
  const session=modules[5].getNoteCollaborationSession(noteId,owner)!;
