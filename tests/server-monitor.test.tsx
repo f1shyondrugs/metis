@@ -164,6 +164,15 @@ test("CPU tooltips use the selected logical CPU, including CPU zero and unavaila
  assert.match(render(0),/CPU 0/);assert.match(render(0),/98.4%/);assert.doesNotMatch(render(0),/25.0%/);
  assert.match(render(7),/—/);assert.match(render(9),/—/);
 });
+test("CPU comparison tooltips show only selected historical curves and retain unknown readings",()=>{
+ const sample={...metric(Date.now()),cpuCores:[{id:0,percent:null},{id:3,percent:97.2}]};
+ const html=renderToStaticMarkup(<MetricTooltip metric={sample} kind="cpu" series={[
+  {label:"CPU 0",color:"#2563eb",value:row=>row.cpuCores?.find(core=>core.id===0)?.percent??null},
+  {label:"CPU 3",color:"#e11d48",dash:"6 3",value:row=>row.cpuCores?.find(core=>core.id===3)?.percent??null},
+ ]}/>);
+ assert.match(html,/CPU 0/);assert.match(html,/—/);assert.match(html,/CPU 3/);assert.match(html,/97.2%/);
+ assert.doesNotMatch(html,/CPU · total|25.0%/);assert.match(html,/stroke-dasharray="6 3"/);
+});
 test("old telemetry shows a per-core unavailable state; warmup readings remain unknown",()=>{
  const old=renderToStaticMarkup(<ServerMonitorView data={{current:metric(Date.now()),history:[]}}/>);
  assert.match(old,/Per-core measurements are unavailable/);assert.doesNotMatch(old,/data-cpu-core=/);
