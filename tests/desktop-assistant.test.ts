@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { desktopShortcutFromEvent, desktopShortcutLabel } from "../lib/desktop-shortcuts";
 import { settingsSearchEntries, visibleSettingsTabs } from "../lib/settings-navigation";
 import { desktopCaptureContext, type DesktopCapture } from "../lib/desktop-assistant";
+test("shortcut recording keeps physical keys and platform labels",()=>{
+  const event={key:"M",code:"KeyM",ctrlKey:true,shiftKey:true,altKey:false,metaKey:false};
+  assert.equal(desktopShortcutFromEvent(event),"Control+Shift+M");
+  assert.equal(desktopShortcutFromEvent({...event,key:"Shift",code:"ShiftLeft"}),null);
+  assert.equal(desktopShortcutFromEvent({...event,repeat:true}),null);
+  assert.equal(desktopShortcutFromEvent({...event,isComposing:true}),null);
+  assert.equal(desktopShortcutLabel("Super+Shift+Enter","win32"),"Win + Shift + Enter");
+  assert.equal(desktopShortcutLabel("Super+Shift+Enter","darwin"),"Cmd + Shift + Enter");
+});
 test("local settings remain absent on the web and searchable in desktop for both roles",()=>{
   for(const admin of [true,false]){
     assert.ok(!visibleSettingsTabs(admin).some(tab=>tab.value==="remote-client"));

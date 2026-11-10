@@ -6,11 +6,15 @@ const pause=(ms=30)=>new Promise(resolve=>setTimeout(resolve,ms));
 const checks:string[]=[];
 function check(value:unknown,label:string){checks.push((value?"PASS ":"FAIL ")+label);if(!value)throw Error(label);}
 let gesture:(value:string)=>void=()=>{},captured=0,submitted=0,post:Record<string,unknown>|null=null;
-let recordingStopped=0,releasePermission:(()=>void)|null=null;
+let recordingStopped=0,releasePermission:(()=>void)|null=null,editing=false,autoFocus=true,openedChat:string|null=null;
+const shortcuts={assistant:"Control+Shift+Space",focusInput:"Control+Shift+Enter",openChat:"Control+Shift+M",deviceSettings:"Control+Shift+D",cancel:"Escape"};
+const game=document.createElement("button");game.textContent="Game keeps keyboard focus";game.id="fixture-game";document.body.append(game);game.focus();
 Object.defineProperty(window,"metisAssistant",{value:{
- ready:async()=>({gestures:[],device:{hostname:"Fixture PC",clientId:"fixture-client"}}),
+ ready:async()=>({gestures:[],device:{hostname:"Fixture PC",clientId:"fixture-client",platform:"win32"},shortcuts,editing:false}),
  onGesture:(callback:(value:string)=>void)=>{gesture=callback;return ()=>{};},
- voice:()=>{},resize:async()=>{},close:async()=>gesture("cancel"),openChat:async()=>{},
+ voice:()=>{},resize:async()=>{},close:async()=>gesture("cancel"),openChat:async(id:string|null)=>{openedChat=id;},
+ configure:async(value:{voiceConfigured:boolean})=>{if(autoFocus){editing=!value.voiceConfigured;autoFocus=false;if(editing)gesture("focus-input");}return {editing,shortcuts};},
+ focusInput:async(value:boolean)=>{editing=value;gesture(value?"focus-input":"passive");},
  capture:async()=>{captured++;return {device:{clientId:"fixture-client",hostname:"Fixture PC",platform:"win32",version:"fixture"},capturedAt:new Date().toISOString(),monitors:[{id:"left",name:"Left",primary:false,bounds:{x:-1920,y:0,width:1920,height:1080},scaleFactor:1,image:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="},{id:"main",name:"Main",primary:true,bounds:{x:0,y:0,width:1920,height:1080},scaleFactor:1,image:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="}]};}
 }});
 Object.defineProperty(window,"AudioContext",{value:undefined,configurable:true});
@@ -48,7 +52,7 @@ window.fetch=async(input,init)=>{
  if(url==="/api/file-uploads")return Response.json({id:"fixture-upload-"+captured});
  if(url.startsWith("/api/file-uploads/"))return Response.json({id:"fixture-upload",name:"Monitor.png",mimeType:"image/png",size:32,kind:"image",offset:999999});
  if(url==="/api/chat"){submitted++;post=JSON.parse(String(init?.body));return Response.json({jobId:"fixture-job"});}
- if(url.startsWith("/api/chats/"))return Response.json({chat:{runStatus:"completed",messages:[{role:"assistant",content:"Both monitors are attached."}]}});
+ if(url.startsWith("/api/chats/"))return Response.json({chat:{runStatus:"completed",messages:[{id:post?.messageId,role:"user",content:post?.message},{id:"fixture-answer",role:"assistant",content:"Both monitors are attached."}]}});
  if(url==="/api/voice/transcribe"){jobPolls++;return Response.json({transcript:"Transcribed fixture words",job:{id:"fixture-voice",status:"completed",transcript:"Transcribed fixture words"}});}
  throw Error("Unexpected "+url);
 };
@@ -64,7 +68,8 @@ async function run(){
  await until(()=>document.querySelector("textarea"));
  await pause(100);
  if(mode==="text"){
-  check(document.body.textContent?.includes("Voice is not configured"),"Unconfigured voice retains text input");
+  check(document.activeElement===document.querySelector("textarea"),"Without voice the text field is focused after rendering");
+  check(document.querySelector("textarea")!.placeholder==="Ask Metis","Compact field uses the requested placeholder");
   const input=document.querySelector("textarea")!;
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,"Compare my monitors");
   input.dispatchEvent(new Event("input",{bubbles:true}));await pause();
@@ -76,7 +81,13 @@ async function run(){
   check(String(post?.referenceText).includes("fixture-client"),"Origin device reaches the agent");
   await until(()=>document.body.textContent?.includes("Both monitors are attached."));
   check(true,"Answer appears inside floating assistant");
+  const card=document.querySelector(".assistant-conversation")!, user=card.querySelector('[aria-label="Your message"]')!, reply=card.querySelector('[aria-label="Metis reply"]')!;
+  check(Boolean(user.compareDocumentPosition(reply)&Node.DOCUMENT_POSITION_FOLLOWING),"Your canonical message appears above the canonical reply");
+  check(card.getBoundingClientRect().right>innerWidth-40,"Conversation is anchored at the top right");
+  document.querySelector<HTMLButtonElement>('[aria-label="Open in Metis"]')!.click();await pause();
+  check(openedChat==="fixture-chat","Open chat targets the same persisted chat");
  } else {
+  check(document.activeElement===game,"Voice mode leaves the existing game control focused");
   gesture("start");
   if(mode==="permission"){
     await until(()=>releasePermission);
@@ -85,6 +96,9 @@ async function run(){
     check(!document.querySelector('[aria-label="Stop assistant recording"]'),"Permission race cannot leave capture running");
   }else{
     await until(()=>document.querySelector('[aria-label="Stop assistant recording"]'));
+    autoFocus=true;gesture("open");await pause(100);
+    check(Boolean(document.querySelector('[aria-label="Stop assistant recording"]')),"Reopening does not remount or cancel voice capture");
+    check(document.activeElement===game,"Recording still leaves the game focused");
     if(mode==="realtime"){
       Peer.last.channel.receive({type:"conversation.item.input_audio_transcription.delta",item_id:"one",delta:"Live realtime words"});
       await until(()=>document.querySelector('[aria-label="Live transcription"]')?.textContent?.includes("Live realtime words"));

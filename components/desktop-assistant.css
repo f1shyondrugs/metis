@@ -1,7 +1,31 @@
 html:has(.desktop-assistant),html:has(.desktop-assistant) body { background:transparent!important; }
-.desktop-assistant { height:100dvh; display:flex; align-items:flex-end; padding:8px; background:transparent; color:var(--foreground); }
-.assistant-panel { width:100%; max-height:100%; overflow:clip; border:1px solid var(--border); border-radius:16px; background:var(--background); box-shadow:0 8px 28px #0003; animation:assistant-slide 420ms cubic-bezier(.2,.7,.2,1) both; }
-.assistant-answer { max-height:320px; overflow:auto; font-size:14px; }
+.desktop-assistant { position:relative; height:100dvh; overflow:clip; pointer-events:none; background:transparent; color:var(--foreground); }
+.assistant-surface { border:1px solid var(--border); border-radius:14px; background:color-mix(in srgb,var(--background) 94%,transparent); box-shadow:0 4px 16px #0003; }
+.assistant-compose { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); width:min(420px,calc(100% - 32px)); }
+.assistant-input { pointer-events:auto; }
+.assistant-form { display:flex; align-items:center; gap:4px; min-height:48px; padding:5px 7px 5px 14px; }
+.assistant-form textarea { flex:1; width:0; min-width:0; min-height:24px; max-height:96px; field-sizing:content; resize:none; background:transparent; color:var(--foreground); border:0; padding:3px 0; font:inherit; font-size:14px; line-height:20px; }
+.assistant-form textarea::placeholder { color:var(--muted-foreground); }
+.assistant-form textarea:focus { outline:none; }
+.desktop-assistant[data-editing="true"] .assistant-input { outline:2px solid color-mix(in srgb,var(--ring) 55%,transparent); outline-offset:3px; }
+.assistant-input button { flex-shrink:0; width:32px; height:32px; border-radius:8px; }
+.assistant-hint { display:flex; justify-content:center; align-items:center; gap:10px; min-height:20px; margin-top:6px; font-size:11px; color:var(--muted-foreground); text-shadow:0 1px 2px var(--background); }
+.assistant-hint kbd { font:inherit; }
+.assistant-conversation { position:absolute; top:20px; right:20px; width:min(360px,calc(100% - 32px)); pointer-events:auto; animation:assistant-reply-enter 280ms cubic-bezier(.2,.7,.2,1) both; }
+.assistant-conversation-header { display:flex; align-items:center; justify-content:space-between; min-height:44px; padding:4px 6px 4px 14px; border-bottom:1px solid var(--border); }
+.assistant-conversation-header button { width:32px; height:32px; border-radius:8px; }
+.assistant-messages { max-height:min(48dvh,420px); overflow:auto; overscroll-behavior:contain; padding:12px; display:flex; flex-direction:column; gap:14px; font-size:14px; line-height:1.5; }
+.assistant-message { min-width:0; overflow-wrap:anywhere; }
+.assistant-message-user { align-self:flex-end; max-width:94%; padding:8px 10px; background:color-mix(in srgb,var(--foreground) 8%,var(--background)); border-radius:10px; }
+.assistant-message-user p { margin:0; white-space:pre-wrap; }
+.assistant-message-assistant { padding:0 2px; }
+.assistant-working { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted-foreground); }
+.assistant-transcript { margin:0; padding:10px 14px 4px; max-height:96px; overflow:auto; white-space:pre-wrap; font-size:14px; line-height:1.5; }
+.assistant-error { padding:10px 14px 4px; font-size:12px; color:var(--destructive); }
+.assistant-error button { display:inline; width:auto; height:auto; margin-left:8px; text-decoration:underline; }
 .assistant-fallback { padding:24px; font-size:14px; }
-@keyframes assistant-slide { from { opacity:0; transform:translateY(36px); } to { opacity:1; transform:translateY(0); } }
-@media(prefers-reduced-motion:reduce) { .assistant-panel {animation:none;} }
+@keyframes assistant-reply-enter { from { opacity:0; transform:translateX(18px); } to { opacity:1; transform:translateX(0); } }
+@media(max-width:1000px) { .assistant-conversation { top:76px; } }
+@media(max-width:480px) { .assistant-conversation { right:16px; } .assistant-compose { bottom:16px; } }
+@media(pointer:coarse) { .assistant-input button,.assistant-conversation-header button { width:44px; height:44px; } }
+@media(prefers-reduced-motion:reduce) { .assistant-conversation {animation:none;} }

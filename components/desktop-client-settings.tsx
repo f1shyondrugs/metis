@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { desktopBridge, type LocalDeviceState } from "@/lib/desktop-bridge";
+import { DesktopShortcutSettings } from "@/components/desktop-shortcut-settings";
 import { DesktopDeviceSettings } from "@/components/desktop-device-settings";
 import { Button } from "@/components/ui/button";
 
@@ -32,9 +33,10 @@ export function DesktopClientSettings() {
       <dt className="text-muted-foreground">Assistant</dt><dd>{state.assistant?.hotkey||"Update the desktop app"}{state.assistant?.error?<p className="mt-1 text-xs" role="alert">{state.assistant.error}</p>:null}</dd>
     </dl>:null}
     <DesktopDeviceSettings />
+    {state?.assistant?.shortcuts&&state.assistant.defaults?<DesktopShortcutSettings value={state.assistant.shortcuts} defaults={state.assistant.defaults} platform={state.platform} onSaved={next=>setState(current=>current?{...current,assistant:current.assistant?{...current.assistant,shortcuts:next,hotkey:next.assistant}:undefined}:current)}/>:null}
     {state?.assistant?<div className="border-t border-border pt-4">
       <h3 className="text-sm font-medium">Desktop Assistant</h3>
-      <p className="my-2 max-w-lg text-xs text-muted-foreground">Hold Ctrl+Shift+Space to speak. Release to finish, or hold for three seconds to lock recording. Press Escape to dismiss. Voice uses your Voice & dictionary settings. Each message includes fresh screenshots of all monitors and this device’s identity.</p>
+      <p className="my-2 max-w-lg text-xs text-muted-foreground">Hold the Talk shortcut to speak. Release to finish, or hold for three seconds to lock recording. Use Focus text to type, then press it again to return to your app. Voice uses your Voice & dictionary settings. Each message includes fresh screenshots of all monitors and this device’s identity.</p>
       <Button variant="outline" onClick={()=>void desktopBridge()?.openAssistant?.().catch(()=>setError("Could not open the assistant. Try again."))}>Open Desktop Assistant</Button>
     </div>:null}
   </section>;

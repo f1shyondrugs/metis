@@ -3,10 +3,13 @@ export type DesktopCapture = {
   capturedAt: string;
   monitors: Array<{id:string;name:string;primary:boolean;bounds:{x:number;y:number;width:number;height:number};scaleFactor:number;image:string}>;
 };
+export type DesktopShortcuts = { assistant:string; focusInput:string; openChat:string; deviceSettings:string; cancel:string };
 export type AssistantBridge = {
-  ready:()=>Promise<{gestures:string[];device:DesktopCapture["device"]}>;
+  ready:()=>Promise<{gestures:string[];device:DesktopCapture["device"];shortcuts?:DesktopShortcuts;editing?:boolean}>;
   onGesture:(callback:(value:string)=>void)=>()=>void;
   resize?:(height:number)=>Promise<void>;
+  configure?:(value:{voiceConfigured:boolean;chatId:string|null})=>Promise<{editing:boolean;shortcuts:DesktopShortcuts}>;
+  focusInput?:(value:boolean)=>Promise<void>;
   capture:()=>Promise<DesktopCapture>;
   voice:(value:{recording:boolean;level:number;status?:string})=>void;
   close:()=>Promise<void>;
