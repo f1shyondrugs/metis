@@ -147,13 +147,21 @@ async function persistBrowserContext(userId, chatId, result) {
 }
 
 const protectedBrowserRouting = new ProtectedBrowserRouting(browserLoginRequest, getBrowserLoginContext);
+function notifyProtectedBrowserStreams(userId,chatId){
+  const subscribers=browserStreamSubscribers.get(`${userId}:${chatId}`);
+  for(const notify of subscribers||[])void Promise.resolve().then(()=>notify({tabId:"protected"})).catch(()=>undefined);
+}
 async function performSharedBrowserAction(userId, chatId, action) {
   if (action.action === "secure_input_prepare") {
-    return protectedBrowserRouting.prepare(userId, chatId, action);
+    try { return await protectedBrowserRouting.prepare(userId, chatId, action); }
+    finally { if(protectedBrowserRouting.has(userId,chatId))notifyProtectedBrowserStreams(userId,chatId); }
   }
   if (protectedBrowserRouting.has(userId, chatId) || action.tabId === "protected") {
     const result=await protectedBrowserRouting.action(userId, chatId, action);
-    if(action.action!=="close_tab")return result;
+    if(action.action!=="close_tab"){
+      if(protectedBrowserRouting.has(userId,chatId)&&!["screenshot","snapshot","extract_text","form_state"].includes(action.action))notifyProtectedBrowserStreams(userId,chatId);
+      return result;
+    }
     const ordinary=await performBrowserAction(userId,chatId,{action:"select_tab",source:action.source});
     await persistBrowserContext(userId,chatId,ordinary);
     return ordinary;
@@ -441,7 +449,9 @@ websocketServer.on("connection", async (socket, request, context, options) => {
   startupTimer = setTimeout(() => failStream(new Error("Browser image startup timed out")), 30_000);
   try {
     if (options.width && options.height) {
-      await setBrowserViewport(context.userId, context.chatId, options.width, options.height);
+      if(protectedBrowserRouting.has(context.userId,context.chatId)||tabId==="protected"){
+        await protectedBrowserRouting.action(context.userId,context.chatId,{action:"resize",tabId:"protected",width:options.width,height:options.height});
+      }else await setBrowserViewport(context.userId, context.chatId, options.width, options.height);
     }
     await push(true);
   } catch (error) {

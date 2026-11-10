@@ -154,6 +154,23 @@ test("vault sessions stream private masked frames, including restoration by expl
   }
 });
 
+test("vault preparation and actions refresh only their own stream without screenshot feedback",async()=>{
+ const findDeclaration=(name:string)=>serverTree.statements.find((node):node is ts.FunctionDeclaration=>ts.isFunctionDeclaration(node)&&node.name?.text===name)!;
+ const received:unknown[]=[];
+ const subscribers=new Map([["owner:chat",new Set([(event:unknown)=>received.push(event)])],["other:chat",new Set([()=>{throw Error("Wrong account");}])]]);
+ let active=false;
+ const router={has:()=>active,prepare:async()=>{active=true;return {status:"input_required"};},action:async()=>({tabId:"protected"})};
+ const context={browserStreamSubscribers:subscribers,protectedBrowserRouting:router,performBrowserAction:()=>{throw Error("Must not use stale ordinary page");},persistBrowserContext:()=>{},lastBrowserCleanupAt:Date.now()};
+ const source=findDeclaration("notifyProtectedBrowserStreams").getText(serverTree)+"\n"+findDeclaration("performSharedBrowserAction").getText(serverTree);
+ const perform=new Function(...Object.keys(context),source+";return performSharedBrowserAction;")(...Object.values(context));
+ await perform("owner","chat",{action:"secure_input_prepare"});await settleStream();
+ assert.deepEqual(received,[{tabId:"protected"}]);
+ await perform("owner","chat",{action:"click",selector:"#submit"});await settleStream();
+ assert.equal(received.length,2);
+ for(const action of ["screenshot","snapshot","extract_text","form_state"])await perform("owner","chat",{action});
+ await settleStream();assert.equal(received.length,2,"image/inspection must not trigger infinite captures");
+});
+
 test("an opted-in slow client retains one unacknowledged image instead of a growing network backlog", async () => {
   const h = backendHarness(async () => streamFrame());
   const { socket, done } = h.connect({ frameAck: true, realtime: true, fps: 5 });
