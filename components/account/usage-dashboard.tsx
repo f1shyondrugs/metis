@@ -1,11 +1,9 @@
 "use client";
 import { LoadError } from "@/components/load-error";
 import { AnimatedNumber } from "@/components/animated-number";
-import { ChartBoundary } from "@/components/chart-boundary";
-import { useChartMotion } from "@/components/use-chart-motion";
+import { UsageOverviewChart } from "./usage-overview-chart";
 import { Fragment, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, Coins, Download, Hash, Info, RefreshCw, Send } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ProviderLogo } from "@/components/provider-logo";
 import { ModelUsageDetails } from "@/components/account/model-usage-details";
 import { Button } from "@/components/ui/button";
@@ -17,7 +15,6 @@ import { usageCost, usageCostLabel, usageCostReports, type UsageCostMode } from 
 import { useUsageProviderFilter } from "./use-usage-provider-filter";
 import { UsageProviderFilter } from "./usage-provider-filter";
 import { UsageResetsEntry } from "@/components/usage-resets-shortcut";
-import { UsageModelTooltip } from "./usage-model-tooltip";
 import { usageMetricValue, type UsageMetric } from "@/lib/usage-model-contributions";
 import { usageTokenOptions, usageTokenLabel, usageTokenValue, usageTokenReports, type UsageTokenMetric } from "@/lib/usage-token-split";
 const compact=new Intl.NumberFormat("en",{notation:"compact",maximumFractionDigits:1});
@@ -51,8 +48,6 @@ export function UsageDashboard() {
   const [sort,setSort]=useState<"tokens"|"costUsd"|"requests"|"modelId">("tokens"),[ascending,setAscending]=useState(false);
   const [expanded,setExpanded]=useState<string|null>(null);
   const id=useId().replaceAll(":","");
-  const motion=useChartMotion();
-  const chartData=useMemo(()=>usage?.days.map(day=>({...day,value:usageMetricValue(day,activeMetric,costMode)})) || [],[usage,costMode,activeMetric]);
   useEffect(()=>{
     if(range==="custom" && (!from || !to)) { setUsage(null);setLoading(false);return; }
     const controller=new AbortController();
@@ -129,17 +124,8 @@ export function UsageDashboard() {
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{usage?.from} — {usage?.to}<br />Daily totals · UTC</p>
           {activeMetric==="costUsd" && totals ? <p className="mt-4 text-xs leading-relaxed text-muted-foreground">{reports ? reports.toLocaleString("en")+" of "+totals.requests.toLocaleString("en")+" runs "+(costMode==="estimated"?"estimated":"reported")+(reports<totals.requests?" · Partial total":"") : costMode==="estimated"?"No matching prices and complete token splits for these runs.":"Your providers have not reported costs for these runs."}</p>:null}
         </div>
-        <div className="h-60 min-w-0" aria-label={"Daily "+metricLabel+" chart"}>
-          {usage && !error && !loading ? <ChartBoundary resetKey={costMode+providerFilterKey+activeMetric+usage.from+usage.to+refresh} label="usage-overview"><ResponsiveContainer width="100%" height="100%" minWidth={0}>
-            <AreaChart key={costMode+providerFilterKey} data={chartData} margin={{top:8,right:8,bottom:0,left:0}}>
-              <defs><linearGradient id={id+"fill"} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.16}/><stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="3 5" opacity={0.6}/>
-              <XAxis dataKey="date" tickFormatter={date=>new Date(date).toLocaleDateString("en",{month:"short",day:"numeric",timeZone:"UTC"})} minTickGap={36} tick={{fill:"var(--muted-foreground)",fontSize:11}} tickLine={false} axisLine={false} />
-              <YAxis width={48} tickFormatter={n=>activeMetric==="costUsd"?"$"+compact.format(n):compact.format(n)} tick={{fill:"var(--muted-foreground)",fontSize:11}} tickLine={false} axisLine={false} />
-              <Tooltip allowEscapeViewBox={{x:false,y:false}} wrapperStyle={{pointerEvents:"auto"}} content={props=><UsageModelTooltip active={props.active} day={usage.days.find(day=>day.date===props.label)} models={usage.modelDays?.[String(props.label)] || []} metric={activeMetric} costMode={costMode}/>}/>
-              <Area type="monotone" dataKey="value" name={metricLabel} stroke="var(--chart-1)" strokeWidth={1.8} fill={"url(#"+id+"fill)"} {...motion} connectNulls={false}/>
-            </AreaChart>
-          </ResponsiveContainer></ChartBoundary>:<div className="flex h-full items-center justify-center text-sm text-muted-foreground">{loading?"Loading usage…":"Usage unavailable"}</div>}
+        <div className="h-60 min-w-0" aria-label="Daily usage chart">
+          {usage && !error && !loading ? <UsageOverviewChart usage={usage} metric={activeMetric} costMode={costMode} resetKey={costMode+providerFilterKey+activeMetric+usage.from+usage.to+refresh}/>:<div className="flex h-full items-center justify-center text-sm text-muted-foreground">{loading?"Loading usage…":"Usage unavailable"}</div>}
         </div>
       </div>
       <div className={"grid grid-cols-2 gap-5 border-t border-border/60 p-5 sm:p-6 "+(showCosts?"lg:grid-cols-4":"lg:grid-cols-3")}>

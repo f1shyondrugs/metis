@@ -39,6 +39,9 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit --pretty false
 
+      - name: Verify usage charts and bounded runtime timing
+        run: pnpm exec tsx --test tests/usage-chart.test.tsx tests/runtime-performance.test.ts tests/usage-model-contributions.test.ts tests/usage-api-costs.test.ts tests/account-profile-usage.test.ts
+
       - name: Verify CPU telemetry and monitor history
         run: pnpm exec tsx --test tests/server-cpu.test.ts tests/server-monitor.test.tsx
 

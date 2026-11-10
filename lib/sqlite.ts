@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { instrumentDatabase } from "./runtime-performance";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -147,7 +148,7 @@ function migrateLegacy(db: DatabaseSync) {
 export function getDatabase(): DatabaseSync {
   if (database) return database;
   mkdirSync(path.dirname(databasePath), { recursive: true });
-  database = new DatabaseSync(databasePath, { timeout: 10_000 });
+  database = instrumentDatabase(new DatabaseSync(databasePath, { timeout: 10_000 }));
   database.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA synchronous = NORMAL;
