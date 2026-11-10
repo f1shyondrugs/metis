@@ -56,7 +56,7 @@ export function DesktopAssistant() {
     observer.observe(panel.current);return ()=>observer.disconnect();
   },[available,cycle]);
   const configured=Boolean(voice?.enabled&&(voice.provider==="browser"||voice.connectionId));
-  useEffect(()=>{if(available)assistantBridge()?.voice({recording:recording.current,level:0,status:running?"Metis is working":configured?"Metis Assistant":"Voice is not configured"});},[available,configured,running]);
+  useEffect(()=>{if(available)assistantBridge()?.voice({recording:recording.current,level:0,status:running?"Metis is working":configured?"Metis Assistant":"Voice is not configured"});},[available,configured,running,cycle]);
   const onVoiceState=useCallback((state:VoiceState)=>{
     const wasRecording=recording.current;
     setVoiceState(state);recording.current=state==="recording";
@@ -135,7 +135,7 @@ export function DesktopAssistant() {
     <section ref={panel} className="assistant-panel" aria-label="Metis Desktop Assistant">
       <header className="flex items-center gap-2 px-4 pt-3 pb-2">
         <span role="status" className="flex-1 text-xs font-medium">{recording.current?"Metis is listening":busy?"Capturing screen context…":running?"Metis is working":configured?"Metis Assistant":"Voice is not configured"}</span>
-        {locked?<span className="flex items-center gap-1 text-xs text-muted-foreground"><LockKeyhole className="size-3"/>Locked</span>:null}
+        {locked&&configured?<span className="flex items-center gap-1 text-xs text-muted-foreground"><LockKeyhole className="size-3"/>Locked</span>:null}
         <Button size="icon-action" variant="ghost" aria-label="Open in Metis" onClick={()=>void assistantBridge()?.openChat(chatId)}><ExternalLink className="size-4"/></Button>
         <Button size="icon-action" variant="ghost" aria-label="Close assistant" onClick={()=>void assistantBridge()?.close()}><X className="size-4"/></Button>
       </header>
