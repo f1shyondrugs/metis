@@ -24,7 +24,7 @@ export function DesktopDeviceSettings() {
     setOpening(true);
     setError("");
     try { await bridge.openDeviceSettings(); }
-    catch { setError("Could not open device settings. Try again."); }
+    catch { setError("Could not open Remote Client Device Settings. Try again."); }
     finally { setOpening(false); }
   }
 
@@ -32,7 +32,7 @@ export function DesktopDeviceSettings() {
     <div className="flex flex-col items-start gap-1.5">
       <Button type="button" variant="outline" size="action" onClick={() => void open()} disabled={opening}>
         <Monitor data-icon="inline-start" aria-hidden="true" />
-        {opening ? "Opening…" : "Open device settings"}
+        {opening ? "Opening…" : "Open Remote Client Device Settings"}
       </Button>
       {error ? <p role="alert" className="max-w-xs text-xs text-destructive">{error}</p> : null}
     </div>

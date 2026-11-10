@@ -40,7 +40,7 @@ function Fixture() {
 createRoot(document.getElementById("root")!).render(<Fixture />);
 void (async () => {
   await pause(350);
-  const button = () => Array.from(document.querySelectorAll("button")).find(item => /Open device settings|Opening/.test(item.textContent || ""));
+  const button = () => Array.from(document.querySelectorAll("button")).find(item => /Open Remote Client Device Settings|Opening/.test(item.textContent || ""));
   check(Boolean(button()) === (mode !== "browser"), "desktop action appears only when the native bridge exists");
   if (mode !== "browser") {
     button()!.click(); await pause(40);
