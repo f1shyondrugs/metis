@@ -36,12 +36,12 @@ test("setup API and wizard exist for first-run onboarding", () => {
   assert.match(wizard, /setSetupToken\(""\)/);
 });
 
-test("onboarding uses the update-screen hands and four real steps", () => {
+test("onboarding shares the M-branded update screen and four real steps", () => {
   const wizard = readFileSync(path.join(root, "components/setup-wizard.tsx"), "utf8");
   const hands = readFileSync(path.join(root, "components/hands-stage.tsx"), "utf8");
   const maintenance = readFileSync(path.join(root, "components/maintenance-screen.tsx"), "utf8");
-  assert.match(hands, /hand-left\.png/);
-  assert.match(hands, /hand-right\.png/);
+  assert.match(hands, /MetisMark/);
+  assert.doesNotMatch(hands, /hand-left\.png|hand-right\.png/);
   assert.match(wizard, /HandsStage/);
   assert.match(maintenance, /HandsStage/);
   assert.match(wizard, /"welcome"/);
