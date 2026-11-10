@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DesktopDeviceSettings } from "../components/desktop-device-settings";
-import { MetisMark } from "../components/metis-mark";
 import { Button } from "../components/ui/button";
 const mode = new URLSearchParams(location.search).get("mode") || "browser";
 let calls = 0;
@@ -27,7 +26,7 @@ function Fixture() {
   const [ready, setReady] = useState(false);
   useEffect(() => { setReady(true); }, []);
   return <main className="mx-auto w-full max-w-3xl p-4 md:p-6">
-    <header className="mb-8 flex items-center gap-3"><MetisMark className="size-10" role="img" aria-label="Metis"/><strong className="text-xl">Metis</strong></header>
+    <header className="mb-8 flex items-center gap-3"><strong className="text-xl">Metis</strong></header>
     <section className="flex flex-col gap-5" aria-label="Remote clients">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h1 className="text-sm font-medium">Remote Clients</h1><p className="mt-1 max-w-2xl text-xs text-muted-foreground">Clients use an outbound encrypted connection. New clients start in user access; administrative capabilities are never implicit.</p></div>
