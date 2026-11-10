@@ -1,5 +1,6 @@
 "use client";
 import { LoadError } from "@/components/load-error";
+import { DesktopDeviceSettings } from "@/components/desktop-device-settings";
 import { RecentlyDeletedChats } from "@/components/recently-deleted-chats";
 import { SavedWebsiteLogins } from "@/components/saved-website-logins";
 
@@ -2502,10 +2503,13 @@ export function SettingsPanel({
                       Clients use an outbound encrypted connection. New clients start in user access; administrative capabilities are never implicit.
                     </p>
                   </div>
-                  <Button type="button" size="sm" onClick={() => setRemotePairStep("os")} disabled={remoteBusy}>
-                    <Plus data-icon="inline-start" />
-                    Add client
-                  </Button>
+                  <div className="flex flex-wrap items-start gap-2">
+                    <DesktopDeviceSettings />
+                    <Button type="button" size="action" onClick={() => setRemotePairStep("os")} disabled={remoteBusy}>
+                      <Plus data-icon="inline-start" />
+                      Add client
+                    </Button>
+                  </div>
                 </div>
                 <SettingsTile id="settings-device-notifications" title="Notifications" meta="Choose alerts, sounds and delivery devices" icon={Bell} onOpen={() => openSettingsPane("notifications", "general")} />
                 <div className="rounded-lg border bg-card/40 p-3">

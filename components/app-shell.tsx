@@ -1,4 +1,5 @@
 "use client";
+import { MetisMark } from "@/components/metis-mark";
 import { Link2 } from "lucide-react";
 import { useModelChains, useChatModelChain, notifyModelChainsChanged } from "@/components/use-model-chains";
 import type { ModelChain } from "@/lib/model-chain-types";
@@ -9761,21 +9762,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         )}
         aria-label="Metis"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/hand-left.png"
-          alt=""
-          aria-hidden="true"
-          className="absolute left-0 z-10 h-9 w-auto max-w-[5rem] object-contain"
-        />
-        <span role="img" aria-label="Metis" className="metis-wordmark relative z-20 shrink-0 text-foreground/90" />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/hand-right.png"
-          alt=""
-          aria-hidden="true"
-          className="absolute right-0 z-10 h-9 w-auto max-w-[5rem] object-contain"
-        />
+        <div className="flex items-center gap-2">
+          <MetisMark className="size-8 shrink-0 text-foreground/90" aria-hidden="true" />
+          <span role="img" aria-label="Metis" className="metis-wordmark shrink-0 text-foreground/90" />
+        </div>
       </div>
       <div className="relative z-0 shrink-0 px-2 pb-1 pt-3">
         <button
