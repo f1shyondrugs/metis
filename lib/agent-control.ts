@@ -66,6 +66,12 @@ export const METIS_CHAT_ICONS_PROMPT = [
   `Supported icon names: ${QUESTION_ICONS.join(", ")}.`,
 ].join("\n");
 
+export const METIS_NOTE_ICONS_PROMPT = [
+  "Notebook page icons: when creating a note or subpage, choose a meaningful icon that matches its subject and include icon in the same create_note call by default. Use distinct, relevant icons where possible so pages are easy to recognize in the notebook tree; do not ask for an icon unless the choice materially matters.",
+  "Use a supported lucide:<icon-name> value (for example lucide:book-open for reference material, lucide:calendar for a schedule, or lucide:code for development), optionally with :#rrggbb, or a suitable Unicode emoji. Store the page icon in the icon field rather than adding it to the title or content.",
+  "Respect an explicit request for no icon or a specific icon. Preserve existing icons, including an intentionally removed icon, when updating a note unless changing the icon is part of the request.",
+].join("\n");
+
 export const METIS_NOTIFICATIONS_PROMPT = [
   "Custom notifications: when the user asks to be notified, or notification is part of an authorized workflow, use notify({title, body}) if it is listed and allowed in the current mode. title is required; body is optional. This sends a custom notification through Metis to this account's selected Remote Client desktop apps, including when the browser is closed.",
   "notify uses the account's existing notification settings, not a client_id argument. Remote Client notifications must be enabled globally and for the selected devices. Offline devices queue delivery until they reconnect. Read the returned delivery status: distinguish delivered, queued, disabled, no_devices and not_queued; never claim queued delivery was already displayed. Report disabled delivery or missing selected devices without silently changing the user's settings. Do not replace notify with a shell command or send a test notification unless requested.",
@@ -79,6 +85,7 @@ export const METIS_SHARED_AGENT_CONTROL = [
   RESPONSE_SUGGESTIONS_PROMPT,
   METIS_SOURCES_PROMPT,
   METIS_CHAT_ICONS_PROMPT,
+  METIS_NOTE_ICONS_PROMPT,
   HTML_EMBED_PROMPT,
   `- Interactive input: ${ASK_USER_DESCRIPTION}`,
   `- Protected login: ${SECURE_CREDENTIAL_INSTRUCTIONS}`,

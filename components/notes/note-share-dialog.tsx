@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Loader2, Share2, Users, Link2 } from "lucide-react";
+import { Loader2, Share2 } from "lucide-react";
 import { LoadError } from "@/components/load-error";
 import { ShareLinkControls } from "@/components/share-link-controls";
 import { Button } from "@/components/ui/button";
@@ -54,11 +54,6 @@ export function NoteShareDialog({ note, onClose }: { note: { id: string; title: 
         <DialogTitle className="flex items-center gap-2"><Share2 className="size-4 text-primary" />Share note</DialogTitle>
         <DialogDescription>Share “{noteDisplayTitle(note.title) || "Untitled"}” and all its subpages with a read-only link. Updates to this tree appear automatically.</DialogDescription>
       </DialogHeader>
-      <section aria-label="Live editing" className="space-y-2 border-b border-border pb-4">
-        <h3 className="flex items-center gap-2 text-sm font-medium"><Users className="size-4" aria-hidden="true"/>Live editing</h3>
-        <p className="text-sm text-muted-foreground">{note.projectId ? "Project members can edit this note together. Manage access in the project’s sharing settings." : "Only you can open this editor link. Add this note to a shared project to edit with other accounts."}</p>
-        <Button variant="outline" size="action" onClick={()=>{void navigator.clipboard.writeText(window.location.origin+"/?c=notes#note-"+encodeURIComponent(note.id)).catch(()=>setError("Could not copy the editor link."));}}><Link2 className="size-4"/>Copy editor link</Button>
-      </section>
       {loading ? <div role="status" className="flex items-center gap-2 py-5 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading sharing settings…</div> : share ?
         <ShareLinkControls url={url} active={share.active} passwordProtected={share.passwordProtected} busy={working} onUpdate={patch => change("PATCH", patch)} /> :
         <Button disabled={working || Boolean(error)} onClick={() => void change("POST")}>{working ? <Loader2 className="size-4 animate-spin" /> : <Share2 className="size-4" />}Create share link</Button>}

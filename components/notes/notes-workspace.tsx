@@ -478,7 +478,6 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
         {selected && !selected.archived && <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs" aria-label="Share note tree" onClick={()=>{void flush().then(ok=>{if(ok)setShareNote(selected);});}}><Share2 className="size-3.5"/><span className="hidden sm:inline">Share</span></Button>}
         {selected && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="File options"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="min-w-56">
           <NotesSpellcheckMenu value={spellcheckChoice} onChange={setSpellcheckChoice}/>
-          <DropdownMenuItem onClick={()=>{void flush().then(ok=>{if(ok)setShareNote(selected);});}}>Live editing…</DropdownMenuItem>
           <DropdownMenuItem onClick={() => { setIcon(selected.icon || ""); setCover(selected.cover || ""); setFullWidth(Boolean(selected.fullWidth)); setAppearance(true); }}><Settings2 className="size-4" />Page appearance…</DropdownMenuItem>
           <DropdownMenuItem onClick={() => setPinNote(selected)}><Pin className="size-4" />Pin in chats…</DropdownMenuItem>
           <DropdownMenuItem onClick={() => { void navigator.clipboard.writeText(window.location.origin + "/?c=notes#note-" + selected.id).catch(() => setError("Could not copy link.")); }}><Copy className="size-4" />Copy file link</DropdownMenuItem>
