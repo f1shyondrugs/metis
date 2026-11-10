@@ -14,6 +14,7 @@ import {
   type InputHTMLAttributes,
 } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import { StickyActions } from "@/components/ui/sticky-actions";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -258,7 +259,7 @@ function CodeBlock({
   return (
     <div className="markdown-code-container group">
       <pre className="markdown-code-block" {...props}>
-        <div className="mb-1.5 flex items-center justify-between text-[10px] font-sans uppercase tracking-wide text-muted-foreground/70">
+        <div className="mb-1.5 flex min-h-8 items-center justify-between [@media(pointer:coarse)]:min-h-11 text-[10px] font-sans uppercase tracking-wide text-muted-foreground/70">
           <span>{detectedLanguage || "text"}</span>
         </div>
         <code
@@ -266,11 +267,11 @@ function CodeBlock({
           dangerouslySetInnerHTML={{ __html: highlighted }}
         />
       </pre>
-      <div className="markdown-code-toolbar">
+      <StickyActions className="markdown-code-toolbar">
         <button
           type="button"
           aria-label={copied ? "Code copied" : "Copy code"}
-          className="pointer-events-auto rounded border border-border/50 bg-background/80 px-2 py-1 text-[10px] text-muted-foreground opacity-100 transition-opacity hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+          className="pointer-events-auto min-h-8 min-w-11 rounded border border-border/50 bg-background/95 px-2 py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11"
           onClick={() => {
             void navigator.clipboard.writeText(code).then(() => {
               setCopied(true);
@@ -280,7 +281,7 @@ function CodeBlock({
         >
           {copied ? "Copied" : "Copy"}
         </button>
-      </div>
+      </StickyActions>
     </div>
   );
 }

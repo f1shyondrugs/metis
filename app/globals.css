@@ -346,6 +346,28 @@
   @apply my-3 overflow-x-auto rounded-lg bg-muted p-3 text-xs;
 }
 
+/* Keep actions with their owning component, outside its scrolling content.
+   overflow:clip on outer cards preserves rounded clipping without creating a
+   hidden scrollport that defeats sticky positioning in chat/notes panes. */
+.contained-sticky-actions {
+  position: sticky;
+  top: var(--contained-actions-top, 0.5rem);
+  right: var(--contained-actions-right, 0.5rem);
+  z-index: 20;
+  grid-area: 1 / 1;
+  align-self: start;
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
+  pointer-events: none;
+}
+.contained-sticky-actions > * { pointer-events: auto; }
+.contained-sticky-actions[data-contained-actions="bottom"] {
+  top: auto;
+  bottom: var(--contained-actions-bottom, 0.5rem);
+  align-self: end;
+}
+
 .markdown-code-container {
   position: relative;
   display: grid;
@@ -362,11 +384,6 @@
 /* Keep the copy control outside the horizontally scrolling pre so sticky
    follows the chat/document scrollport, bounded by this code block. */
 .markdown-code-toolbar {
-  position: sticky;
-  top: 0.5rem;
-  z-index: 1;
-  grid-area: 1 / 1;
-  align-self: start;
   display: flex;
   justify-content: flex-end;
   margin: 0.5rem 0.5rem 0;

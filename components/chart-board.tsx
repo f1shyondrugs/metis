@@ -1,6 +1,7 @@
 "use client";
 
 import { useEscapeDismiss } from "@/components/use-escape-dismiss";
+import { StickyActions } from "@/components/ui/sticky-actions";
 
 import { ChartBoundary } from "@/components/chart-boundary";
 import { useChartMotion } from "@/components/use-chart-motion";
@@ -385,7 +386,7 @@ export function ChartBoard({
 
   const charts = document?.charts || [];
   const toolbar = (
-    <div className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-md border border-border/50 bg-background/90 p-0.5 text-[11px]">
+    <StickyActions className="m-2 flex items-center gap-1 rounded-md border border-border/50 bg-background/95 p-0.5 text-[11px]">
       {(readOnly ? ["board"] as const : ["board", "edit", "code"] as const).map((item) => (
         <button
           key={item}
@@ -405,7 +406,7 @@ export function ChartBoard({
       >
         {fullscreen ? <Minimize2 className="size-3.5" /> : <Fullscreen className="size-3.5" />}
       </button>
-    </div>
+    </StickyActions>
   );
 
   const body = mode === "code" ? (
@@ -480,8 +481,8 @@ export function ChartBoard({
     <div
       ref={rootRef}
       className={cn(
-        "group relative my-2 max-w-full overflow-hidden rounded-lg border border-border/40 bg-background [contain:layout_paint_style]",
-        fullscreen && "my-0 flex h-full flex-col rounded-none border-0",
+        "group relative my-2 grid min-h-0 max-w-full grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-clip rounded-lg border border-border/40 bg-background [contain:layout_paint_style]",
+        fullscreen && "my-0 h-full rounded-none border-0",
       )}
       data-editor-control="chart"
       data-chart-source={source}
@@ -489,7 +490,7 @@ export function ChartBoard({
       onPointerDown={(event) => event.stopPropagation()}
     >
       {toolbar}
-      {body}
+      <div className="[grid-area:1/1] flex min-h-0 min-w-0 flex-col">{body}</div>
     </div>
   );
 

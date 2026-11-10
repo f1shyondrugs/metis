@@ -61,6 +61,6 @@ test("chart board uses the requested palette and graph-board chrome", () => {
   assert.match(board, /fill: axisColor/);
   assert.doesNotMatch(board, /hsl\(var\(--/);
   assert.match(board, /rounded-lg border border-border\/40 bg-background/);
-  assert.match(board, /rounded-md border border-border\/50 bg-background\/90/);
+  assert.match(board, /rounded-md border border-border\/50 bg-background\/95/);
   assert.doesNotMatch(board, /glow/);
 });

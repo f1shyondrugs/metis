@@ -1,6 +1,7 @@
 "use client";
 
 import { useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import { StickyActions } from "@/components/ui/sticky-actions";
 import { FieldDictationButton, FieldDictationContext } from "@/components/field-dictation";
 import { embedDictationFields, type EmbedDictationField } from "@/lib/html-embed-dictation";
 import {
@@ -73,11 +74,11 @@ export function HtmlEmbed({ source, streaming = false }: { source: string; strea
           allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'"
           srcDoc={document} onLoad={() => { setLoadedId(id); frame.current?.contentWindow?.postMessage({ type: "metis-html-dictation", id, action: "refresh" }, "*"); }} onError={() => { setLoadedId(id); setFailed(true); }}
           className="block w-full min-w-0 rounded-lg border border-border/60 bg-background" style={{ height }} />
-        {loaded && voice?.enabled ? fields.map(field => <div key={id + field.field} className="absolute z-10" style={{ left: field.left + field.width - 44, top: field.top + 1 }}>
-          <FieldDictationButton onStart={() => sendDictation(field.field, "begin")} onTranscript={text => {
+        {loaded && voice?.enabled ? fields.map(field => <div key={id + field.field} className="pointer-events-none absolute grid" style={{ left: field.left + 1, top: field.top + 1, width: field.width, height: Math.min(field.height, height - field.top) }}>
+          <StickyActions className="mr-0.5"><FieldDictationButton onStart={() => sendDictation(field.field, "begin")} onTranscript={text => {
             sendDictation(field.field, "commit", text);
             return finalText => sendDictation(field.field, "commit", finalText);
-          }} />
+          }} /></StickyActions>
         </div>) : null}
         </div>
         {failed ? <p role="alert" className="mt-2 text-xs text-destructive">Part of this interactive response could not run. You can inspect its HTML below.</p> : null}

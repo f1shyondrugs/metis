@@ -14,6 +14,14 @@ The optional bridge reports at most 30 visible eligible fields and their rectang
 
 The parent validates contentWindow, opaque origin, document generation, message shape and bounded geometry. Source/theme/chat changes replace the frame generation and cancel its controls. Load/refresh handshakes avoid losing initial field geometry. Streaming previews and public/disabled contexts never enable the bridge.
 
+## Controls while scrolling
+
+`StickyActions` keeps controls bounded by their owning field, code block or embed. Put it beside the scrolling content, using an overlapping grid when controls overlay the content. Outer cards use `overflow: clip` to retain rounded clipping without creating a scrollport that traps sticky positioning. A containing pane can reserve header space with `--contained-actions-top` (default 8px); file footers use the bottom edge. Controls leave with their component instead of following unrelated content.
+
+HTML controls follow the visible intersection of the eligible field and its iframe viewport. This preserves the microphone when a tall field is partially scrolled out inside the frame; field values and audio permissions remain unchanged. Initial frame measurement uses a bounded timer because offscreen iframe animation frames may be suspended.
+
+`tests/sticky-controls.browser.tsx` exercises nested vertical scrolling, horizontal code scrolling, textarea scrolling, iframe scrolling, exact copy and fullscreen actions in actual components. Run it with the app stylesheet at desktop, tablet and mobile widths.
+
 ## Verification
 
 - tests/field-dictation.test.tsx checks insertion limits, field exclusions, actual form rendering and message bounds.

@@ -35,7 +35,8 @@ function installEmbedDictation(id: string, allowed: typeof dictationAllowed, ins
         if (!field) { field = "field-" + (++count); identities.set(element, field); fields.set(field, element); }
         if (!element.hasAttribute("data-metis-dictation-field")) element.setAttribute("data-metis-dictation-field", "");
         const rect = element.getBoundingClientRect();
-        if (rect.width >= 44 && rect.height >= 32 && rect.left >= 0 && rect.top >= 0 && rect.bottom > 0 && rect.top < innerHeight && visible.length < 30) visible.push({field,left:rect.left,top:rect.top,width:rect.width,height:rect.height});
+        const left=Math.max(0,rect.left),top=Math.max(0,rect.top),right=Math.min(innerWidth,rect.right),bottom=Math.min(innerHeight,rect.bottom);
+        if (right-left >= 44 && bottom-top >= 32 && visible.length < 30) visible.push({field,left,top,width:right-left,height:bottom-top});
       }
       for (const [field, element] of fields) if (!element.isConnected) { fields.delete(field); captures.delete(field); }
       const signature = JSON.stringify(visible);

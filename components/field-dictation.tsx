@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useRef, type ComponentProps } from "react";
 import { VoiceInput } from "@/components/voice-input";
+import { StickyActions } from "@/components/ui/sticky-actions";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { dictationAllowed, insertFieldTranscript } from "@/lib/field-dictation";
@@ -58,12 +59,12 @@ function Field({ multiline, value, onValueChange, dictationLabel, ...props }: (I
   const type = multiline ? "textarea" : ("type" in props ? props.type : undefined) || "text";
   const eligible = settings?.enabled && !props.disabled && !props.readOnly && dictationAllowed(type, [dictationLabel, props.name, props.id, props["aria-label"], props.placeholder].filter(Boolean).join(" "), props.autoComplete);
   const Element = multiline ? Textarea : Input;
-  return <div className="relative min-w-0 w-full">
+  return <div className="relative grid min-w-0 w-full">
     <Element {...props as ComponentProps<typeof Input> & ComponentProps<typeof Textarea>} ref={control} value={value}
-      onChange={event => change(event.target.value)} className={cn(props.className, eligible && "pr-14")} />
-    {eligible ? <div className={cn("absolute right-0.5 z-10", multiline ? "top-0.5" : "top-1/2 -translate-y-1/2")}>
+      onChange={event => change(event.target.value)} className={cn(props.className, "[grid-area:1/1]", eligible && "pr-14")} />
+    {eligible ? <StickyActions className={cn("mr-0.5", multiline ? "mt-0.5" : "self-center")}>
       <FieldDictationButton onStart={start} onTranscript={transcript} />
-    </div> : null}
+    </StickyActions> : null}
   </div>;
 }
 export function DictationInput(props: InputProps) {

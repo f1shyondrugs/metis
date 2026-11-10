@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { StickyActions } from "@/components/ui/sticky-actions";
 import { Download, File, Maximize, Pencil, X } from "lucide-react";
 import { flushSync } from "react-dom";
 import { ImageSurface, ImageViewer, type ImageViewerHandle } from "@/components/image-viewer";
@@ -38,12 +39,14 @@ export function FileEmbed({ file, onChange, onRemove, className = "", resizable 
   },[file.url,file.text,kind,officeUrl,previewOnly]);
   const canEdit = Boolean(onChange && kind === "text" && text !== null && text.length <= 80_000 && !error);
   const save = () => { if(JSON.stringify({...file,text:draft}).length > 45_000) {setError("Edited content is too large for this embedding. Keep it below 45 KB, including formatting.");return;} if(onChange)onChange({...file,text:draft}); setEditing(false); };
-  return <div ref={rootRef} className={"relative flex min-h-0 min-w-0 flex-col overflow-hidden text-foreground " + className}
+  return <div ref={rootRef} className={"relative flex min-h-0 min-w-0 flex-col overflow-clip text-foreground " + className}
     data-file-embed={kind} onPointerDown={e=>e.stopPropagation()}
     style={file.height ? {height:file.height,width:file.width || undefined,maxWidth:"100%"}:undefined}>
-    {onRemove && <button type="button" aria-label={"Remove " + file.name} title="Remove file"
-      className="absolute right-2 top-2 z-20 flex size-7 items-center justify-center rounded bg-background/90 text-foreground hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-2 focus-visible:outline-ring"
-      onClick={()=>setRemoving(true)}><X className="size-4" aria-hidden="true"/></button>}
+    {onRemove && <div className="pointer-events-none absolute inset-0 grid"><StickyActions className="m-2">
+      <button type="button" aria-label={"Remove " + file.name} title="Remove file"
+        className="flex size-7 items-center justify-center rounded bg-background/90 text-foreground hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        onClick={()=>setRemoving(true)}><X className="size-4" aria-hidden="true"/></button>
+    </StickyActions></div>}
     <div className="min-h-0 flex-1 overflow-auto" style={{minHeight:kind === "audio" ? 60:120}}>
       {kind === "image" ?
         <div inert={previewOnly || undefined} className="h-full max-h-[70dvh] min-h-32"><ImageSurface key={file.url} src={file.url} alt={file.name} loading="lazy"/></div>
@@ -59,7 +62,7 @@ export function FileEmbed({ file, onChange, onRemove, className = "", resizable 
         : <div className="flex min-h-32 flex-col items-center justify-center gap-2 p-4"><File className="size-8 text-muted-foreground" aria-hidden="true"/><p className="max-w-full truncate text-xs">{file.name}</p><p className="text-xs text-muted-foreground">Preview unavailable for this file type. Download to open it.</p></div>}
       {error && <p role="alert" className="p-3 text-xs text-destructive">{error}</p>}
     </div>
-    {!previewOnly && <div className="flex shrink-0 items-center gap-2 border-t border-border/40 bg-background/80 px-2 py-1.5 text-xs">
+    {!previewOnly && <StickyActions edge="bottom" style={{ bottom: 0, right: 0 }} className="flex w-full shrink-0 items-center gap-2 border-t border-border/40 bg-background/95 px-2 py-1.5 text-xs">
       <span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}{file.size === undefined ? "" : " · " + formatFileBytes(file.size)}</span>
       {canEdit && !editing && <button type="button" aria-label={"Edit " + file.name} className="flex size-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" onClick={()=>{setDraft(text!);setEditing(true);}}><Pencil className="size-3.5" aria-hidden="true"/></button>}
       <FileWorkspaceActions file={file} />
@@ -76,7 +79,7 @@ export function FileEmbed({ file, onChange, onRemove, className = "", resizable 
           const up=(next:PointerEvent)=>{node.removeEventListener("pointermove",move);node.removeEventListener("pointerup",up);node.removeEventListener("pointercancel",up);if(movedRef.current)onChange({...file,height:Math.max(120,Math.min(1200,h+next.clientY-y)),width:Math.max(160,Math.min(1600,w+next.clientX-x))});};
           node.addEventListener("pointermove",move);node.addEventListener("pointerup",up);node.addEventListener("pointercancel",up);
         }}>↘</button>}
-    </div>}
+    </StickyActions>}
     {imageFullscreen && <ImageViewer ref={imageViewerRef} image={{src:file.url,alt:file.name,name:file.name}} initialFullscreen onOpenChange={open=>setImageFullscreen(open)}/>}
     <ConfirmDialog open={removing} onOpenChange={setRemoving} title="Remove file?" description="Remove this embedding. The original uploaded file is kept." confirmLabel="Remove" onConfirm={()=>onRemove?.()}/>
   </div>;
