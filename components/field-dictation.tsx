@@ -61,8 +61,8 @@ function Field({ multiline, value, onValueChange, dictationLabel, ...props }: (I
   const Element = multiline ? Textarea : Input;
   return <div className="relative grid min-w-0 w-full">
     <Element {...props as ComponentProps<typeof Input> & ComponentProps<typeof Textarea>} ref={control} value={value}
-      onChange={event => change(event.target.value)} className={cn(props.className, "[grid-area:1/1]", eligible && "pr-14")} />
-    {eligible ? <StickyActions className={cn("mr-0.5", multiline ? "mt-0.5" : "self-center")}>
+      onChange={event => change(event.target.value)} className={cn(props.className, "[grid-area:1/1]", eligible && "pr-14", eligible && (multiline ? "leading-6" : "min-h-11"))} />
+    {eligible ? <StickyActions style={multiline ? undefined : { alignSelf: "center" }} className={cn("mr-0.5", multiline && "-mt-px sm:mt-[3px] pointer-coarse:-mt-px")}>
       <FieldDictationButton onStart={start} onTranscript={transcript} />
     </StickyActions> : null}
   </div>;

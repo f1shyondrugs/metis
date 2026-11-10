@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, LoaderCircle, Mic, RotateCcw, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VoiceTranscriptPreview } from "@/components/voice-transcript-preview";
 import { openSelectedMicrophone } from "@/lib/local-microphone";
 import { transcribeRecording } from "@/lib/voice-upload";
 import { connectRealtimeVoice, type RealtimeVoiceSession } from "@/lib/voice-realtime";
@@ -526,10 +527,11 @@ export function VoiceInput({
   if (variant === "field") {
     const recording = state === "recording";
     const busy = ["permission", "uploading", "transcribing"].includes(state);
+    const liveTranscription = provider === "browser" || (provider === "openai" && realtime);
     return <Popover open={Boolean(livePreview || state === "error" || recording || busy)}>
       <PopoverAnchor asChild><div className="relative flex items-center gap-0.5" data-field-dictation="">
       <Button type="button" size="icon-action" variant="ghost"
-        className="size-11 shrink-0 text-muted-foreground sm:size-9" disabled={busy || (!voiceConfigured && !onOpenSettings)}
+        className="size-11 shrink-0 text-muted-foreground sm:size-9 pointer-coarse:size-11" disabled={busy || (!voiceConfigured && !onOpenSettings)}
         aria-label={recording ? "Stop recording" : busy ? "Transcribing voice input" : "Record voice input"}
         title={voiceConfigured ? "Voice input" : "Set up voice input"}
         onPointerDown={event => event.preventDefault()}
@@ -537,10 +539,21 @@ export function VoiceInput({
         {recording ? <Square className="size-4 text-destructive" /> : busy ? <LoaderCircle className="size-4 animate-spin" /> : <Mic className="size-4" />}
       </Button>
       </div></PopoverAnchor>
-      {livePreview || state === "error" || recording || busy ? <PopoverContent align="end" side="bottom" collisionPadding={8} onOpenAutoFocus={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()} role={state === "error" ? "alert" : "status"}
-        className="w-64 max-w-[80vw] p-2 text-xs">
-        {recording || busy ? <Button type="button" size="xs" variant="ghost" className="float-right ml-2" aria-label="Cancel voice input" onClick={discard}>Cancel</Button> : null}
-        {state === "error" ? error : livePreview || (recording ? "Listening…" : "Transcribing…")}
+      {livePreview || state === "error" || recording || busy ? <PopoverContent align="end" side="bottom" collisionPadding={8} onOpenAutoFocus={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()} role={state === "error" ? "alert" : "dialog"} aria-label="Voice input"
+        className="w-72 max-w-[calc(100vw-1rem)] p-3 text-sm">
+        {state === "error" ? error : <>
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <span className="text-xs text-muted-foreground">{recording ? "Recording" : state === "permission" ? "Starting microphone…" : "Transcribing…"}</span>
+            <div className="flex shrink-0 items-center gap-2">
+              {recording ? <span className="text-xs tabular-nums text-muted-foreground">{formatDuration(elapsed)}</span> : null}
+              {recording || busy ? <Button type="button" size="xs" variant="ghost" className="h-9 px-2 sm:h-7 pointer-coarse:min-h-11" aria-label="Cancel voice input" onClick={discard}>Cancel</Button> : null}
+            </div>
+          </div>
+          {liveTranscription && (recording || livePreview) ? <VoiceTranscriptPreview text={livePreview || "Listening…"} className="px-0 py-2" />
+            : recording ? <div role="img" aria-label="Audio waveform" className="mt-2 flex h-10 items-center justify-between gap-1 overflow-hidden">
+              {Array.from({ length: 36 }, (_, index) => <span key={index} className="w-1 shrink-0 rounded-full bg-primary/65 motion-safe:transition-[height]" style={{ height: `${Math.max(2, 2 + level * (8 + (0.35 + Math.abs(Math.sin(index * 1.73)) * 0.65) * 14))}px` }} />)}
+            </div> : null}
+        </>}
         {state === "error" ? <div className="mt-1 flex justify-end gap-1">
           {lastRecording ? <Button type="button" size="xs" variant="ghost" onClick={() => void transcribe(lastRecording.blob, lastRecording.duration)}>Retry</Button> : null}
           <Button type="button" size="xs" variant="ghost" onClick={discard}>Dismiss</Button>
