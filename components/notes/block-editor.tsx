@@ -4,6 +4,7 @@ import { createClientId } from "@/lib/client-id";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useId, type ReactNode, type PointerEventHandler } from "react";
 import { createPortal } from "react-dom";
 import {EmbeddedSourceControlsContext} from "@/components/embedded-source-controls";
+import { StickyActions } from "@/components/ui/sticky-actions";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
 import { type AnyExtension, type Editor, type JSONContent } from "@tiptap/core";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
@@ -106,10 +107,10 @@ function SourceBlockView({ node, updateAttributes, selected, editor }: NodeViewP
     return () => root.removeEventListener("metis:markdown-embed-change", onEmbedChange);
   }, [editor, node.attrs.source, updateAttributes]);
   return <NodeViewWrapper ref={rootRef} className={"notes-source-block" + (selected ? " is-selected" : "")} data-notes-source="">
-    <div className="notes-source-header" contentEditable={false}>
+    <StickyActions className="notes-source-header" contentEditable={false} style={{ top: "var(--notes-source-actions-top)", right: 0 }}>
       <span>{String(node.attrs.label || "Markdown source")}</span>
       <button type="button" disabled={!editor.isEditable} onClick={() => setEditing(!editing)}>{editing ? "Preview" : "Edit source"}</button>
-    </div>
+    </StickyActions>
     {editing ? <div contentEditable={false}><MarkdownSourceEditor ariaLabel="Block Markdown source" disabled={!editor.isEditable} value={String(node.attrs.source || "")} onChange={source => updateAttributes({ source })} maxLength={100_000} onExceeded={() => {}} onFiles={async () => {}} /></div> :
       <div contentEditable={false} className="notes-source-preview"><EmbeddedSourceControlsContext.Provider value><Markdown content={String(node.attrs.source || "")} editableFiles={editor.isEditable} /></EmbeddedSourceControlsContext.Provider></div>}
   </NodeViewWrapper>;

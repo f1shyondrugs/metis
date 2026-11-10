@@ -6,6 +6,7 @@ import {ChartBoard} from "../components/chart-board";
 import {GraphBoard} from "../components/graph-board";
 import {MermaidDiagram} from "../components/mermaid-diagram";
 import {FileEmbed} from "../components/file-embed";
+import {NotesBlockEditor} from "../components/notes/block-editor";
 import {DictationTextarea,FieldDictationContext} from "../components/field-dictation";
 import {HtmlEmbed} from "../components/html-embed";
 import {TooltipProvider} from "../components/ui/tooltip";
@@ -34,6 +35,7 @@ function App(){const[value,setValue]=useState(Array.from({length:100},()=> "Exis
  <section id="mermaid"><h2>Diagram source</h2><MermaidDiagram code={"flowchart LR\n"+Array.from({length:45},(_,i)=>"N"+i+" --> N"+(i+1)).join("\n")} language="mermaid"/></section>
  <section id="file"><h2>Image</h2><FileEmbed file={{url:image,name:"Preview.png",mimeType:"image/png",height:1050}} className="rounded-lg border border-border"/></section>
  <section id="html"><h2>Interactive input</h2><HtmlEmbed source={widget}/></section>
+ <section id="notes"><h2>Notebook embed</h2><NotesBlockEditor value={"\x60\x60\x60chart\n"+JSON.stringify(JSON.parse(chart),null,2)+"\n\x60\x60\x60"} onChange={()=>{}} editorId="sticky-note-fixture"/></section>
  <div id="after" style={{height:800}}>Content after the embeds</div>
  </div></FieldDictationContext.Provider></TooltipProvider>;
 }
@@ -78,8 +80,14 @@ async function run(){
  check(htmlButton.top>=port().top-1&&htmlButton.bottom<=port().bottom,"HTML field microphone sticks within its target");
  document.querySelector<HTMLIFrameElement>("#html iframe")!.contentWindow!.postMessage({type:"fixture-scroll"},"*");await pause(200);
  check(rect('#html [aria-label="Record voice input"]').top>=port().top-1,"HTML field microphone remains after internal iframe scrolling");
+ await until(()=>document.querySelector("#notes .notes-source-block [aria-label=\"Open chart fullscreen\"]"),"notebook embedded chart");
+ scrollToElement("#notes .notes-source-block",300);await pause(100);
+ const noteHeader=rect("#notes .notes-source-header"),noteAction=rect('#notes [aria-label="Open chart fullscreen"]');
+ check(noteHeader.top>=port().top-1&&noteHeader.bottom<=port().bottom&&noteAction.top>=noteHeader.bottom-1&&noteAction.bottom<port().bottom,"Notebook source header and nested embed actions stay reachable without overlap");
+ document.querySelector<HTMLButtonElement>("#notes .notes-source-header button")!.click();await until(()=>document.querySelector("#notes .cm-editor"),"notebook source mode");await pause(100);
+ check(rect("#notes .notes-source-header button").top>=port().top-1,"Notebook source-mode Preview action stays reachable");
  scrollToElement("#after",160);await pause(100);
- check(rect('#code .markdown-code-toolbar button').bottom<port().top&&rect('#field [aria-label="Record voice input"]').bottom<port().top&&rect('#graphs [aria-label="Open graph fullscreen"]').bottom<port().top&&rect('#file [aria-label="Fullscreen Preview.png"]').bottom<port().top&&rect('#html [aria-label="Record voice input"]').bottom<port().top,"Controls leave with their own content");
+ check(rect('#code .markdown-code-toolbar button').bottom<port().top&&rect('#field [aria-label="Record voice input"]').bottom<port().top&&rect('#graphs [aria-label="Open graph fullscreen"]').bottom<port().top&&rect('#file [aria-label="Fullscreen Preview.png"]').bottom<port().top&&rect('#html [aria-label="Record voice input"]').bottom<port().top&&rect("#notes .notes-source-header").bottom<port().top,"Controls leave with their own content");
  document.querySelector<HTMLElement>("#scroller")!.scrollTop=0;await pause();
  check(document.documentElement.scrollWidth<=innerWidth+1,"No page-wide horizontal overflow");
  document.documentElement.dataset.fixtureResult="PASS";report.textContent=results.join("\n")+"\nSTICKY_CONTROLS_BROWSER_PASS "+results.length;
@@ -89,5 +97,6 @@ async function run(){
  if(view==="charts")scrollToElement("#charts [data-editor-control=chart]",300);
  if(view==="file")scrollToElement("#file [data-file-embed]",180);
  if(view==="html")scrollToElement("#html iframe",300);
+ if(view==="notes")scrollToElement("#notes .notes-source-block",300);
 }
 run().catch(e=>{document.documentElement.dataset.fixtureResult="FAIL";report.textContent=results.join("\n")+"\nFAIL "+String(e);});

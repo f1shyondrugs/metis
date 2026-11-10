@@ -103,12 +103,12 @@
 .notes-column { flex:1; min-width:0; border-left:1px solid var(--border); padding-left:12px; }
 .notes-page-reference,.notes-embed-block { padding:12px 14px; border:1px solid var(--border); border-radius:4px; margin:12px 0; }
 .notes-page-reference a,.notes-embed-block a { text-decoration:none; font-weight:550; }
-.notes-source-block { margin:16px 0; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
-.notes-source-header { background:var(--secondary); padding:7px 10px; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:var(--muted-foreground); text-transform:capitalize; }
+.notes-source-block { --notes-source-actions-top:var(--contained-actions-top,0px); margin:16px 0; border:1px solid var(--border); border-radius:4px; overflow:clip; }
+.notes-source-header { min-height:36px; width:100%; z-index:21; background:var(--secondary); padding:7px 10px; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:var(--muted-foreground); text-transform:capitalize; }
 .notes-source-header button { text-transform:none; color:var(--foreground); padding:2px 5px; border-radius:4px; }
 .notes-source-header button:hover { background:var(--accent); }
 .notes-source-block textarea { display:block; width:100%; resize:vertical; padding:12px; background:var(--background); font-family:var(--font-mono),monospace; font-size:12px; line-height:1.5; outline:none; }
-.notes-source-preview { padding:12px; white-space:normal; }.notes-source-preview .markdown-body { font-size:14px; }
+.notes-source-preview { --contained-actions-top:calc(var(--notes-source-actions-top) + 36px); padding:12px; white-space:normal; }.notes-source-preview .markdown-body { font-size:14px; }
 .notes-math-block { margin:14px 0; padding:12px; background:var(--secondary); border-radius:4px; }
 .notes-math-preview { display:block; width:100%; max-width:100%; overflow:auto; min-height:42px; padding:0.25em 0; }.notes-math-preview .katex-display { margin:0; }
 .notes-math-input { display:flex; align-items:center; gap:10px; margin-top:8px; font-size:11px; color:var(--muted-foreground); }

@@ -16,7 +16,7 @@ The parent validates contentWindow, opaque origin, document generation, message 
 
 ## Controls while scrolling
 
-`StickyActions` keeps controls bounded by their owning field, code block or embed. Put it beside the scrolling content, using an overlapping grid when controls overlay the content. Outer cards use `overflow: clip` to retain rounded clipping without creating a scrollport that traps sticky positioning. A containing pane can reserve header space with `--contained-actions-top` (default 8px); file footers use the bottom edge. Controls leave with their component instead of following unrelated content.
+`StickyActions` keeps controls bounded by their owning field, code block or embed. Put it beside the scrolling content, using an overlapping grid when controls overlay the content. Outer cards use `overflow: clip` to retain rounded clipping without creating a scrollport that traps sticky positioning. A containing pane can reserve header space with `--contained-actions-top` (default 8px); file footers use the bottom edge. Controls leave with their component instead of following unrelated content. Notebook source blocks use the same control and clipping rules; their source header reserves 36px above nested embed actions to keep both reachable.
 
 HTML controls follow the visible intersection of the eligible field and its iframe viewport. This preserves the microphone when a tall field is partially scrolled out inside the frame; field values and audio permissions remain unchanged. Initial frame measurement uses a bounded timer because offscreen iframe animation frames may be suspended.
 
