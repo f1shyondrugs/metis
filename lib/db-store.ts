@@ -29,6 +29,7 @@ import type {
 } from "@/lib/store";
 import { chatUploadDir, resolveUploadPath } from "@/lib/uploads";
 import { BoundedSnapshotCache } from "@/lib/snapshot-cache";
+import { readChatVersion } from "@/lib/chat-version-index";
 import { RUNTIME_MODES } from "@/lib/runtime-mode";
 import { applyChatCheckpoints } from "@/lib/chat-checkpoints";
 import { pageIsReady, pageState, readChatPage, rebuildChatPage, syncChatPage, syncChatCheckpointPage, syncChatAppendedPage } from "@/lib/chat-page-store";
@@ -415,12 +416,9 @@ export function getChat(id: string, ownerId?: string): Chat | null {
   if (!id || id.includes("/") || id.includes("..") || !canAccessChat(id,ownerId)) return null;
   const db = getDatabase();
   // Check the tiny revision row before transferring a potentially huge transcript.
-  const identity = ownerId
-    ? db.prepare("SELECT updated_at AS updatedAt FROM chats WHERE id = ?").get(id)
-    : db.prepare("SELECT updated_at AS updatedAt FROM chats WHERE id = ?").get(id);
-  const updatedAt = (identity as { updatedAt?: string } | undefined)?.updatedAt;
-  if (!updatedAt) return null;
-  const revision=pageState(db,id)?.revision ?? 0;
+  const identity = readChatVersion(db, id);
+  if (!identity) return null;
+  const { updatedAt, revision } = identity;
   const cached = chatCache.get(id);
   if (cached && cached.updatedAt === updatedAt && cached.revision===revision) {
     if (cached.chat.incognito && cached.chat.expiresAt && new Date(cached.chat.expiresAt).getTime() <= Date.now()) {
@@ -461,6 +459,16 @@ export function getChatPage(
   if(!page)return null;
   if(page.chat.incognito && page.chat.expiresAt && Date.parse(page.chat.expiresAt)<=Date.now())return null;
   return {...page,chat:chatForUser({...page.chat,...getChatActivity(id)},ownerId)};
+}
+
+/** Read one current message without transferring the full transcript when its index is ready. */
+export function getChatMessage(id: string, messageId: string, ownerId?: string): ChatMessage | null {
+  if (!messageId || !getChatMetadata(id, ownerId)) return null;
+  const db = getDatabase();
+  if (!pageIsReady(db, id)) return getChat(id, ownerId)?.messages.find(message => message.id === messageId) ?? null;
+  // Page writes and checkpoints advance the same revision. Never use a stale index.
+  const row = db.prepare("SELECT data FROM chat_page_messages WHERE chat_id=? AND message_id=?").get(id, messageId);
+  return parseData<ChatMessage>(row);
 }
 
 /** Read only metadata even when the canonical transcript exceeds the worker heap. */

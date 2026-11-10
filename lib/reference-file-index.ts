@@ -5,14 +5,8 @@ import { chatForUser } from "./project-access";
 import type { Chat,ChatIndexEntry } from "./store";
 import type { ReferenceResult } from "./reference-search";
 import { normalizeReferenceText, referenceMatches } from "./reference-search";
+import { initializeChatVersionIndexes } from "./chat-version-index";
 const initializedDatabases = new WeakSet<DatabaseSync>();
-const versionDatabases = new WeakSet<DatabaseSync>();
-function initializeVersionIndexes(db:DatabaseSync){
- if(versionDatabases.has(db))return;
- // Both rows contain potentially large JSON. A covering lookup must avoid those pages.
- db.exec("CREATE INDEX IF NOT EXISTS chats_reference_version ON chats(id,updated_at); CREATE INDEX IF NOT EXISTS chat_pages_reference_revision ON chat_page_state(chat_id,revision)");
- versionDatabases.add(db);
-}
 
 function initializeTitleMatch(db:DatabaseSync){
  if (!initializedDatabases.has(db)) {
@@ -23,7 +17,7 @@ function initializeTitleMatch(db:DatabaseSync){
 export function initializeReferenceIndex(db:DatabaseSync){
  initializeTitleMatch(db);
  db.exec("PRAGMA busy_timeout=100;");
- initializeVersionIndexes(db);
+ initializeChatVersionIndexes(db);
  db.exec("CREATE TABLE IF NOT EXISTS chat_reference_state(chat_id TEXT PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,version TEXT NOT NULL);"+
   "CREATE TABLE IF NOT EXISTS chat_reference_files(chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,position INTEGER NOT NULL,data TEXT NOT NULL,PRIMARY KEY(chat_id,position));"+
   "CREATE TABLE IF NOT EXISTS chat_reference_metadata(chat_id TEXT PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,version TEXT NOT NULL,data TEXT NOT NULL);"+
@@ -32,7 +26,7 @@ export function initializeReferenceIndex(db:DatabaseSync){
  if(!columns.some(column=>column.name==="normalized"))db.exec("ALTER TABLE chat_reference_files ADD COLUMN normalized TEXT");
 }
 export function referenceVersion(db:DatabaseSync,chatId:string){
- initializeVersionIndexes(db);
+ initializeChatVersionIndexes(db);
  return (db.prepare("SELECT 'n2:'||COALESCE(s.revision,0)||':'||c.updated_at AS version FROM chats c INDEXED BY chats_reference_version LEFT JOIN chat_page_state s INDEXED BY chat_pages_reference_revision ON s.chat_id=c.id WHERE c.id=?").get(chatId) as {version:string}|undefined)?.version;
 }
 export async function prepareReferenceMetadata(db:DatabaseSync,chatId:string){

@@ -1,7 +1,7 @@
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import { getPendingQuestion, resolveQuestion, cancelQuestionAsResponse } from "@/lib/db-questions";
 import { queueUserInputResume, releaseUserInputWait } from "@/lib/db-jobs";
-import { appendMessage, getChat, updateChat } from "@/lib/db-store";
+import { appendIndexedMessageInTransaction, getChat, getChatMessage, getChatMetadata, updateChat } from "@/lib/db-store";
 
 import { normalizeQuestionAnswers, questionAnswerDisplay, QuestionValidationError } from "@/lib/question-contract";
 import { questionAnswerAnchor } from "@/lib/question-transcript";
@@ -60,23 +60,22 @@ export async function POST(req: Request) {
   }
   return transaction(() => {
     const firstAnswer = getPendingQuestion(questionId, userId)?.status === "waiting_for_user";
-    const beforeChat = getChat(pending.chatId, userId);
+    const beforeChat = firstAnswer ? getChat(pending.chatId, userId) : null;
     const progress = userInputProgress(beforeChat?.messages ?? []);
     const resolved = cancelled ? cancelQuestionAsResponse(questionId, userId, version) : resolveQuestion(questionId, input, userId, version);
     if (!resolved) return Response.json({ error: "This form is no longer available. Refresh the chat." }, { status: 409 });
     const answerId = `question-answer-${questionId}`;
-    const chat = getChat(resolved.chatId, userId);
-    if (resolved.summary && !chat?.messages.some(message => message.id === answerId)) {
-      appendMessage(resolved.chatId, {
+    let answerMessage = getChatMessage(resolved.chatId, answerId, userId);
+    if (resolved.summary && !answerMessage) {
+      answerMessage = appendIndexedMessageInTransaction(resolved.chatId, {
         id: answerId, role: "user", content: resolved.summary,
         questionAnswer: {
           questionId,
-          ...questionAnswerAnchor(chat?.messages ?? [], questionId, { cursorFallback: true }),
+          ...questionAnswerAnchor((beforeChat ?? getChat(resolved.chatId, userId))?.messages ?? [], questionId, { cursorFallback: true }),
           ...(!resolved.cancelled && resolved.values ? { display: questionAnswerDisplay(pending.questions, resolved.values, resolved.summary) } : {}),
         },
       }, userId);
     }
-    const answerMessage = getChat(resolved.chatId, userId)?.messages.find(message => message.id === answerId);
     if (resolved.jobId && firstAnswer) {
       queueUserInputResume({
         jobId: resolved.jobId,
@@ -89,12 +88,13 @@ export async function POST(req: Request) {
     }
     // Release the durable UI state immediately. The MCP request will observe
     // the answer independently and continue the agent run.
-    const currentChat = getChat(resolved.chatId, userId);
+    const currentChat = getChatMetadata(resolved.chatId, userId);
     if (currentChat?.pendingQuestion?.questionId === questionId) {
       updateChat(
         resolved.chatId,
         { runStatus: "running", pendingQuestion: null, badge: null },
         userId,
+        { metadataProjection: true },
       );
     }
     return Response.json({

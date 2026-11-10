@@ -1,5 +1,5 @@
 import {
-  getChat,
+  getChatMetadata,
   listMemories,
 } from "@/lib/db-store";
 import { getProject } from "@/lib/projects";
@@ -84,7 +84,7 @@ function visibleNotes(ownerId: string | undefined, chatId: string, incognito: bo
  * separate; this is only the scoped note/reference/project memory surface.
  */
 export function loadContextScope(input: ContextScopeInput): ContextScope | null {
-  const chat = getChat(input.chatId, input.ownerId);
+  const chat = getChatMetadata(input.chatId, input.ownerId);
   if (!chat) return null;
 
   const incognito = Boolean(chat.incognito);
@@ -214,7 +214,7 @@ export function createChatNote(
   chatId: string,
   input: Omit<NoteWriteInput, "chatId" | "scope" | "ownerId" | "projectId">,
 ) {
-  const chat = getChat(chatId, ownerId);
+  const chat = getChatMetadata(chatId, ownerId);
   if (!chat) return null;
   return createNote({
     ...input,
@@ -232,7 +232,7 @@ export function addLearnedFact(
   chatId: string,
   fact: { id?: string; content: string },
 ): ScopedLearnedFact | null {
-  const chat = getChat(chatId, ownerId);
+  const chat = getChatMetadata(chatId, ownerId);
   if (!chat || chat.incognito) return null;
   const content = fact.content.trim().slice(0, MAX_FACT_CHARS);
   if (!content) return null;
@@ -266,7 +266,7 @@ export function scopeFactsFromMemories(memories: readonly Memory[]): ScopedLearn
 }
 
 export function globalFactsForScope(input: ContextScopeInput): ScopedLearnedFact[] {
-  const chat = getChat(input.chatId, input.ownerId);
+  const chat = getChatMetadata(input.chatId, input.ownerId);
   if (!chat || chat.incognito || input.includeGlobal === false) return [];
   const project = chat.projectId ? getProject(chat.projectId, input.ownerId ?? chat.ownerId) : null;
   if ((chat.projectId && !project) || project?.memoryMode === "project_only") return [];

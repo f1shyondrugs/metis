@@ -39,6 +39,9 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit --pretty false
 
+      - name: Verify targeted SQL reads and question responses
+        run: pnpm exec tsx --test tests/targeted-sql-reads.test.ts tests/question-flow.test.ts tests/question-reload.test.ts tests/user-input-continuation.test.ts tests/user-input-lease.test.ts tests/chat-checkpoints.test.ts tests/chat-memory-view.test.ts tests/context-layers.test.ts tests/shared-context.test.ts tests/reference-search-performance.test.ts
+
       - name: Verify usage charts and bounded runtime timing
         run: pnpm exec tsx --test tests/usage-chart.test.tsx tests/runtime-performance.test.ts tests/usage-model-contributions.test.ts tests/usage-api-costs.test.ts tests/account-profile-usage.test.ts
 

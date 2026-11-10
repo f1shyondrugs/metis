@@ -1,11 +1,11 @@
 import {loadContextScope, globalFactsForScope} from "@/lib/context-scope";
-import {getChat} from "@/lib/db-store";
+import {getChatMetadata} from "@/lib/db-store";
 import {chatMemoryLabel, type ChatMemoryView, type WorkspaceMemory} from "@/lib/chat-memory-view-model";
 
 /** Read-only view of the memories available to this owned chat. */
 export function loadChatMemoryView(chatId: string, ownerId: string): ChatMemoryView | null {
  if (!ownerId) return null;
- const chat = getChat(chatId, ownerId);
+ const chat = getChatMetadata(chatId, ownerId);
  if (!chat) return null;
  const scope = loadContextScope({chatId, ownerId, includeGlobal: false});
  if (!scope || (!chat.incognito && chat.projectId && !scope.project)) return null;
