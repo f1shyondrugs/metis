@@ -42,6 +42,9 @@ jobs:
       - name: Verify notebook serialization and presence recovery
         run: pnpm exec tsx --test tests/note-collaboration.test.ts tests/note-collaboration-roundtrip.test.ts tests/notebook-presence.test.ts tests/notebook-presence-connection.test.ts tests/notes-editor-markdown.test.ts tests/notes-editor-performance.test.ts
 
+      - name: Verify field dictation, voice and prompt contracts
+        run: pnpm exec tsx --test tests/field-dictation.test.tsx tests/html-embed.test.tsx tests/sources-prompt.test.ts tests/voice-realtime.test.ts tests/composer-send.test.ts tests/question-contract.test.ts tests/credential-question-policy.test.mjs
+
       - name: Run release and updater contract tests
         run: pnpm exec tsx --test tests/release-manifest.test.ts tests/github-releases.test.ts
 

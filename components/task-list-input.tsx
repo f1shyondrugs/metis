@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { ArrowUp, ArrowDown, Check, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { DictationTextarea } from "@/components/field-dictation";
 import { TASK_LIST_MAX_ITEMS, TASK_LIST_MAX_CHARS } from "@/lib/mcp-core/task-list.mjs";
 
 type Row = { id: string; text: string };
@@ -30,8 +30,8 @@ function TaskRow({ row, index, count, editing, disabled, onText, onMove, onDelet
     <span className="pt-2 text-sm tabular-nums text-muted-foreground" aria-hidden="true">{index + 1}.</span>
     <div className="min-w-0">
       {editing ? <>
-        <Textarea aria-label={label} disabled={disabled} autoFocus={!row.text} value={row.text} maxLength={TASK_LIST_MAX_CHARS}
-          onChange={event => onText(event.target.value)} className="min-h-20 text-sm" />
+        <DictationTextarea dictationLabel={label} aria-label={label} disabled={disabled} autoFocus={!row.text} value={row.text} maxLength={TASK_LIST_MAX_CHARS}
+          onValueChange={onText} className="min-h-20 text-sm" />
         <div className="mt-1 flex items-center gap-1">
           <button type="button" {...drag.attributes} {...drag.listeners} disabled={disabled}
             aria-label={`Drag ${label}`}

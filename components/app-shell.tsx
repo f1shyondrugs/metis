@@ -174,6 +174,7 @@ import { TeamAgentAvatar } from "@/components/team-agent-avatar";
 import { ProjectNav } from "@/components/project-nav";
 import { ProjectAvatar } from "@/components/project-avatar";
 import { VoiceInput } from "@/components/voice-input";
+import { FieldDictationContext } from "@/components/field-dictation";
 import { VoiceTranscriptPreview } from "@/components/voice-transcript-preview";
 import { QuestionAnswerText } from "@/components/question-answer-text";
 import { BrowserSettingsControls } from "@/components/browser-settings-controls";
@@ -10273,6 +10274,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   return (
     <InternalLinkPreviewChat.Provider value={activeChatId}>
+    <FieldDictationContext.Provider value={{ chatId: activeChatId, enabled: voiceInputEnabled, provider: voiceProvider, modelId: voiceModelId, realtime: voiceRealtime, endpoint: voiceEndpoint, connectionId: voiceConnectionId, maxDurationSeconds: voiceMaxDurationSeconds, onOpenSettings: () => { setSettingsTab("general"); setSettingsSectionRequest("settings-voice-input"); setSettingsOpen(true); } }}>
     <FileWorkspaceContext.Provider value={incognito ? null : { chatId: activeChatId, open: createWorkspace }}>
     <div
       className="metis-shell flex h-dvh overflow-hidden bg-background"
@@ -12447,6 +12449,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       </Dialog>
     </div>
     </FileWorkspaceContext.Provider>
+    </FieldDictationContext.Provider>
     </InternalLinkPreviewChat.Provider>
   );
 }

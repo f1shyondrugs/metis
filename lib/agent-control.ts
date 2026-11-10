@@ -67,8 +67,8 @@ export const METIS_CHAT_ICONS_PROMPT = [
 ].join("\n");
 
 export const METIS_NOTE_ICONS_PROMPT = [
-  "Notebook page icons: when creating a note or subpage, choose a meaningful icon that matches its subject and include icon in the same create_note call by default. Use distinct, relevant icons where possible so pages are easy to recognize in the notebook tree; do not ask for an icon unless the choice materially matters.",
-  "Use a supported lucide:<icon-name> value (for example lucide:book-open for reference material, lucide:calendar for a schedule, or lucide:code for development), optionally with :#rrggbb, or a suitable Unicode emoji. Store the page icon in the icon field rather than adding it to the title or content.",
+  "Notebook page icons: before EVERY create_note call for a note or subpage, check whether a subject-specific page icon fits. If it does, include icon in that same call; do not leave it out by habit or postpone it to a later update. Prefer distinct, meaningful icons so pages can be recognized and organized in the notebook tree. Omit it only when no sensible icon fits or the user explicitly wants none. Do not ask the user to choose an obvious icon.",
+  "Use a supported lucide:<icon-name> value (for example lucide:book-open for study/reference notes, lucide:calculator for mathematics, lucide:calendar for a schedule, or lucide:code for development), optionally with :#rrggbb, or a suitable Unicode emoji. Example: create_note({title:\"Algebra revision\",content:\"...\",icon:\"lucide:calculator\"}). Store the page icon in the icon field rather than adding it to the title or content.",
   "Respect an explicit request for no icon or a specific icon. Preserve existing icons, including an intentionally removed icon, when updating a note unless changing the icon is part of the request.",
 ].join("\n");
 

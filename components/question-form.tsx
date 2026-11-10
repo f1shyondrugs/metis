@@ -1,8 +1,7 @@
 "use client";
 import { Fragment, useState, type FormEvent } from "react";
 import { ChevronDown } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { DictationInput, DictationTextarea } from "@/components/field-dictation";
 import { Switch } from "@/components/ui/switch";
 import { ChatIcon } from "@/components/chat-icon";
 import { TaskListInput } from "@/components/task-list-input";
@@ -133,13 +132,13 @@ export function QuestionForm({
                 <div className="flex justify-between text-xs text-muted-foreground"><span>{question.min}</span><span>{question.max}</span></div>
               </div> : null}
               {type === "task_list" ? <TaskListInput {...common} language={form.language} value={value} onChange={next => update(index, next)} /> : null}
-              {type === "textarea" ? <Textarea {...common} value={value} onChange={event => update(index, event.target.value)} maxLength={question.maxLength ?? 4000} placeholder={question.placeholder || "Type your answer…"} className="min-h-24 text-sm" /> : null}
+              {type === "textarea" ? <DictationTextarea {...common} dictationLabel={question.question} value={value} onValueChange={next => update(index, next)} maxLength={question.maxLength ?? 4000} placeholder={question.placeholder || "Type your answer…"} className="min-h-24 text-sm" /> : null}
               {["text", "number", "date", "time"].includes(type) ? <div className="flex items-center gap-2">
-                <Input {...common} type={type === "text" ? "text" : type} value={value} onChange={event => update(index, event.target.value)} placeholder={question.placeholder} min={question.min} max={question.max} step={question.step ?? (type === "number" ? "any" : undefined)} maxLength={question.maxLength ?? 4000} className="min-h-11 text-sm" />
+                <DictationInput {...common} dictationLabel={question.question} type={type === "text" ? "text" : type} value={value} onValueChange={next => update(index, next)} placeholder={question.placeholder} min={question.min} max={question.max} step={question.step ?? (type === "number" ? "any" : undefined)} maxLength={question.maxLength ?? 4000} className="min-h-11 text-sm" />
                 {question.unit ? <span className="shrink-0 text-xs text-muted-foreground">{question.unit}</span> : null}
               </div> : null}
-              {isChoice && useCustom ? <Input aria-label={`Custom answer: ${question.question}`} disabled={disabled} maxLength={question.maxLength ?? 4000} aria-invalid={Boolean(message)} aria-describedby={common["aria-describedby"]} value={type === "multiselect" ? String(selections(custom[index] ?? "")[0] ?? "") : custom[index] ?? ""} placeholder="Type your answer…" onChange={event => {
-                const next = [...custom]; next[index] = type === "multiselect" ? JSON.stringify([event.target.value]) : event.target.value; onCustomChange(next);
+              {isChoice && useCustom ? <DictationInput dictationLabel={question.question} aria-label={`Custom answer: ${question.question}`} disabled={disabled} maxLength={question.maxLength ?? 4000} aria-invalid={Boolean(message)} aria-describedby={common["aria-describedby"]} value={type === "multiselect" ? String(selections(custom[index] ?? "")[0] ?? "") : custom[index] ?? ""} placeholder="Type your answer…" onValueChange={text => {
+                const next = [...custom]; next[index] = type === "multiselect" ? JSON.stringify([text]) : text; onCustomChange(next);
               }} className="min-h-11" /> : null}
               {message ? <p id={`${id}-error`} role="alert" className="text-xs text-destructive">{message}</p> : null}
             </div>

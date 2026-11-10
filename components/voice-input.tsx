@@ -1,14 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Mic, RotateCcw, X } from "lucide-react";
+import { Check, LoaderCircle, Mic, RotateCcw, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { openSelectedMicrophone } from "@/lib/local-microphone";
 import { transcribeRecording } from "@/lib/voice-upload";
 import { connectRealtimeVoice, type RealtimeVoiceSession } from "@/lib/voice-realtime";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+
+let cancelActiveVoice: (() => void) | null = null;
 
 type VoiceInputProps = {
+  variant?: "composer" | "field";
+  onStart?: () => void;
   chatId?: string | null;
   onTranscript: (text: string) => void | ((finalText: string) => void);
   onPreviewChange?: (text: string) => void;
@@ -46,6 +51,7 @@ function formatDuration(seconds: number) {
 }
 
 export function VoiceInput({
+  variant = "composer", onStart,
   chatId,
   onTranscript,
   onPreviewChange,
@@ -70,6 +76,7 @@ export function VoiceInput({
   const [lastRecording, setLastRecording] = useState<{ blob: Blob; duration: number } | null>(null);
   const [level, setLevel] = useState(0);
   const [livePreview, setLivePreview] = useState("");
+  const captureEpoch = useRef(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -243,6 +250,7 @@ export function VoiceInput({
   }, [state, maxDuration, stop]);
 
   const transcribe = useCallback(async (blob: Blob, duration: number) => {
+    const epoch = captureEpoch.current;
     setState("uploading");
     setError("");
     const form = new FormData();
@@ -255,8 +263,9 @@ export function VoiceInput({
     if (connectionId) form.append("connectionId", connectionId);
     try {
       const transcript = await transcribeRecording(blob, form, () => setState("transcribing"));
-      commitTranscript(transcript);
+      if (captureEpoch.current === epoch) commitTranscript(transcript);
     } catch (cause) {
+      if (captureEpoch.current !== epoch) return;
       setState("error");
       setError(cause instanceof Error ? cause.message : "Transcription failed.");
       setRecording(false);
@@ -264,10 +273,17 @@ export function VoiceInput({
   }, [chatId, connectionId, endpoint, modelId, commitTranscript, provider, realtime, setRecording]);
 
   const start = async () => {
+    if (!enabled) return;
+    if (cancelActiveVoice && cancelActiveVoice !== discard) cancelActiveVoice();
+    cancelActiveVoice = discard;
+    const epoch = ++captureEpoch.current;
+    discardingRef.current = false;
+    onStart?.();
     pendingRealtimeRef.current?.controller.abort();
     pendingRealtimeRef.current?.session.close();
     pendingRealtimeRef.current = null;
     if (provider === "browser") {
+      setState("permission");
       const speechWindow = window as Window & {
         SpeechRecognition?: new () => SpeechRecognitionLike;
         webkitSpeechRecognition?: new () => SpeechRecognitionLike;
@@ -281,24 +297,28 @@ export function VoiceInput({
       if (navigator.mediaDevices?.getUserMedia) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (captureEpoch.current !== epoch) { stream.getTracks().forEach(track => track.stop()); return; }
           streamRef.current = stream;
           startVisualizer(stream);
         } catch {
           // SpeechRecognition can still provide a transcript without the visualizer stream.
         }
       }
+      if (captureEpoch.current !== epoch) return;
       const recognition = new SpeechRecognition();
       speechRecognitionRef.current = recognition;
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-US";
       recognition.onresult = (event) => {
+        if (captureEpoch.current !== epoch) return;
         let text = "";
         for (let index = 0; index < event.results.length; index += 1) text += `${event.results[index][0].transcript} `;
         livePreviewRef.current = text.trim();
         setLivePreview(livePreviewRef.current);
       };
       recognition.onerror = (event) => {
+        if (captureEpoch.current !== epoch) return;
         speechRecognitionRef.current = null;
         cleanup();
         if (discardingRef.current) {
@@ -310,6 +330,7 @@ export function VoiceInput({
         setRecording(false);
       };
       recognition.onend = () => {
+        if (captureEpoch.current !== epoch) return;
         speechRecognitionRef.current = null;
         cleanup();
         if (discardingRef.current) {
@@ -403,6 +424,7 @@ export function VoiceInput({
     setError("");
     try {
       const stream = await openSelectedMicrophone();
+      if (captureEpoch.current !== epoch) { stream.getTracks().forEach(track => track.stop()); return; }
       streamRef.current = stream;
       chunksRef.current = [];
       const recorder = new MediaRecorder(stream);
@@ -413,6 +435,7 @@ export function VoiceInput({
         if (event.data.size) chunksRef.current.push(event.data);
       };
       recorder.onstop = () => {
+        if (captureEpoch.current !== epoch) return;
         if (discardingRef.current) {
           discardingRef.current = false;
           cleanup();
@@ -429,6 +452,7 @@ export function VoiceInput({
       setState("recording");
       setRecording(true);
     } catch (cause) {
+      if (captureEpoch.current !== epoch) return;
       cleanup();
       setState("error");
       setError(cause instanceof Error ? cause.message : "Microphone permission was denied.");
@@ -436,6 +460,8 @@ export function VoiceInput({
   };
 
   const discard = useCallback(() => {
+    captureEpoch.current++;
+    if (cancelActiveVoice === discard) cancelActiveVoice = null;
     const hasSpeechRecognition = Boolean(speechRecognitionRef.current);
     const hasRecorder = recorderRef.current?.state === "recording";
     discardingRef.current = hasSpeechRecognition || hasRecorder;
@@ -467,6 +493,8 @@ export function VoiceInput({
   }, [cancelSignal, discard]);
 
   useEffect(() => () => {
+    captureEpoch.current++;
+    if (cancelActiveVoice === discard) cancelActiveVoice = null;
     discardingRef.current = true;
     speechRecognitionRef.current?.stop();
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
@@ -475,11 +503,37 @@ export function VoiceInput({
     onStateChange?.("idle");
     onWaveformLevelChange?.(0);
     onPreviewChange?.("");
-  }, [cleanup, onStateChange, onWaveformLevelChange, onPreviewChange, setRecording]);
+  }, [cleanup, discard, onStateChange, onWaveformLevelChange, onPreviewChange, setRecording]);
 
   if (!enabled) return null;
 
   const voiceConfigured = provider === "browser" || Boolean(connectionId);
+
+  if (variant === "field") {
+    const recording = state === "recording";
+    const busy = ["permission", "uploading", "transcribing"].includes(state);
+    return <Popover open={Boolean(livePreview || state === "error" || recording || busy)}>
+      <PopoverAnchor asChild><div className="relative flex items-center gap-0.5" data-field-dictation="">
+      <Button type="button" size="icon-action" variant="ghost"
+        className="size-11 shrink-0 text-muted-foreground sm:size-9" disabled={busy || (!voiceConfigured && !onOpenSettings)}
+        aria-label={recording ? "Stop recording" : busy ? "Transcribing voice input" : "Record voice input"}
+        title={voiceConfigured ? "Voice input" : "Set up voice input"}
+        onPointerDown={event => event.preventDefault()}
+        onClick={() => recording ? stop() : voiceConfigured ? void start() : onOpenSettings?.()}>
+        {recording ? <Square className="size-4 text-destructive" /> : busy ? <LoaderCircle className="size-4 animate-spin" /> : <Mic className="size-4" />}
+      </Button>
+      </div></PopoverAnchor>
+      {livePreview || state === "error" || recording || busy ? <PopoverContent align="end" side="bottom" collisionPadding={8} onOpenAutoFocus={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()} role={state === "error" ? "alert" : "status"}
+        className="w-64 max-w-[80vw] p-2 text-xs">
+        {recording || busy ? <Button type="button" size="xs" variant="ghost" className="float-right ml-2" aria-label="Cancel voice input" onClick={discard}>Cancel</Button> : null}
+        {state === "error" ? error : livePreview || (recording ? "Listening…" : "Transcribing…")}
+        {state === "error" ? <div className="mt-1 flex justify-end gap-1">
+          {lastRecording ? <Button type="button" size="xs" variant="ghost" onClick={() => void transcribe(lastRecording.blob, lastRecording.duration)}>Retry</Button> : null}
+          <Button type="button" size="xs" variant="ghost" onClick={discard}>Dismiss</Button>
+        </div> : null}
+      </PopoverContent> : null}
+    </Popover>;
+  }
 
   return (
     <div className="flex items-center gap-1">
