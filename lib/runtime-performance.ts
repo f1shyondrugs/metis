@@ -36,7 +36,7 @@ export function createRuntimePerformance(until:number,outputDir:string,startAt=D
   written=(async()=>{await mkdir(outputDir,{recursive:true,mode:0o700});const dest=path.join(outputDir,`runtime-${process.pid}-${threadId}.json`),temp=dest+".tmp";await writeFile(temp,JSON.stringify(data,null,2),{mode:0o600});await rename(temp,dest);})();
   return written;
  }
- const timer=setTimeout(()=>{void finish().catch(()=>undefined);},Math.max(1,Math.min(10*60_000,until-startedAt)));timer.unref();
+ const timer=setTimeout(()=>{void finish().catch(()=>undefined);},Math.max(1,Math.min(10*60_000,until-Date.now())));timer.unref();
  return {measure,snapshot,finish};
 }
 type Sample=ReturnType<typeof createRuntimePerformance>;

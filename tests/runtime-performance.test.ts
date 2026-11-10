@@ -31,9 +31,10 @@ test("native SQLite methods, errors and iterators retain behavior; saved diagnos
  }finally{other?.close();db.close();delete globals[key];for(const [name,value]of [["METIS_PERFORMANCE_UNTIL",old.until],["METIS_PERFORMANCE_OUTPUT_DIR",old.output]] as const){if(value===undefined)delete process.env[name];else process.env[name]=value;}await rm(dir,{recursive:true,force:true});}
 });
 test("a delayed bounded sample ignores startup work and automatically stops",async()=>{
- const dir=await mkdtemp(path.join(os.tmpdir(),"metis-perf-window-")),sample=createRuntimePerformance(Date.now()+100,dir,Date.now()+30);
+ const dir=await mkdtemp(path.join(os.tmpdir(),"metis-perf-window-")),deadline=Date.now()+300,sample=createRuntimePerformance(deadline,dir,Date.now()+100);
  try{
-  sample.measure("get",()=>42);await pause(45);sample.measure("get",()=>42);await pause(90);await sample.finish();
+  sample.measure("get",()=>42);await pause(125);sample.measure("get",()=>42);await pause(225);await sample.finish();
+  const saved=JSON.parse(await readFile(path.join(dir,(await readdir(dir)).find(name=>name.endsWith(".json"))!),"utf8"));assert(Date.parse(saved.endedAt)>=deadline-5,"Sampling must end at its absolute deadline, independently of warmup");
   assert.equal(sample.snapshot().database.get.calls,1);
   sample.measure("get",()=>42);assert.equal(sample.snapshot().database.get.calls,1);
  }finally{await sample.finish();await rm(dir,{recursive:true,force:true});}
