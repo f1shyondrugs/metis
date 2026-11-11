@@ -3,6 +3,7 @@ import { captureApiError } from "@/lib/error-logs";
 import {
   enqueueJob,
   getActiveJob,
+  getActiveParentJob,
   getJob,
   listJobs,
   listRunEvents,
@@ -29,8 +30,10 @@ export async function GET(req: Request) {
     const userId = (await getAuthenticatedUserId(req)) ?? undefined;
     const after = Number(search.get("after") || "0");
     if (search.get("status") === "1") {
-      const job = jobId ? getJob(jobId) : null;
-      if (!chatId || !job || job.chatId !== chatId || job.userId !== userId || !canAccessChat(chatId, userId)) return Response.json({ error: "Run not found." }, { status: 404 });
+      if (!chatId || !canAccessChat(chatId, userId)) return Response.json({ error: "Run not found." }, { status: 404 });
+      const job = jobId ? getJob(jobId) : getActiveParentJob(chatId, userId);
+      if (!job && !jobId) return Response.json({ job: null }, { headers: { "Cache-Control": "private, no-store" } });
+      if (!job || job.chatId !== chatId || job.userId !== userId) return Response.json({ error: "Run not found." }, { status: 404 });
       return Response.json({ job: { id: job.id, status: job.status, error: job.error, queueMessage: job.queueMessage } }, { headers: { "Cache-Control": "private, no-store" } });
     }
     if (chatId && search.get("events") === "1") {

@@ -56,6 +56,11 @@ test("run status endpoint returns the submitted job's terminal state without exp
     const body=await response.json();assert.equal(body.job.status,"error");assert.equal(body.job.error,"No model selected.");
     assert.equal(JSON.stringify(body).includes("private fixture payload"),false);assert.equal(body.job.leaseToken,undefined);
     assert.equal((await api.GET(req())).status,401);assert.equal((await api.GET(req("other"))).status,404);assert.equal((await api.GET(req("owner","wrong"))).status,404);
+    const activeRequest=(owner:string)=>new Request("http://localhost/api/runs?status=1&chatId="+chat.id,{headers:{cookie:"ai_chat_auth="+owner}});
+    assert.equal((await (await api.GET(activeRequest("owner"))).json()).job,null);
+    jobs.updateJob(job.id,{status:"queued"});
+    assert.equal((await (await api.GET(activeRequest("owner"))).json()).job.id,job.id);
+    assert.equal((await api.GET(activeRequest("other"))).status,404);
   }finally{db.close();rmSync(root,{recursive:true,force:true});}
 });
 test("shortcut recording keeps physical keys and platform labels",()=>{

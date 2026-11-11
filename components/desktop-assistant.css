@@ -3,8 +3,8 @@ html:has(.desktop-assistant),html:has(.desktop-assistant) body { background:tran
 .assistant-surface { border:1px solid var(--border); border-radius:14px; background:color-mix(in srgb,var(--background) 94%,transparent); box-shadow:0 4px 16px #0003; }
 .assistant-compose { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); width:min(420px,calc(100% - 32px)); }
 .assistant-input { pointer-events:auto; }
-.assistant-form { display:flex; align-items:center; gap:4px; min-height:48px; padding:5px 7px 5px 14px; }
-.assistant-form textarea { flex:1; width:0; min-width:0; min-height:24px; max-height:96px; field-sizing:content; resize:none; background:transparent; color:var(--foreground); border:0; padding:3px 0; font:inherit; font-size:14px; line-height:20px; }
+.assistant-form { display:flex; align-items:flex-end; gap:4px; min-height:48px; padding:5px 7px 5px 14px; }
+.assistant-form textarea { flex:1; width:0; min-width:0; min-height:36px; max-height:180px; resize:none; background:transparent; color:var(--foreground); border:0; padding:3px 0; font:inherit; font-size:14px; line-height:24px; }
 .assistant-form textarea::placeholder { color:var(--muted-foreground); }
 .assistant-form textarea:focus { outline:none; }
 .desktop-assistant[data-editing="true"] .assistant-input { outline:2px solid color-mix(in srgb,var(--ring) 55%,transparent); outline-offset:3px; }
@@ -18,10 +18,10 @@ html:has(.desktop-assistant),html:has(.desktop-assistant) body { background:tran
 .assistant-model-menu [data-slot="dropdown-menu-item"] { min-height:36px; }
 .assistant-hint { display:flex; justify-content:center; align-items:center; gap:10px; min-height:20px; margin-top:6px; font-size:11px; color:var(--muted-foreground); text-shadow:0 1px 2px var(--background); }
 .assistant-hint kbd { font:inherit; }
-.assistant-conversation { position:absolute; top:20px; right:20px; width:min(360px,calc(100% - 32px)); pointer-events:auto; animation:assistant-reply-enter 280ms cubic-bezier(.2,.7,.2,1) both; }
+.assistant-conversation { position:absolute; display:flex; flex-direction:column; min-height:120px; max-height:calc(100dvh - var(--assistant-compose-height,120px) - 52px); top:20px; right:20px; width:min(360px,calc(100% - 32px)); pointer-events:auto; animation:assistant-reply-enter 280ms cubic-bezier(.2,.7,.2,1) both; }
 .assistant-conversation-header { display:flex; align-items:center; justify-content:space-between; min-height:44px; padding:4px 6px 4px 14px; border-bottom:1px solid var(--border); }
 .assistant-conversation-header button { width:32px; height:32px; border-radius:8px; }
-.assistant-messages { max-height:min(48dvh,420px); overflow:auto; overscroll-behavior:contain; padding:12px; display:flex; flex-direction:column; gap:14px; font-size:14px; line-height:1.5; }
+.assistant-messages { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:12px; display:flex; flex-direction:column; gap:14px; font-size:14px; line-height:1.5; }
 .assistant-message { min-width:0; overflow-wrap:anywhere; }
 .assistant-message-user { align-self:flex-end; max-width:94%; padding:8px 10px; background:color-mix(in srgb,var(--foreground) 8%,var(--background)); border-radius:10px; }
 .assistant-message-user p { margin:0; white-space:pre-wrap; }
@@ -32,7 +32,23 @@ html:has(.desktop-assistant),html:has(.desktop-assistant) body { background:tran
 .assistant-error button { display:inline; width:auto; height:auto; margin-left:8px; text-decoration:underline; }
 .assistant-fallback { padding:24px; font-size:14px; }
 @keyframes assistant-reply-enter { from { opacity:0; transform:translateX(18px); } to { opacity:1; transform:translateX(0); } }
-@media(max-width:1000px) { .assistant-conversation { top:76px; } }
+@media(max-width:1000px) { .assistant-conversation { top:76px; max-height:calc(100dvh - var(--assistant-compose-height,120px) - 108px); } }
 @media(max-width:480px) { .assistant-conversation { right:16px; } .assistant-compose { bottom:16px; } }
 @media(pointer:coarse) { .assistant-form button,.assistant-conversation-header button { width:44px; height:44px; } .assistant-model-row .assistant-model-picker { min-height:44px; height:44px; width:auto; } .assistant-model-options { min-width:44px; height:44px; } .assistant-options-menu button,.assistant-model-menu button,.assistant-model-menu [data-slot="dropdown-menu-item"] { min-height:44px; } }
+.assistant-conversation-header { flex-shrink:0; }
+.assistant-resize-handle { position:absolute; left:0; bottom:0; display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:8px; color:var(--muted-foreground); cursor:nesw-resize; touch-action:none; background:var(--background); }
+.assistant-resize-handle:focus-visible { outline:2px solid var(--ring); outline-offset:-2px; }
+.assistant-messages { padding-bottom:32px; }
+.assistant-size-options { display:grid; gap:12px; font-size:13px; }
+.assistant-size-options label { display:grid; gap:6px; }
+.assistant-size-options input { width:100%; accent-color:var(--primary); min-height:28px; }
+.assistant-queue { padding:8px 10px; max-height:min(180px,24dvh); overflow:auto; overscroll-behavior:contain; border-bottom:1px solid var(--border); }
+.assistant-queue-title { font-size:11px; color:var(--muted-foreground); margin-bottom:6px; }
+.assistant-queue-item { display:flex; gap:6px; padding:6px 0; font-size:12px; }
+.assistant-queue-actions { display:flex; gap:2px; flex-wrap:wrap; align-items:center; padding-top:4px; }
+.assistant-queue-actions button { height:28px; min-width:28px; border-radius:8px; }
+.assistant-queue-actions button[data-size="sm"] { width:auto; padding:0 6px; font-size:11px; }
+.assistant-queue-context,.assistant-save-state { font-size:11px; color:var(--muted-foreground); }
+.assistant-save-state { margin-left:auto; padding:0 6px; }
+@media(pointer:coarse) { .assistant-queue-actions button,.assistant-resize-handle { min-width:44px; min-height:44px; } .assistant-size-options input { min-height:44px; } .assistant-messages { padding-bottom:44px; } }
 @media(prefers-reduced-motion:reduce) { .assistant-conversation {animation:none;} }

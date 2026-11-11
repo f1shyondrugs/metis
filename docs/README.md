@@ -38,6 +38,7 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 
 | Doc | Status |
 | --- | --- |
+| [DESKTOP-ASSISTANT.md](./DESKTOP-ASSISTANT.md) | Assistant autosizing, resizable conversation and server-persisted draft/queue |
 | [FIELD-DICTATION.md](./FIELD-DICTATION.md) | Shared voice input for Ask-User prose fields and opaque HTML previews |
 | [APPEARANCE-THEMES.md](./APPEARANCE-THEMES.md) | Current theme presets, custom JSON format, import/export and design variables |
 | [design.md](./design.md) | **Superseded.** Glass/glow is not the live UI target. |

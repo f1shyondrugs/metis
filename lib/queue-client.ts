@@ -32,9 +32,9 @@ export async function removeQueuedFollowUp(options: {
  * Lifecycle saves use keepalive only for small bodies and fall back if that
  * shared budget is already exhausted; stable queue IDs make the retry safe.
  */
-export async function saveQueuedFollowUps(
+export async function saveQueuedFollowUps<T extends { id: string; text: string }>(
   chatId: string,
-  messages: ReadonlyArray<{ id: string; text: string }>,
+  messages: ReadonlyArray<T>,
   options: { request?: typeof fetch; keepalive?: boolean } = {},
 ) {
   const body = JSON.stringify({ queuedMessages: messages });

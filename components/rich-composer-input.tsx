@@ -21,6 +21,8 @@ type RichComposerInputProps = {
   value: string;
   mentionLabels?: string[];
   syncNonce?: number;
+  /** Passive desktop voice must not acquire keyboard focus after sending. */
+  focusOnClear?: boolean;
   onChange: (value: string, cursorPosition: number) => void;
   /** Caret-only updates must not mark the draft dirty or persist it. */
   onSelectionChange?: (value: string, start: number, end: number) => void;
@@ -61,6 +63,7 @@ export const RichComposerInput = forwardRef<HTMLTextAreaElement, RichComposerInp
       value,
       mentionLabels = [],
       syncNonce,
+      focusOnClear = true,
       onChange,
       onSelectionChange,
       onMentionQueryChange,
@@ -110,12 +113,21 @@ export const RichComposerInput = forwardRef<HTMLTextAreaElement, RichComposerInp
       element.value = liveValue;
       if (nonceChanged) {
         const cursor = liveValue.length;
-        if (liveValue === "") element.focus();
+        if (liveValue === "" && focusOnClear) element.focus();
         if (liveValue === "" || focused) element.setSelectionRange(cursor, cursor);
         element.scrollTop = element.scrollHeight;
       }
       fitComposerHeight(element);
-    }, [liveValue, syncNonce, compositionEpoch]);
+    }, [liveValue, syncNonce, compositionEpoch, focusOnClear]);
+    useLayoutEffect(() => {
+      const element=editorRef.current;if(!element)return;
+      let width=element.clientWidth;
+      const observer=new ResizeObserver(()=>{
+        if(element.clientWidth===width)return;
+        width=element.clientWidth;fitComposerHeight(element);
+      });
+      observer.observe(element);return ()=>observer.disconnect();
+    }, []);
 
     return (
       <textarea

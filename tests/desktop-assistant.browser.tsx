@@ -47,10 +47,18 @@ class Peer {
 }
 window.RTCPeerConnection=Peer as unknown as typeof RTCPeerConnection;
 let jobPolls=0;
+let assistantSession={version:0,chatId:null as string|null,draft:{text:""},panelSize:{width:360,height:360}};
 const nativeFetch=window.fetch.bind(window);
 window.fetch=async(input,init)=>{
  const url=String(input);
  if(url.startsWith("data:"))return nativeFetch(input,init);
+ if(url.startsWith("/api/desktop-assistant/session")){
+  if(init?.method==="PUT"){
+   const {patch}=JSON.parse(String(init.body));
+   assistantSession={...assistantSession,...(patch.chatId!==undefined?{chatId:patch.chatId}:{}),version:assistantSession.version+1,draft:{text:patch.draftText??assistantSession.draft.text},panelSize:patch.panelSize||assistantSession.panelSize};
+  }
+  return Response.json({session:assistantSession});
+ }
  if(url==="/api/voice/realtime")return Response.json({value:"fixture-ephemeral"});
  if(url==="https://api.openai.com/v1/realtime/calls")return new Response("fixture-sdp");
  if(url==="/api/models"){if(mode==="models-pending")await new Promise<void>(resolve=>{releaseModels=resolve;});return Response.json({models});}
@@ -175,7 +183,8 @@ async function run(){
       check(post?.modelId==="fixture/recent","Automatic send uses the latest selected model");
       check((post?.uploadIds as string[]).length===2,"Automatic send keeps both registered screen attachments");
       await until(()=>document.body.textContent?.includes("Both monitors are attached."));
-      check(!document.querySelector(".assistant-working"),"The canonical reply is displayed and working ends");
+      await until(()=>!document.querySelector(".assistant-working"));
+      check(true,"The canonical reply is displayed and working ends");
     }
     check(realtime||jobPolls>0,"Stop uses configured transcription API");
   }
