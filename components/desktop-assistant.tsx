@@ -105,10 +105,10 @@ export function DesktopAssistant() {
     return ()=>{active=false;window.removeEventListener("storage",sync);};
   },[available,settingsRevision]);
   useEffect(()=>{
-    if(!available||!editing||modelMenuOpen)return;
+    if(!available||!editing||!sessionReady||modelMenuOpen)return;
     const frame=requestAnimationFrame(()=>inputRef.current?.focus());
     return ()=>cancelAnimationFrame(frame);
-  },[available,editing,focusEpoch,modelMenuOpen]);
+  },[available,editing,sessionReady,focusEpoch,modelMenuOpen]);
   useEffect(()=>{
     if(!available||!panel.current||matchMedia("(prefers-reduced-motion: reduce)").matches)return;
     const animation=panel.current.animate([{opacity:0,transform:"translateY(16px)"},{opacity:1,transform:"translateY(0)"}],{duration:320,easing:"cubic-bezier(.2,.7,.2,1)"});
@@ -221,8 +221,8 @@ export function DesktopAssistant() {
         if(current?.job&&current.job.id!==jobId)setJobId(current.job.id);
         if(["error","interrupted"].includes(status))setRunProblem(job?.error||"The agent run failed. Open this chat in Metis for details.");
         if(["waiting_input","waiting_for_user","waiting_approval"].includes(status))setRunProblem("Metis needs your input. Open this chat in Metis to continue.");
-        if(status&&!["running","queued","switching"].includes(status)){runActive.current=false;setRunning(false);}else{runActive.current=Boolean(status);setRunning(Boolean(status));}
-        setRunLabel(status==="queued"?(job?.queueMessage||"Waiting to start…"):"Metis is working…");
+        if(status&&!["running","queued","switching","waiting_input","waiting_for_user","waiting_approval"].includes(status)){runActive.current=false;setRunning(false);}else{runActive.current=Boolean(status);setRunning(Boolean(status));}
+        setRunLabel(status==="queued"?(job?.queueMessage||"Waiting to start…"):["waiting_input","waiting_for_user","waiting_approval"].includes(status)?"Waiting for your input…":"Metis is working…");
       }catch(cause){if(!cancelled)setPollError(cause instanceof Error?cause.message:"Could not load the answer.");}
       if(!cancelled)timer=setTimeout(()=>void poll(),runActive.current?1500:4000);
     };
