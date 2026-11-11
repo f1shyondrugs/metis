@@ -6,7 +6,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useDesktopAvailable } from "@/lib/desktop-bridge";
 import { useDesktopState } from "@/lib/use-desktop-state";
-import { DesktopFileDrop } from "@/components/desktop-file-drop";
 import { DesktopAppSettingsDialog } from "@/components/desktop-app-settings-dialog";
 import type { AccountIdentity, AccountProfile } from "@/lib/account-types";
 export function useAccountProfile(enabled: boolean) {
@@ -37,7 +36,7 @@ export function AccountMenu({profile,username,updateAvailable,onSettings,onProfi
   const {state}=useDesktopState();
   const [appSettingsOpen,setAppSettingsOpen]=useState(false);
   const appUpdateAvailable=desktop&&state?.appUpdate?.available===true;
-  return <><DesktopFileDrop /><DropdownMenu>
+  return <><DropdownMenu>
     <DropdownMenuTrigger asChild>
       <Button variant="ghost" className="h-12 w-full justify-start gap-2.5 px-2.5" aria-label="Open account menu">
         <span className="relative shrink-0"><ProfileAvatar profile={profile} name={username} className="size-8" />

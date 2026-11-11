@@ -15,6 +15,7 @@ Object.defineProperty(window,"metisApp",{value:mode==="browser"?undefined:{
 }});
 let dropped:File[]=[];
 createRoot(document.getElementById("root")!).render(<main className="h-dvh bg-background p-4 text-foreground">
+ <DesktopFileDrop />
  <ChatFileDropZone className="h-40 rounded-lg border border-border p-4" onFiles={files=>{dropped=Array.from(files);}}><div id="drop">Drop fixture files here</div></ChatFileDropZone>
  <div className="fixed bottom-3 left-3 w-60"><AccountMenu profile={null} username="Fixture" updateAvailable={false} onSettings={()=>{}} onProfile={()=>{}} onUsage={()=>{}} onLogout={()=>{}}/></div>
  <pre id="results" className="mt-5 whitespace-pre-wrap text-xs"/>

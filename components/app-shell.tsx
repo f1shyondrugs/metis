@@ -20,6 +20,7 @@ import { createClientId } from "@/lib/client-id";
 import { modelAccountGroups, modelAccountKey, modelAccountLabel, modelMatchesAccount, type ModelAccountGroup } from "@/lib/model-account-groups";
 import { notifyClientError } from "@/lib/client-error-notifications";
 import { useNotificationInbox } from "@/components/account/use-notification-inbox";
+import { DesktopFileDrop } from "@/components/desktop-file-drop";
 import { AccountMenu, useAccountProfile } from "@/components/account/account-menu";
 import type { AccountView } from "@/components/account/account-panel";
 
@@ -10233,6 +10234,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       onTouchCancel={() => { swipeRef.current = null; }}
       onTouchEnd={handleTouchEnd}
     >
+      <DesktopFileDrop />
       <UploadTray />
       <UpdateStatusProbe
         isHostAdmin={Boolean(status?.isHostAdmin)}
