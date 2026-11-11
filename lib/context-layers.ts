@@ -112,6 +112,29 @@ export function retrieveRelevantFacts<T extends LayeredContextFact>(
     .map((entry) => entry.fact);
 }
 
+/** Keep whole project facts within a prompt budget; storage is never changed.
+ * Relevant facts win. A small recent fallback supports vague follow-ups.
+ */
+export function selectProjectContextFacts<T extends LayeredContextFact>(
+  query: string,
+  facts: readonly T[],
+  maxChars = 12_000,
+): T[] {
+  const relevant = retrieveRelevantFacts(query, facts, { limit: 8 });
+  const candidates = relevant.length ? relevant : [...facts]
+    .sort((a, b) => timestamp(b.updatedAt || b.createdAt) - timestamp(a.updatedAt || a.createdAt))
+    .slice(0, 2);
+  const selected: T[] = [];
+  let used = 0;
+  for (const fact of candidates) {
+    const chars = fact.id.length + fact.content.length + 5;
+    if (used + chars > maxChars) continue;
+    selected.push(fact);
+    used += chars;
+  }
+  return selected;
+}
+
 /** A small continuity slice survives vague follow-ups and native compaction.
  * Only pass already owner/chat-scoped facts here; globals stay relevance-only.
  */

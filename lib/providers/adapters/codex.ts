@@ -1,3 +1,5 @@
+import { createCodexInstructionFile } from "@/lib/providers/codex-instructions";
+import { buildProviderPromptParts } from "@/lib/providers/prompt-context";
 import { codexEventsUntilCompleted, isCodexReconnectNotice } from "@/lib/providers/codex-events";
 import { USER_INPUT_TRANSPORT_TIMEOUT_MS } from "@/lib/mcp-core/user-question-gate.mjs";
 import { codexLimitErrorFromRollout } from "@/lib/providers/codex-rate-limit";
@@ -36,7 +38,6 @@ import {
   nativeRecoveryPrompt,
   providerCurrentTurnPrompt,
   providerMcpContext,
-  providerPrompt,
   resolvedContextWindow,
   type ProviderContext,
 } from "./provider-support";
@@ -232,84 +233,83 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
           persistentHome,
         )
       : undefined;
-  const agentCwd = getUserAgentCwd(context.job.userId);
-  const nativeMcp=getMcpServers(providerMcpContext(context));assertNativeMcpServers(nativeMcp);
-  const mcp = nativeMcp.gateway;
-  const bearerToken = mcp.type === "http"
-    ? mcp.headers?.Authorization?.replace(/^Bearer\s+/i, "").trim()
-    : undefined;
-  const env = inheritedEnv({
-    ...(codexHome ? { CODEX_HOME: codexHome.home } : {}),
-    ...(bearerToken ? { METIS_MCP_SESSION_TOKEN: bearerToken } : {}),
-  });
-  const codexMcp: Record<string, number | string | string[] | Record<string, string>> =
-    mcp.type === "http"
-      ? {
-          url: mcp.url,
-          ...(bearerToken ? { bearer_token_env_var: "METIS_MCP_SESSION_TOKEN" } : {}),
-        }
-      : { command: mcp.command, args: mcp.args, env: mcp.env };
-  codexMcp.tool_timeout_sec = Math.floor(USER_INPUT_TRANSPORT_TIMEOUT_MS / 1000);
-  const modelParams = effectiveModelParams(context.chat, context.job);
-  const serviceTier = codexServiceTierForSelection(modelParams);
-  const selectedModel = providerModelsForConnection(context.connection).find(model => model.id === context.modelId);
-  const codexConfig: NonNullable<CodexOptions["config"]> = {
-    ...codexContextConfig(selectedModel, modelParams),
-    ...(codexHome ? { cli_auth_credentials_store: "file" } : {}),
-    ...(serviceTier ? { service_tier: serviceTier } : {}),
-    ...codexMcpOnlyConfig(),
-    ...(serviceTier === "fast" ? { features: { ...codexMcpOnlyConfig().features, fast_mode: true } } : {}),
-    mcp_servers: { metis_ai: codexMcp },
-  };
-  const isolated=codexNativeExecutable(codexCliExecutable(),env);
-  const codex = new Codex({
-    codexPathOverride: isolated.executable,
-    ...(context.connection.authType === "api_key" && context.connection.secret
-      ? { apiKey: context.connection.secret }
-      : {}),
-    config: codexConfig,
-    env:isolated.env,
-  });
-  const sessionBinding = getProviderSessionBinding(
-    context.chat,
-    "codex-sdk",
-    context.connection.id,
-  );
-  const legacyPreviousId = context.chat.agentId?.startsWith("codex:")
-    ? context.chat.agentId.slice("codex:".length)
-    : undefined;
-  const previousId = sessionBinding?.lastKnownGoodCursor || legacyPreviousId;
-  const threadOptions = {
-    model: context.modelId,
-    ...(codexReasoningEffortForSelection(context.modelId, modelParams)
-      ? {
-          modelReasoningEffort: codexReasoningEffortForSelection(
-            context.modelId,
-            modelParams,
-          ),
-        }
-      : {}),
-    workingDirectory: agentCwd,
-    skipGitRepoCheck: true,
-    ...RUNTIME_MODE_TO_CODEX[runtimeModeForChat(context.chat)],
-  };
-  const thread = previousId
-    ? codex.resumeThread(previousId, threadOptions)
-    : codex.startThread(threadOptions);
-  // Resumed SDK turns report lifetime counters. Capture the baseline before
-  // any new call, including consumption from a previously interrupted turn.
-  const usageBaseline = previousId
-    ? (codexHome ? readCodexThreadUsage(codexHome.home, previousId) : undefined) || sessionBinding?.lastUsageTotals
-    : undefined;
-  const turnStartedAt = Date.now();
+  let instructionsFile: string | undefined;
   try {
+    const agentCwd = getUserAgentCwd(context.job.userId);
+    const nativeMcp=getMcpServers(providerMcpContext(context));assertNativeMcpServers(nativeMcp);
+    const mcp = nativeMcp.gateway;
+    const bearerToken = mcp.type === "http"
+      ? mcp.headers?.Authorization?.replace(/^Bearer\s+/i, "").trim()
+      : undefined;
+    const env = inheritedEnv({
+      ...(codexHome ? { CODEX_HOME: codexHome.home } : {}),
+      ...(bearerToken ? { METIS_MCP_SESSION_TOKEN: bearerToken } : {}),
+    });
+    const codexMcp: Record<string, number | string | string[] | Record<string, string>> =
+      mcp.type === "http"
+        ? {
+            url: mcp.url,
+            ...(bearerToken ? { bearer_token_env_var: "METIS_MCP_SESSION_TOKEN" } : {}),
+          }
+        : { command: mcp.command, args: mcp.args, env: mcp.env };
+    codexMcp.tool_timeout_sec = Math.floor(USER_INPUT_TRANSPORT_TIMEOUT_MS / 1000);
+    const modelParams = effectiveModelParams(context.chat, context.job);
+    const serviceTier = codexServiceTierForSelection(modelParams);
+    const selectedModel = providerModelsForConnection(context.connection).find(model => model.id === context.modelId);
+    const promptParts = buildProviderPromptParts({ job: context.job, toolNames: ["metis_ai"], nativeTools: true });
+    instructionsFile = createCodexInstructionFile(promptParts.instructions, codexHome?.home);
+    const codexConfig: NonNullable<CodexOptions["config"]> = {
+      model_instructions_file: instructionsFile,
+      ...codexContextConfig(selectedModel, modelParams),
+      ...(codexHome ? { cli_auth_credentials_store: "file" } : {}),
+      ...(serviceTier ? { service_tier: serviceTier } : {}),
+      ...codexMcpOnlyConfig(),
+      ...(serviceTier === "fast" ? { features: { ...codexMcpOnlyConfig().features, fast_mode: true } } : {}),
+      mcp_servers: { metis_ai: codexMcp },
+    };
+    const isolated=codexNativeExecutable(codexCliExecutable(),env);
+    const codex = new Codex({
+      codexPathOverride: isolated.executable,
+      ...(context.connection.authType === "api_key" && context.connection.secret
+        ? { apiKey: context.connection.secret }
+        : {}),
+      config: codexConfig,
+      env:isolated.env,
+    });
+    const sessionBinding = getProviderSessionBinding(
+      context.chat,
+      "codex-sdk",
+      context.connection.id,
+    );
+    const legacyPreviousId = context.chat.agentId?.startsWith("codex:")
+      ? context.chat.agentId.slice("codex:".length)
+      : undefined;
+    const previousId = sessionBinding?.lastKnownGoodCursor || legacyPreviousId;
+    const threadOptions = {
+      model: context.modelId,
+      ...(codexReasoningEffortForSelection(context.modelId, modelParams)
+        ? {
+            modelReasoningEffort: codexReasoningEffortForSelection(
+              context.modelId,
+              modelParams,
+            ),
+          }
+        : {}),
+      workingDirectory: agentCwd,
+      skipGitRepoCheck: true,
+      ...RUNTIME_MODE_TO_CODEX[runtimeModeForChat(context.chat)],
+    };
+    const thread = previousId
+      ? codex.resumeThread(previousId, threadOptions)
+      : codex.startThread(threadOptions);
+    // Resumed SDK turns report lifetime counters. Capture the baseline before
+    // any new call, including consumption from a previously interrupted turn.
+    const usageBaseline = previousId
+      ? (codexHome ? readCodexThreadUsage(codexHome.home, previousId) : undefined) || sessionBinding?.lastUsageTotals
+      : undefined;
+    const turnStartedAt = Date.now();
     const prompt = [
-      providerPrompt(
-        context.job,
-        ["metis_ai"],
-        true,
-        modelParams,
-      ),
+      promptParts.context,
       previousId
         ? providerCurrentTurnPrompt(context)
         : nativeRecoveryPrompt(context),
@@ -406,6 +406,7 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
       usage,
     };
   } finally {
+    if (instructionsFile) await rm(instructionsFile, { force: true }).catch(() => undefined);
     if (codexHome) {
       await persistCodexOAuthHome(context, codexHome);
       if (codexHome.temporary) {

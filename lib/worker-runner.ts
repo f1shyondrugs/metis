@@ -917,7 +917,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
     // Build prompt: native resume gets ONLY current turn + context; fresh/recovery gets bootstrap recap once
     let prompt = [
     metisAgentIdentity(),
-    project ? projectContextBlock(project, job.userId) : "",
+    project ? projectContextBlock(project, job.userId, undefined, { query: [job.message, job.referenceText, ...(job.references || []).flatMap(reference => [reference.label, reference.detail, reference.path])].filter(Boolean).join("\n") }) : "",
     projectTeamContextBlock(chat.id, job.userId),
     buildSkillContext(job.message, skillSettings, {
       modeId: activeMode.id,

@@ -532,19 +532,8 @@ export function resolvedContextWindow(context: ProviderContext): number | undefi
 }
 
 export function providerCurrentTurnPrompt(context: ProviderContext): string {
-  const job = context.job;
-  const references = (job.references || []).map((reference) => [
-    `- [${reference.kind}] ${reference.label}`,
-    reference.detail ? `  Detail: ${reference.detail}` : "",
-    reference.path ? `  Path/URL: ${reference.path}` : "",
-    reference.content ? `  Context:\n${reference.content}` : "",
-  ].filter(Boolean).join("\n")).join("\n");
-  return [
-    providerTaskMessage(job),
-    references ? `Current-turn references:\n${references}` : "",
-    job.referenceText ? `Current-turn referenced context:\n${job.referenceText}` : "",
-    buildAttachmentPrompt(job.chatId, job.attachments, job.userId),
-  ].filter(Boolean).join("\n\n");
+  // References and attachments are already resolved and bounded by providerPrompt.
+  return providerTaskMessage(context.job);
 }
 
 export function nativeRecoveryPrompt(context: ProviderContext, maxChars = 120_000): string {

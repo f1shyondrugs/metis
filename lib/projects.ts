@@ -18,6 +18,7 @@ import { listChatsForUser, updateChat } from "@/lib/db-store";
 import { requestJobCancel, requestJobModelSwitch } from "@/lib/db-jobs";
 import type { ChatIndexEntry, Memory, Project, ProjectFile, SharedNote } from "@/lib/store";
 import { decodeBase64Size, isTextAttachment, sanitizeFileName } from "@/lib/uploads";
+import { selectProjectContextFacts } from "@/lib/context-layers";
 
 const iso = () => new Date().toISOString();
 
@@ -496,7 +497,8 @@ export function projectAgentsFilePath(project: Project, ownerId?: string) {
  return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile()) || null;
 }
 
-export function projectContextBlock(project: Project, ownerId?: string, chats?: ChatIndexEntry[]) {
+export function projectContextBlock(project: Project, ownerId?: string, chats?: ChatIndexEntry[], options: { query?: string } = {}) {
+ const memories = selectProjectContextFacts(options.query || "", project.memories);
  const files = listProjectFiles(project.id, ownerId);
  // Chat/agent working facts must not become shared project-note context.
  const notes = listProjectNotes(project.id, ownerId).filter(note => note.kind !== "learned_fact");
@@ -523,7 +525,7 @@ export function projectContextBlock(project: Project, ownerId?: string, chats?: 
    ? "Include global memory is OFF: global memory and personal context-hub reads and writes are forbidden. Use memory tools with scope project only. Stay inside this project's instructions, files, notes, and chats."
    : "Include global memory is ON: choose scope project for facts specific to this project, or scope global for account-wide facts and preferences. Memory tools default to project scope in this chat. Global memories also apply.",
   project.memories.length
-   ? `Project memory (durable facts managed from Project Home and memory tools):\n${project.memories.slice(-100).map((memory) => `- ${memory.id}: ${memory.content}`).join("\n")}`
+   ? `Project memory (durable facts managed from Project Home and memory tools):\n${memories.map((memory) => `- ${memory.id}: ${memory.content}`).join("\n")}\nSelected ${memories.length} of ${project.memories.length} stored project memories for this turn. Other facts remain available through list_memories with scope project; retrieve them when the task needs more context.`
    : "Project memory: (none)",
   agentsFile ? `Project agent instructions file (read it with file tools when needed): ${agentsFile}` : "Project agent instructions file: (not found)",
   projectFileContext.length

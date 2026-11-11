@@ -17,6 +17,7 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 | [CPU-PARALLELISM.md](./CPU-PARALLELISM.md) | Per-core monitoring, current execution model and measured scaling recommendations |
 | [PROTECTED-LOGINS.md](./PROTECTED-LOGINS.md) | Protected credential forms, encrypted browser/console reuse and deployment requirements |
 | [NATIVE-RUNTIME-ISOLATION.md](./NATIVE-RUNTIME-ISOLATION.md) | Native provider isolation and protected file boundaries |
+| [CONTEXT-EFFICIENCY.md](./CONTEXT-EFFICIENCY.md) | Native Codex instruction replacement and bounded project-memory retrieval |
 | [LONG-CHAT-PERFORMANCE.md](./LONG-CHAT-PERFORMANCE.md) | Long-history pagination, data preservation and performance measurements |
 | [NOTE-PIN-PERFORMANCE.md](./NOTE-PIN-PERFORMANCE.md) | Note pinning with many chats: measured bottlenecks and changed-only writes |
 | [NOTEBOOK-PRESENCE.md](./NOTEBOOK-PRESENCE.md) | Account avatars, notebook-wide presence and permission-scoped follow mode |

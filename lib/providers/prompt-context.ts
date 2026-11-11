@@ -82,9 +82,15 @@ function factBlock(title: string, facts: ReadonlyArray<{ id: string; content: st
  * owned by recovery/compaction and provider-native sessions, not replayed here.
  */
 export function buildProviderPrompt(input: ProviderPromptContext): string {
+  const parts = buildProviderPromptParts(input);
+  return [parts.instructions, parts.context].filter(Boolean).join("\n\n");
+}
+
+/** Native runtimes keep stable policy outside the accumulating user transcript. */
+export function buildProviderPromptParts(input: ProviderPromptContext): { instructions: string; context: string } {
   const job = input.job;
   const chat = getChat(job.chatId, job.userId);
-  if (!chat) return metisAgentIdentity();
+  if (!chat) return { instructions: metisAgentIdentity(), context: "" };
   const ownerId = job.userId ?? chat.ownerId;
   const incognito = Boolean(job.incognito || chat.incognito);
 
@@ -114,7 +120,6 @@ export function buildProviderPrompt(input: ProviderPromptContext): string {
   const explicit = boundedJoin([
     ...resolvedReferences.map(referenceBlock),
     job.referenceText ? `Referenced context:\n${job.referenceText}` : "",
-    buildAttachmentPrompt(job.chatId, job.attachments, ownerId),
   ], EXPLICIT_CONTEXT_CHARS);
 
   const pinned = boundedJoin([
@@ -123,12 +128,12 @@ export function buildProviderPrompt(input: ProviderPromptContext): string {
     ),
   ], PINNED_CONTEXT_CHARS);
 
-  const retrievalQuery = [
+  const taskQuery = [
     job.message,
     job.referenceText,
     ...resolvedReferences.flatMap((reference) => [reference.label, reference.detail, reference.path]),
-    project?.name,
   ].filter((value): value is string => Boolean(value?.trim())).join("\n");
+  const retrievalQuery = [taskQuery, project?.name].filter(Boolean).join("\n");
 
   // Reload bounded chat facts from durable storage on every prompt build,
   // independently of native session history/compaction and current wording.
@@ -140,16 +145,13 @@ export function buildProviderPrompt(input: ProviderPromptContext): string {
 
   const agentMemory = project?.mode === "agents";
   const workingBlock = factBlock(agentMemory ? "Agent working memory" : "Chat working memory", workingFacts, CHAT_FACT_CHARS);
-  const projectBlock = project ? projectContextBlock(project, ownerId) : "";
+  const projectBlock = project ? projectContextBlock(project, ownerId, undefined, { query: taskQuery }) : "";
   const globalBlock = factBlock("Retrieved global durable memory", retrievedGlobalFacts, GLOBAL_CONTEXT_CHARS);
 
-  return [
+  const instructions = [
     // Layer 1 — Core Context: stable identity, policy, mode and tool contract.
     metisAgentIdentity(),
-    !incognito ? projectTeamContextBlock(chat.id, ownerId) : "",
     `Current agent mode: ${activeMode.name}\n${activeMode.instructions}`,
-    formatChatGoal(chat.sessionState, ownerId, chat.id, incognito),
-    chatMetadataPrompt(chat, incognito),
     buildSkillContext(job.message, skillSettings, {
       modeId: activeMode.id,
       hasVisualReference: Boolean(job.attachments?.some((attachment) => attachment.kind === "image")),
@@ -164,17 +166,10 @@ export function buildProviderPrompt(input: ProviderPromptContext): string {
       toolNames: input.toolNames,
       nativeTools: Boolean(input.nativeTools),
     }),
-    // Layer 2 — Task State lives in the provider's current user turn. Do not
-    // duplicate job.message here. Explicit references are the only addendum.
-    explicit ? `Task context — explicit references:\n${explicit}` : "",
     // Layer 3 — Repo Map is metadata/tool-driven, never a repository dump.
     "Repository map: the filesystem/repository is durable external memory. Search/index first, then read only relevant files and symbols; never replay a whole repository into model context.",
     // Layers 4/5 — Retrieved Context + Working Memory.
     memoryWorkingPrompt({ agentMemory, incognito, includeGlobal: project?.memoryMode !== "project_only" }),
-    pinned ? `Pinned chat context:\n${pinned}` : "",
-    projectBlock ? `Project context:\n${projectBlock}` : "",
-    workingBlock ? `${workingBlock}\nThis bounded context belongs only to the current ${agentMemory ? "agent’s own chat" : "chat"} and is reloaded from durable storage. Preserve it across compaction/resume; newer user corrections take precedence. This task state is not an account profile and must not be promoted wholesale into global memory.` : "",
-    globalBlock,
     // Layer 6 — Checkpoints are injected only by recovery/compaction code.
     // Layer 7 — Raw History stays provider-owned for native sessions; custom
     // harnesses use the bounded compaction pipeline instead of this prompt.
@@ -184,4 +179,17 @@ export function buildProviderPrompt(input: ProviderPromptContext): string {
         ? "Include global memory is OFF. Use only project memories; global memory and personal context-hub tools are unavailable for both reading and writing."
         : "Use retrieved profile and preference memories to resolve known references and adapt tools, commands, language, and formatting when relevant. Treat inferred or low-confidence facts as uncertain, prefer newer confirmed facts, and do not mention unrelated personal context. Personal/context-hub data is retrieval-only: request the smallest useful slice; never dump the database into the prompt.",
   ].filter(Boolean).join("\n\n");
+  const context = [
+    !incognito ? projectTeamContextBlock(chat.id, ownerId) : "",
+    formatChatGoal(chat.sessionState, ownerId, chat.id, incognito),
+    chatMetadataPrompt(chat, incognito),
+    // Keep every attachment path available even when reference previews fill their budget.
+    buildAttachmentPrompt(job.chatId, job.attachments, ownerId),
+    explicit ? `Task context — explicit references:\n${explicit}` : "",
+    pinned ? `Pinned chat context:\n${pinned}` : "",
+    projectBlock ? `Project context:\n${projectBlock}` : "",
+    workingBlock ? `${workingBlock}\nThis bounded context belongs only to the current ${agentMemory ? "agent’s own chat" : "chat"} and is reloaded from durable storage. Preserve it across compaction/resume; newer user corrections take precedence. This task state is not an account profile and must not be promoted wholesale into global memory.` : "",
+    globalBlock,
+  ].filter(Boolean).join("\n\n");
+  return { instructions, context };
 }
