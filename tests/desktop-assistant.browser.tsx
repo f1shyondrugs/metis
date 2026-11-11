@@ -12,6 +12,7 @@ function check(value:unknown,label:string){checks.push((value?"PASS ":"FAIL ")+l
 let gesture:(value:string)=>void=()=>{},captured=0,submitted=0,post:Record<string,unknown>|null=null;
 let recordingStopped=0,releasePermission:(()=>void)|null=null,releaseTranscript:(()=>void)|null=null,editing=false,autoFocus=true,openedChat:string|null=null;
 let created:Record<string,unknown>|null=null,releaseModels:(()=>void)|null=null;
+let preferenceParams:Record<string,Array<{id:string;value:string}>>={"unrelated/model":[{id:"effort",value:"medium"}]};
 const shortcuts={assistant:"Control+Shift+Space",focusInput:"Control+Shift+Enter",openChat:"Control+Shift+M",deviceSettings:"Control+Shift+D",cancel:"Escape"};
 const game=document.createElement("button");game.textContent="Game keeps keyboard focus";game.id="fixture-game";document.body.append(game);game.focus();
 Object.defineProperty(window,"metisAssistant",{value:{
@@ -53,14 +54,18 @@ window.fetch=async(input,init)=>{
  if(url==="/api/voice/realtime")return Response.json({value:"fixture-ephemeral"});
  if(url==="https://api.openai.com/v1/realtime/calls")return new Response("fixture-sdp");
  if(url==="/api/models"){if(mode==="models-pending")await new Promise<void>(resolve=>{releaseModels=resolve;});return Response.json({models});}
- if(url==="/api/preferences")return Response.json({settings:{modelId:"fixture/first",voiceInput:["text","error"].includes(mode)?{enabled:false}:{enabled:true,provider:"openai",connectionId:"fixture",modelId:"fixture",realtime,maxDurationSeconds:60}}});
+ if(url==="/api/preferences"){if(init?.method==="PATCH")preferenceParams=JSON.parse(String(init.body)).modelParamsByModel;return Response.json({settings:{modelId:"fixture/first",modelParamsByModel:preferenceParams,voiceInput:["text","error","options","tools"].includes(mode)?{enabled:false}:{enabled:true,provider:"openai",connectionId:"fixture",modelId:"fixture",realtime,maxDurationSeconds:60}}});}
  if(url==="/api/chats"){created=JSON.parse(String(init?.body));return Response.json({chat:{id:"fixture-chat"}});}
  if(url.startsWith("/api/runs?"))return Response.json({job:{id:"fixture-job",status:mode==="error"?"error":"completed",error:mode==="error"?"Fixture provider rejected the request.":undefined}});
  if(url==="/api/file-uploads")return Response.json({id:"fixture-upload-"+captured});
  if(url.startsWith("/api/file-uploads/"))return Response.json({id:"fixture-upload",name:"Monitor.png",mimeType:"image/png",size:32,kind:"image",offset:999999});
  if(url==="/api/chat"){submitted++;post=JSON.parse(String(init?.body));return Response.json({jobId:"fixture-job"});}
  if(url.startsWith("/api/chats/")&&init?.method==="PATCH")return Response.json({chat:JSON.parse(String(init.body))});
- if(url.startsWith("/api/chats/"))return Response.json({chat:{runStatus:mode==="error"?"running":"completed",messages:[{id:post?.messageId,role:"user",content:post?.message},{id:"fixture-answer",role:"assistant",content:"Both monitors are attached."}]}});
+ if(url.startsWith("/api/chats/"))return Response.json({chat:{runStatus:mode==="error"?"running":"completed",messages:[{id:post?.messageId,role:"user",content:post?.message},{id:"fixture-answer",role:"assistant",content:"Both monitors are attached.",...(mode==="tools"?{parts:[
+   {type:"thinking",content:"Inspecting the owned fixture directory",done:true,durationMs:2100},
+   {type:"tool",id:"fixture-command",name:"execute_command",kind:"shell",source:"mcp",status:"completed",input:JSON.stringify({command:"pwd",target:"client:fixture-client"}),result:JSON.stringify({stdout:"C:\\Fixture",exitCode:0})},
+   {type:"text",content:"Both monitors are attached."}
+ ]}:{})}]}});
  if(url==="/api/voice/transcribe"){jobPolls++;if(mode==="delayed-edit")await new Promise<void>(resolve=>{releaseTranscript=resolve;});return Response.json({transcript:"Transcribed fixture words",job:{id:"fixture-voice",status:"completed",transcript:"Transcribed fixture words"}});}
  throw Error("Unexpected "+url);
 };
@@ -76,9 +81,18 @@ async function run(){
  await until(()=>document.querySelector("textarea"));
  await pause(100);
  if(mode!=="models-pending")check(document.querySelector('[aria-label="Assistant model"]')?.textContent?.includes("Recent model"),"Uses the same latest local model as New chat, not the legacy server default");
- if(["text","error"].includes(mode)){
+ if(["text","error","options","tools"].includes(mode)){
   check(document.activeElement===document.querySelector("textarea"),"Without voice the text field is focused after rendering");
   check(document.querySelector("textarea")!.placeholder==="Ask Metis","Compact field uses the requested placeholder");
+  if(mode==="options"){
+    const options=document.querySelector<HTMLButtonElement>('[aria-label="Model options"]')!;
+    options.click();await until(()=>document.querySelector(".assistant-options-menu"));
+    const low=[...document.querySelectorAll<HTMLButtonElement>(".assistant-options-menu button")].find(node=>node.textContent?.trim()==="low")!;
+    check(Boolean(low),"Thinking options come from the selected model contract");
+    low.click();await until(()=>preferenceParams["fixture/recent"]?.some(p=>p.value==="low"));
+    check(preferenceParams["unrelated/model"][0].value==="medium","Saving Thinking keeps other models' remembered settings");
+    await until(()=>!options.disabled);options.click();await pause();
+  }
   const input=document.querySelector("textarea")!;
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,"Compare my monitors");
   input.dispatchEvent(new Event("input",{bubbles:true}));await pause();
@@ -89,7 +103,7 @@ async function run(){
   check(String(post?.referenceText).includes('"x":-1920'),"Monitor positions reach the agent");
   check(String(post?.referenceText).includes("fixture-client"),"Origin device reaches the agent");
   check(post?.modelId==="fixture/recent"&&created?.modelId==="fixture/recent","The chat and actual submitted job receive the selected account model");
-  check(JSON.stringify(post?.modelParams)===JSON.stringify([{id:"effort",value:"high"}]),"The actual job receives remembered model parameters");
+  check(JSON.stringify(post?.modelParams)===JSON.stringify([{id:"effort",value:mode==="options"?"low":"high"}]),"The actual job receives the selected Thinking setting");
   if(mode==="error"){
     await until(()=>document.body.textContent?.includes("Fixture provider rejected the request."));
     check(!document.querySelector(".assistant-working"),"A failed job ends the working indicator even when chat.runStatus is stale");
@@ -97,6 +111,24 @@ async function run(){
   }
   await until(()=>document.body.textContent?.includes("Both monitors are attached."));
   check(true,"Answer appears inside floating assistant");
+  if(mode==="tools"){
+    const group=document.querySelector<HTMLElement>("[data-tool-call-group]")!;
+    check(Boolean(group),"Canonical tool and Thinking parts use the normal Metis activity group");
+    const toggle=group.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+    check(toggle.getAttribute("aria-expanded")==="false","Completed tool details start collapsed");
+    toggle.click();await until(()=>document.querySelector("[data-tool-call-row]"));
+    const thought=group.querySelector<HTMLButtonElement>('button[aria-label^="Thought"]');
+    thought?.click();await pause();
+    check(group.textContent?.includes("Inspecting the owned fixture directory"),"Saved Thinking is available in the activity group");
+    const tool=document.querySelector<HTMLButtonElement>("[data-tool-call-row] button")!;
+    tool.click();await until(()=>document.querySelector('[aria-label="Command details"]'));
+    check(document.querySelector('[aria-label="Command details"]')?.textContent?.includes("C:\\Fixture"),"The shared tool preview shows its saved result");
+    openedChat=null;
+    document.querySelector<HTMLButtonElement>('[aria-label="Show raw tool information"]')!.click();
+    await until(()=>openedChat==="fixture-chat");
+    check(true,"Full tool details open the same normal Metis chat");
+    tool.click();await pause();
+  }
   const card=document.querySelector(".assistant-conversation")!, user=card.querySelector('[aria-label="Your message"]')!, reply=card.querySelector('[aria-label="Metis reply"]')!;
   check(Boolean(user.compareDocumentPosition(reply)&Node.DOCUMENT_POSITION_FOLLOWING),"Your canonical message appears above the canonical reply");
   check(card.getBoundingClientRect().right>innerWidth-40,"Conversation is anchored at the top right");

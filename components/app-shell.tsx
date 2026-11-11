@@ -305,6 +305,7 @@ import { cn } from "@/lib/utils";
 import { modelAttrSummary } from "@/lib/model-label";
 import { clientConfig } from "@/lib/client-config";
 import { MODEL_STORAGE_KEY, PARAMS_STORAGE_KEY } from "@/lib/client-model-selection";
+import { isLegacyCodexNoiseTool, partsFromFlat } from "@/lib/chat-message-parts";
 import { loginErrorMessage } from "@/lib/login-error";
 import {
   DEFAULT_RUNTIME_MODE,
@@ -517,56 +518,6 @@ function truncateFileName(name: string, max = 22): string {
     return `${name.slice(0, keep)}…${ext}`;
   }
   return `${name.slice(0, max - 1)}…`;
-}
-
-function isLegacyCodexNoiseTool(tool: Pick<ToolPart, "name" | "input" | "result" | "detail" | "todos">) {
-  const name = String(tool.name ?? "").trim().toLowerCase();
-  const emptyPayload = !tool.input && !tool.result && !tool.detail && !tool.todos?.length;
-  return emptyPayload && (name === "codex error" || name === "codex todo list");
-}
-
-function partsFromFlat(m: {
-  content: string;
-  thinking?: string;
-  thinkingDone?: boolean;
-  thinkingDurationMs?: number;
-  tools?: ToolPart[];
-}): MsgPart[] {
-  const parts: MsgPart[] = [];
-  if (m.thinking) {
-    parts.push({
-      type: "thinking",
-      content: m.thinking,
-      done: m.thinkingDone,
-      durationMs: m.thinkingDurationMs,
-    });
-  }
-  const toolsById = new Map<string, ToolPart>();
-  for (const t of m.tools ?? []) {
-    if (isLegacyCodexNoiseTool(t)) continue;
-    const previous = toolsById.get(t.id);
-    toolsById.set(t.id, previous ? { ...previous, ...t } : t);
-  }
-  for (const t of toolsById.values()) {
-    parts.push({
-      type: "tool",
-      id: t.id,
-      name: t.name,
-      status: t.status,
-      detail: t.detail,
-      kind: t.kind,
-      path: t.path,
-      diff: t.diff,
-      input: t.input,
-      result: t.result,
-      subagent: t.subagent,
-      todos: t.todos,
-    });
-  }
-  if (m.content) {
-    parts.push({ type: "text", content: m.content });
-  }
-  return parts;
 }
 
 function flatFromParts(parts: MsgPart[]): {

@@ -4,7 +4,8 @@ import { ArrowUp, ArrowUpRight, LoaderCircle, Square, X } from "lucide-react";
 import { VoiceInput, type VoiceState } from "@/components/voice-input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { Markdown } from "@/components/markdown";
+import { DesktopAssistantMessage, type AssistantMessage } from "@/components/desktop-assistant-message";
+import { ModelOptionsMenu } from "@/components/model-options-menu";
 import { ModelPicker } from "@/components/model-picker";
 import type { ModelInfo } from "@/components/settings-panel";
 import { desktopShortcutLabel } from "@/lib/desktop-shortcuts";
@@ -24,7 +25,7 @@ async function json(url:string,init?:RequestInit) {
   return body;
 }
 type Selection={modelId:string;modelParams:ModelParamSelection[]};
-type Message={id:string;role:"user"|"assistant";content:string;errorMessage?:string};
+type Message=AssistantMessage&{role:"user"|"assistant"};
 type AutomaticSend={epoch:number;revision:number;focusRevision:number};
 export function DesktopAssistant() {
   const [available,setAvailable]=useState(false),[voice,setVoice]=useState<VoiceInputSettings|null>(null);
@@ -40,6 +41,7 @@ export function DesktopAssistant() {
   const [modelSaving,setModelSaving]=useState(false),[modelMenuOpen,setModelMenuOpen]=useState(false),[modelsLoaded,setModelsLoaded]=useState(false),[finalizedRevision,setFinalizedRevision]=useState(0);
   const [pollError,setPollError]=useState(""),[runProblem,setRunProblem]=useState(""),[runRevision,retryRun]=useState(0),[runLabel,setRunLabel]=useState("Metis is working…");
   const preferences=useRef<ClientModelPreferences>({}),modelRevision=useRef(0),modelSavingRef=useRef(false),modelMenuOpenRef=useRef(false);
+  const openMenus=useRef(new Set<string>());
   const editingRef=useRef(false),focusRevision=useRef(0),runActive=useRef(false),transcriptionPending=useRef(false);
   const inputRef=useRef<HTMLTextAreaElement>(null),draft=useRef(""),revision=useRef(0),sending=useRef(false),live=useRef(true);
   const actionEpoch=useRef(0),sendRef=useRef<(automatic?:AutomaticSend)=>Promise<void>>(async()=>{});
@@ -160,7 +162,7 @@ export function DesktopAssistant() {
         ]);
         if(cancelled)return;
         const items=(body.chat.messages||[]).filter((message:Message)=>message.role==="user"||message.role==="assistant")
-          .map((message:Message)=>({id:message.id,role:message.role,content:message.content||"",errorMessage:message.errorMessage}));
+          .map((message:Message)=>({...message,content:message.content||""}));
         setMessages(items);setPollError("");
         const job=state?.job,status=job?.status||body.chat.runStatus;
         if(["error","interrupted"].includes(status))setRunProblem(job?.error||"The agent run failed. Open this chat in Metis for details.");
@@ -176,11 +178,19 @@ export function DesktopAssistant() {
     if(autoCapture.current)autoCapture.current.manual=true;
     if(!editingRef.current){editingRef.current=true;setEditing(true);void assistantBridge()?.focusInput?.(true);}
   }
+  function menuOpen(kind:string,open:boolean){
+    if(open)openMenus.current.add(kind);else openMenus.current.delete(kind);
+    modelMenuOpenRef.current=openMenus.current.size>0;setModelMenuOpen(modelMenuOpenRef.current);
+  }
   async function changeModel(id:string) {
-    if(sending.current||runActive.current||modelSavingRef.current)return;
     const model=modelForSelection(models,id);if(!model)return;
     const map=preferences.current.modelParamsByModel||{};
-    const next={modelId:model.id,modelParams:Object.hasOwn(map,model.id)?sanitizeModelParams(model,map[model.id]):defaultParamsForModel(model)};
+    await saveSelection({modelId:model.id,modelParams:Object.hasOwn(map,model.id)?sanitizeModelParams(model,map[model.id]):defaultParamsForModel(model)});
+  }
+  async function saveSelection(next:Selection) {
+    if(sending.current||runActive.current||modelSavingRef.current)return;
+    const model=modelForSelection(models,next.modelId);if(!model)return;
+    next={modelId:model.id,modelParams:sanitizeModelParams(model,next.modelParams)};
     modelSavingRef.current=true;setModelSaving(true);modelRevision.current++;setError("");
     try{
       let confirmed=next;
@@ -190,6 +200,10 @@ export function DesktopAssistant() {
         confirmed={modelId:result.chat.modelId,modelParams:result.chat.modelParams};
       }
       rememberClientModelSelection(confirmed,localStorage);setSelection(confirmed);
+      const map={...preferences.current.modelParamsByModel,[confirmed.modelId]:confirmed.modelParams};
+      preferences.current={...preferences.current,modelParamsByModel:map};
+      try{await json("/api/preferences",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({modelParamsByModel:map})});}
+      catch{setError("The model is set for this chat, but its defaults could not be saved. Choose the option again to retry.");}
     }catch(cause){setError(cause instanceof Error?cause.message:"Could not save the model selection.");}
     finally{modelSavingRef.current=false;setModelSaving(false);}
   }
@@ -244,6 +258,10 @@ export function DesktopAssistant() {
   if(!available)return <main className="desktop-assistant assistant-fallback">Open Desktop Assistant from the Metis desktop app.</main>;
   const keyLabel=(value:string|undefined)=>value?desktopShortcutLabel(value,devicePlatform):"";
   const voiceBusy=["permission","recording","uploading","transcribing"].includes(voiceState);
+  const selectedModel=modelForSelection(models,selection?.modelId);
+  const selectionDisabled=busy||running||modelSaving||voiceBusy||Boolean(pendingSubmission.current);
+  const last=messages.at(-1);
+  const hasActivity=last?.role==="assistant"&&Boolean(last.thinking||last.tools?.length||last.parts?.some(part=>part.type==="tool"||part.type==="thinking"||part.type==="compaction"));
   return <TooltipProvider><main className="desktop-assistant" data-editing={editing}
     onPointerDown={event=>{if(event.target===event.currentTarget)void assistantBridge()?.focusInput?.(false);}}>
     {messages.length||running?<aside className="assistant-conversation assistant-surface" aria-label="Desktop conversation">
@@ -257,9 +275,9 @@ export function DesktopAssistant() {
       </header>
       <div className="assistant-messages" role="log" aria-label="Conversation">
         {messages.map(message=><div key={message.id} className={"assistant-message assistant-message-"+message.role} aria-label={message.role==="user"?"Your message":"Metis reply"}>
-          {message.errorMessage?<p role="alert">{message.errorMessage}</p>:message.role==="user"?<p>{message.content}</p>:<Markdown content={message.content} streaming={running&&message.id===messages.at(-1)?.id}/>}
+          {message.role==="user"?<p>{message.content}</p>:<DesktopAssistantMessage message={message} streaming={running&&message.id===messages.at(-1)?.id} onOpenChat={()=>void assistantBridge()?.openChat(chatId)}/>}
         </div>)}
-        {running&&!pollError&&(!messages.at(-1)?.content||messages.at(-1)?.role==="user")?<div role="status" className="assistant-working"><LoaderCircle className="size-3.5 animate-spin" aria-hidden="true"/>{runLabel}</div>:null}
+        {running&&!pollError&&!hasActivity&&(!messages.at(-1)?.content||messages.at(-1)?.role==="user")?<div role="status" className="assistant-working"><LoaderCircle className="size-3.5 animate-spin" aria-hidden="true"/>{runLabel}</div>:null}
       </div>
     </aside>:null}
     <div className="assistant-compose">
@@ -280,10 +298,13 @@ export function DesktopAssistant() {
         </form>
         <div className="assistant-model-row" onPointerDown={enterText}>
           <ModelPicker models={models} value={selection?.modelId||""} onValueChange={id=>void changeModel(id)} favoriteModelKeys={favorites} onToggleFavorite={()=>{}}
-            allowPinning={false} modal={false} disabled={busy||running||modelSaving||voiceBusy||Boolean(pendingSubmission.current)}
+            allowPinning={false} modal={false} disabled={selectionDisabled}
             className="assistant-model-picker" contentClassName="assistant-input assistant-model-menu" ariaLabel="Assistant model"
             placeholder={!modelsLoaded?"Loading models…":"Select a model"}
-            onOpenChange={open=>{modelMenuOpenRef.current=open;setModelMenuOpen(open);}}/>
+            onOpenChange={open=>menuOpen("models",open)}/>
+          {selectedModel&&selection?<ModelOptionsMenu model={selectedModel} modelParams={selection.modelParams}
+            onModelParamsChange={params=>void saveSelection({modelId:selectedModel.id,modelParams:params})} disabled={selectionDisabled}
+            className="assistant-model-options" contentClassName="assistant-input assistant-options-menu" onOpenChange={open=>menuOpen("options",open)}/>:null}
           {modelsLoaded&&!models.length?<span className="assistant-model-empty">Connect a provider in Settings.</span>:null}
         </div>
       </section>

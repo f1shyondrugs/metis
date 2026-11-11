@@ -46,6 +46,8 @@ type Props = {
   className?: string;
   disabled?: boolean;
   modelLockReason?: string;
+  contentClassName?: string;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function ModelOptionsMenu({
@@ -56,6 +58,8 @@ export function ModelOptionsMenu({
   className,
   disabled = false,
   modelLockReason,
+  contentClassName,
+  onOpenChange,
 }: Props) {
   const parameters = modelParametersForModel(model);
   const defaults = defaultParamsForModel({ ...model, parameters });
@@ -72,7 +76,7 @@ export function ModelOptionsMenu({
   }
 
   function setParam(id: string, value: string) {
-    if (modelLockReason) return;
+    if (disabled || modelLockReason) return;
     const allowed = new Set(parameters.map((p) => p.id));
     const next = [
       ...modelParams.filter((p) => p.id !== id && allowed.has(p.id)),
@@ -82,7 +86,7 @@ export function ModelOptionsMenu({
   }
 
   return (
-    <Popover>
+    <Popover onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -103,7 +107,7 @@ export function ModelOptionsMenu({
         side="top"
         sideOffset={8}
         collisionPadding={16}
-        className="max-h-[min(54dvh,24rem)] w-[min(18.5rem,calc(100vw-1.5rem))] max-w-none space-y-2 overflow-y-auto overscroll-contain rounded-2xl border-border/45 p-2 shadow-xl md:max-h-[min(70dvh,32rem)] md:w-72 md:max-w-[calc(100vw-1rem)] md:space-y-4 md:rounded-lg md:p-4 md:shadow-md"
+        className={cn("max-h-[min(54dvh,24rem)] w-[min(18.5rem,calc(100vw-1.5rem))] max-w-none space-y-2 overflow-y-auto overscroll-contain rounded-2xl border-border/45 p-2 shadow-xl md:max-h-[min(70dvh,32rem)] md:w-72 md:max-w-[calc(100vw-1rem)] md:space-y-4 md:rounded-lg md:p-4 md:shadow-md",contentClassName)}
       >
         {mobileComposerControls ? (
           <div className="space-y-1 md:hidden">
@@ -243,7 +247,7 @@ export function ModelOptionsMenu({
                 variant="ghost"
                 size="sm"
                 className="h-7 shrink-0 rounded-md px-2 text-[11px] font-normal text-muted-foreground hover:bg-muted/35"
-                disabled={Boolean(modelLockReason)}
+                disabled={disabled || Boolean(modelLockReason)}
                 onClick={() => onModelParamsChange(defaults)}
               >
                 Reset
@@ -253,7 +257,7 @@ export function ModelOptionsMenu({
         ) : null}
 
         {modelLockReason ? <p className="text-xs text-muted-foreground">{modelLockReason}</p> : null}
-        <fieldset disabled={Boolean(modelLockReason)} className="min-w-0 space-y-2.5 disabled:opacity-50 md:space-y-4">
+        <fieldset disabled={disabled || Boolean(modelLockReason)} className="min-w-0 space-y-2.5 disabled:opacity-50 md:space-y-4">
           {parameters.length === 0 ? (
             <p className="px-1 text-xs text-muted-foreground md:px-0">
               This model has no extra options.
@@ -328,7 +332,7 @@ export function ModelOptionsMenu({
             variant="ghost"
             size="sm"
             className="hidden h-7 px-0 text-xs text-muted-foreground md:inline-flex"
-            disabled={Boolean(modelLockReason)}
+            disabled={disabled || Boolean(modelLockReason)}
                 onClick={() => onModelParamsChange(defaults)}
           >
             Reset defaults

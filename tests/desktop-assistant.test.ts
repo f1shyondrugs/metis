@@ -3,6 +3,17 @@ import { test } from "node:test";
 import { desktopShortcutFromEvent, desktopShortcutLabel } from "../lib/desktop-shortcuts";
 import { settingsSearchEntries, visibleSettingsTabs } from "../lib/settings-navigation";
 import { desktopCaptureContext, type DesktopCapture } from "../lib/desktop-assistant";
+import { partsFromFlat } from "../lib/chat-message-parts";
+test("shared chat fallback retains canonical tool identity, deferred payload links and actual status",()=>{
+  const parts=partsFromFlat({content:"Answer",thinking:"Reasoning",tools:[
+    {id:"one",name:"execute_command",status:"running",inputUrl:"/api/tool/input",source:"mcp"},
+    {id:"one",name:"execute_command",status:"completed",resultUrl:"/api/tool/result"},
+    {id:"legacy-noise",name:"codex error",status:"error"},
+  ]});
+  assert.deepEqual(parts.map(p=>p.type),["thinking","tool","text"]);
+  const tool=parts.find(p=>p.type==="tool")!;
+  assert.equal(tool.id,"one");assert.equal(tool.status,"completed");assert.equal(tool.inputUrl,"/api/tool/input");assert.equal(tool.resultUrl,"/api/tool/result");
+});
 import { latestClientModelSelection, rememberClientModelSelection, MODEL_STORAGE_KEY, PARAMS_STORAGE_KEY } from "../lib/client-model-selection";
 const availableModels=[
   {id:"first/account/model",displayName:"First",parameters:[],defaultParams:[]},

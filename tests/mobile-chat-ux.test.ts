@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { isLegacyCodexNoiseTool } from "../lib/chat-message-parts";
 
 const shell = readFileSync(new URL("../components/app-shell.tsx", import.meta.url), "utf8");
 const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
@@ -57,8 +58,8 @@ test("assistant response footer copies the raw Markdown beside run metadata", ()
 });
 
 test("legacy Codex diagnostic rows are hidden from existing chat history", () => {
-  assert.match(shell, /function isLegacyCodexNoiseTool/);
-  assert.match(shell, /name === "codex error" \|\| name === "codex todo list"/);
+  assert.equal(isLegacyCodexNoiseTool({name:"codex error"}),true);
+  assert.equal(isLegacyCodexNoiseTool({name:"codex todo list",result:"Actual provider error details"}),false);
   assert.match(shell, /visibleTools = \(m\.tools \|\| \[\]\)\.filter\(\(tool\) => !isLegacyCodexNoiseTool\(tool\)\)/);
 });
 
