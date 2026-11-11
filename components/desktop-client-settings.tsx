@@ -36,7 +36,7 @@ export function DesktopClientSettings() {
     {state?.assistant?.shortcuts&&state.assistant.defaults?<DesktopShortcutSettings value={state.assistant.shortcuts} defaults={state.assistant.defaults} platform={state.platform} onSaved={next=>setState(current=>current?{...current,assistant:current.assistant?{...current.assistant,shortcuts:next,hotkey:next.assistant}:undefined}:current)}/>:null}
     {state?.assistant?<div className="border-t border-border pt-4">
       <h3 className="text-sm font-medium">Desktop Assistant</h3>
-      <p className="my-2 max-w-lg text-xs text-muted-foreground">Hold the Talk shortcut to speak. Release to finish, or hold for three seconds to lock recording. Use Focus text to type, then press it again to return to your app. Voice uses your Voice & dictionary settings. Each message includes fresh screenshots of all monitors and this device’s identity.</p>
+      <p className="my-2 max-w-lg text-xs text-muted-foreground">Press the Talk shortcut once to start recording, then press it again to stop. Use Focus text to type, then press it again to return to your app. Voice uses your Voice & dictionary settings. Each message includes fresh screenshots of all monitors and this device’s identity.</p>
       <Button variant="outline" onClick={()=>void desktopBridge()?.openAssistant?.().catch(()=>setError("Could not open the assistant. Try again."))}>Open Desktop Assistant</Button>
     </div>:null}
   </section>;

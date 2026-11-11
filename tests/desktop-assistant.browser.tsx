@@ -104,9 +104,9 @@ async function run(){
       await until(()=>document.querySelector('[aria-label="Live transcription"]')?.textContent?.includes("Live realtime words"));
       check(true,"Realtime transcript appears while recording");
     }else check(!document.querySelector('[aria-label="Live transcription"]'),"Batch Whisper does not show live transcription");
-    gesture("lock");await pause();check(document.body.textContent?.includes("Locked"),"Long hold locks recording");
+    check(!document.body.textContent?.includes("Locked"),"Recording does not require a held or locked hotkey");
     gesture("stop");await until(()=>document.querySelector("textarea")!.value.includes(mode==="realtime"?"Final realtime":"Transcribed"));
-    check(mode==="realtime"||jobPolls>0,"Release uses configured transcription API");
+    check(mode==="realtime"||jobPolls>0,"Stop uses configured transcription API");
     check(submitted===0,"Transcription preserves a reviewable draft");
   }
  }

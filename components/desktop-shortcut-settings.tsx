@@ -6,7 +6,7 @@ import type {DesktopShortcuts} from "@/lib/desktop-assistant";
 import {desktopShortcutFromEvent,desktopShortcutLabel} from "@/lib/desktop-shortcuts";
 
 const rows:Array<{key:keyof DesktopShortcuts;label:string;hint:string}>=[
-  {key:"assistant",label:"Talk / show assistant",hint:"Hold to speak; three seconds locks recording."},
+  {key:"assistant",label:"Talk / show assistant",hint:"Press once to record; press again to stop."},
   {key:"focusInput",label:"Focus text / return to app",hint:"Switch between typing and passing input to your game."},
   {key:"openChat",label:"Open current chat",hint:"Open the same conversation in Metis."},
   {key:"deviceSettings",label:"Open local device settings",hint:"Open Remote Client Device Settings."},

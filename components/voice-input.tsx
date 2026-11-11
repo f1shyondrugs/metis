@@ -28,7 +28,7 @@ type VoiceInputProps = {
   realtime?: boolean;
   endpoint?: string;
   connectionId?: string;
-  /** External hold-to-talk control. Undefined leaves the ordinary button behavior. */
+  /** External recording control. Undefined leaves the ordinary button behavior. */
   captureRequested?: boolean;
   stopSignal?: number;
   cancelSignal?: number;
@@ -164,6 +164,7 @@ export function VoiceInput({
     audioContext.createMediaStreamSource(stream).connect(analyser);
     audioContextRef.current = audioContext;
     analyserRef.current = analyser;
+    if (audioContext.state === "suspended") void audioContext.resume().catch(() => {});
     waveformPeakRef.current = 0.12;
     const data = new Uint8Array(analyser.fftSize);
     const animate = () => {

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, ArrowUpRight, LockKeyhole, LoaderCircle, Square, X } from "lucide-react";
+import { ArrowUp, ArrowUpRight, LoaderCircle, Square, X } from "lucide-react";
 import { VoiceInput, type VoiceState } from "@/components/voice-input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ async function json(url:string,init?:RequestInit) {
 export function DesktopAssistant() {
   const [available,setAvailable]=useState(false),[voice,setVoice]=useState<VoiceInputSettings|null>(null);
   const [input,setInput]=useState(""),[preview,setPreview]=useState(""),[requested,setRequested]=useState(false);
-  const [locked,setLocked]=useState(false),[voiceState,setVoiceState]=useState<VoiceState>("idle");
+  const [voiceState,setVoiceState]=useState<VoiceState>("idle");
   const [voiceStop,setVoiceStop]=useState(0);
   const [cancelSignal,setCancelSignal]=useState(0),[error,setError]=useState(""),[busy,setBusy]=useState(false);
   const [chatId,setChatId]=useState<string|null>(null),[running,setRunning]=useState(false);
@@ -35,10 +35,9 @@ export function DesktopAssistant() {
   const pendingSubmission=useRef<{chatId:string;messageId:string;message:string;referenceText:string;uploadIds:string[]}|null>(null);
   const recording=useRef(false),lastWave=useRef(0),panel=useRef<HTMLElement>(null);
   const gesture=useCallback((value:string)=>{
-    if(value==="start"){setRequested(true);setLocked(false);}
+    if(value==="start"){setRequested(true);}
     if(value==="stop"){setRequested(false);setVoiceStop(value=>value+1);}
-    if(value==="lock")setLocked(true);
-    if(value==="cancel"){actionEpoch.current++;setRequested(false);setLocked(false);setCancelSignal(value=>value+1);}
+    if(value==="cancel"){actionEpoch.current++;setRequested(false);setCancelSignal(value=>value+1);}
     if(value==="open"){setCycle(value=>value+1);reloadSettings(value=>value+1);}
     if(value==="shortcuts-changed")reloadSettings(value=>value+1);
     if(value==="focus-input"){focusRevision.current++;editingRef.current=true;setEditing(true);setFocusEpoch(value=>value+1);}
@@ -84,7 +83,7 @@ export function DesktopAssistant() {
   const onVoiceState=useCallback((state:VoiceState)=>{
     const wasRecording=recording.current;
     setVoiceState(state);recording.current=state==="recording";
-    if((wasRecording&&state!=="recording")||state==="error"){setRequested(false);setLocked(false);}
+    if((wasRecording&&state!=="recording")||state==="error"){setRequested(false);}
     assistantBridge()?.voice({recording:state==="recording",level:0});
   },[]);
   const onLevel=useCallback((level:number)=>{
@@ -186,6 +185,7 @@ export function DesktopAssistant() {
         {voice?.realtime&&preview?<p role="status" aria-label="Live transcription" className="assistant-transcript">{preview}</p>:null}
         <form className="assistant-form" onSubmit={event=>{event.preventDefault();void send();}}>
           <textarea ref={inputRef} aria-label="Message Metis" placeholder="Ask Metis" rows={1} value={input}
+            onPointerDown={()=>{if(!editing)void assistantBridge()?.focusInput?.(true);}}
             onFocus={()=>{if(!editing)void assistantBridge()?.focusInput?.(true);}}
             onChange={event=>{revision.current++;draft.current=event.target.value;setInput(event.target.value);}}
             onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void send();}}}/>
@@ -200,7 +200,6 @@ export function DesktopAssistant() {
         </form>
       </section>
       {configured?<div className="assistant-hint">
-        {locked?<span className="inline-flex items-center gap-1"><LockKeyhole className="size-3" aria-hidden="true"/>Locked</span>:null}
         {shortcuts?<span><kbd>{keyLabel(shortcuts.focusInput)}</kbd> {editing?"to return to your app":"to type"}</span>:null}
       </div>:null}
     </div>

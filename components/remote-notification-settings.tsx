@@ -11,10 +11,10 @@ export function RemoteNotificationSettings({settings,showFeedback=true}:{setting
   const {prefs,busy,save}=settings;
   return <section aria-labelledby="remote-notifications-heading" className="space-y-3">
     <div className="flex items-start justify-between gap-4"><div className="min-w-0">
-      <h4 id="remote-notifications-heading" className="text-sm font-medium">Remote Client notifications</h4>
-      <p id="remote-notifications-description" className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">Native alerts for completed tasks and messages from your agent. Requires the Remote Client desktop app running on a selected device.</p>
-    </div><Switch id="remote-notifications-global" aria-label="Remote Client notifications" aria-describedby="remote-notifications-description" className="mt-1 shrink-0" checked={prefs?.remoteEnabled??false} disabled={!prefs||busy} onCheckedChange={remoteEnabled=>void save({remoteEnabled})}/></div>
-    {prefs?<p className="text-xs text-muted-foreground">{prefs.remoteEnabled ? prefs.remoteClientIds.length ? "Choose below which devices receive alerts. Offline devices receive pending alerts when they reconnect." : "Select a device below to receive notifications." : "All Remote Client notifications are off. Your device selection is kept."}</p>:null}
+      <h4 id="remote-notifications-heading" className="text-sm font-medium">Metis app notifications</h4>
+      <p id="remote-notifications-description" className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">Native alerts for completed tasks and messages from your agent. Requires the Metis desktop app running on a selected device.</p>
+    </div><Switch id="remote-notifications-global" aria-label="Metis app notifications" aria-describedby="remote-notifications-description" className="mt-1 shrink-0" checked={prefs?.remoteEnabled??false} disabled={!prefs||busy} onCheckedChange={remoteEnabled=>void save({remoteEnabled})}/></div>
+    {prefs?<p className="text-xs text-muted-foreground">{prefs.remoteEnabled ? prefs.remoteClientIds.length ? "Choose below which devices receive alerts. Offline devices receive pending alerts when they reconnect." : "Select a device below to receive notifications." : "All Metis app notifications are off. Your device selection is kept."}</p>:null}
     {showFeedback?<NotificationSettingsFeedback settings={settings}/>:null}
   </section>;
 }
@@ -23,7 +23,7 @@ export function RemoteDeviceNotificationSwitch({settings,clientId,clientName}:{s
   const unavailable=client?.status==="revoked"||!client;
   const unsupported=client?.status==="online"&&client.nativeNotifications!==true;
   const note=unavailable?"Notification availability is unknown."
-    :unsupported?"Connect an updated Remote Client desktop app to receive native alerts."
+    :unsupported?"Connect an updated Metis desktop app to receive native alerts."
     :!settings.prefs?.remoteEnabled?"Paused by the global notification switch."
     :client.status==="offline"?"Offline · pending alerts arrive after reconnecting."
     :selected?"Native notifications enabled on this device.":"Notifications are off on this device.";
