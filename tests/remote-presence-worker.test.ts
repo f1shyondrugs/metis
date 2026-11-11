@@ -26,17 +26,18 @@ test("real gateway heartbeats/auth stay responsive under writer lock and preserv
   const began=performance.now();
   assert.deepEqual(clients.authenticateRemoteClient("device","synthetic-credential"),{clientId:"device",ownerId:"owner"});
   assert.equal(clients.authenticateRemoteClient("device","invalid"),null);
-  socket.emit("message",JSON.stringify({type:"heartbeat",desktopGui:true}));
+  socket.emit("message",JSON.stringify({type:"heartbeat",desktopGui:true,overlayAnnotations:true}));
   assert.ok(performance.now()-began<300,"gateway waited for SQLite writer");
   assert.equal(socket.acks,1);
   assert.equal(clients.getRemoteClient("device","owner")!.status,"online");
   assert.ok(clients.getRemoteClient("device","owner")!.capabilities.includes("desktop_gui"));
+  assert.ok(clients.getRemoteClient("device","owner")!.capabilities.includes("overlay_annotations"));
   assert.equal(clients.getRemoteClient("device","other"),null);
   assert.equal(db.prepare("SELECT status FROM remote_clients WHERE id='device'").get()!.status,"offline");
   let ticks=0;const timer=setInterval(()=>ticks++,10);await delay(350);clearInterval(timer);
   assert.ok(ticks>=15,"parent timer stalled on heartbeat");
   // Coalesced heartbeats retain the newest capability rather than queueing every write.
-  for(let i=0;i<100;i++)socket.emit("message",JSON.stringify({type:"heartbeat",desktopGui:i===99}));
+  for(let i=0;i<100;i++)socket.emit("message",JSON.stringify({type:"heartbeat",desktopGui:i===99,overlayAnnotations:i===99}));
   assert.equal(socket.acks,101);
   lock.exec("COMMIT");
   await until(()=>db.prepare("SELECT status FROM remote_clients WHERE id='device'").get()!.status==="online" &&
@@ -45,6 +46,11 @@ test("real gateway heartbeats/auth stay responsive under writer lock and preserv
   // The first persisted heartbeat may already satisfy the values above. Wait
   // for the coalesced newest sequence ACK before testing stale-write rejection.
   await until(()=>!presence.getRemotePresence("device","owner"));
+  assert.ok(String(db.prepare("SELECT capabilities FROM remote_clients WHERE id='device'").get()!.capabilities).includes("overlay_annotations"));
+  socket.emit("message",JSON.stringify({type:"heartbeat",desktopGui:true}));
+  assert.ok(!clients.getRemoteClient("device","owner")!.capabilities.includes("overlay_annotations"),"old heartbeat removes stale overlay feature");
+  await until(()=>!presence.getRemotePresence("device","owner"));
+  assert.ok(!String(db.prepare("SELECT capabilities FROM remote_clients WHERE id='device'").get()!.capabilities).includes("overlay_annotations"));
   const latest=String(db.prepare("SELECT last_seen_at FROM remote_clients WHERE id='device'").get()!.last_seen_at);
   presence.queueRemotePresence({clientId:"device",ownerId:"other",status:"offline",at:new Date().toISOString()});
   await until(()=>!presence.getRemotePresence("device","other"));
