@@ -4,7 +4,7 @@ import { config } from "./config";
 
 export type RemotePresence = {
  clientId:string;ownerId:string;status:"online"|"offline";at:string;
- address?:string;desktopGui?:boolean;credentialHash?:string;credentialUsedAt?:string;
+ address?:string;desktopGui?:boolean;overlayAnnotations?:boolean;credentialHash?:string;credentialUsedAt?:string;
 };
 type Pending=RemotePresence & {sequence:number};
 /** Advisory presence is coalesced per device, never written on the HTTP/WS thread. */

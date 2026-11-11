@@ -10,13 +10,17 @@ import {
   markRemoteClientOffline,
   markRemoteClientSeen,
   updateRemoteClientDesktopCapability,
+  updateRemoteClientOverlayCapability,
   consumeRemoteApproval,
   createRemoteApproval,
   RemoteApprovalRequiredError,
   updateRemoteAudit,
   type RemoteAction,
 } from "@/lib/remote-clients";
-import { validateUserRemoteRequest } from "@/lib/remote-security";
+import { validateUserRemoteRequest, validateDesktopOverlayTarget } from "@/lib/remote-security";
+import { hydrateDesktopOverlay } from "@/lib/desktop-overlay";
+import { createDesktopOverlayFileResolver } from "@/lib/desktop-overlay-files";
+import { summarizeDesktopOverlay } from "./mcp-core/desktop-overlay.mjs";
 import { redactSensitiveData } from "@/lib/agent-trace";
 import { approvedRemoteActionId, publishRemoteApproval, waitForRemoteApproval } from "@/lib/remote-approval-flow";
 
@@ -35,12 +39,12 @@ type Pending = {
 
 const OPEN = 1;
 type GatewayState = {
-  connections: Map<string, { socket: SocketLike; ownerId: string; pending: Map<string, Pending> }>;
+  connections: Map<string, { socket: SocketLike; ownerId: string; overlayAnnotations?: boolean; pending: Map<string, Pending> }>;
   events: Map<string, Array<Record<string, unknown>>>;
 };
 const processGlobal = globalThis as typeof globalThis & { __metisRemoteGateway?: GatewayState };
 const gatewayState = processGlobal.__metisRemoteGateway || {
-  connections: new Map<string, { socket: SocketLike; ownerId: string; pending: Map<string, Pending> }>(),
+  connections: new Map<string, { socket: SocketLike; ownerId: string; overlayAnnotations?: boolean; pending: Map<string, Pending> }>(),
   events: new Map<string, Array<Record<string, unknown>>>(),
 };
 processGlobal.__metisRemoteGateway = gatewayState;
@@ -83,6 +87,11 @@ export function attachRemoteClient(socket: SocketLike, clientId: string, ownerId
       lastHeartbeatAt = Date.now();
       markRemoteClientSeen(clientId, address);
       if (typeof message.desktopGui === "boolean") updateRemoteClientDesktopCapability(clientId, message.desktopGui);
+      const connection = connections.get(clientId);
+      if (connection?.socket === socket) {
+        connection.overlayAnnotations = message.overlayAnnotations === true;
+        updateRemoteClientOverlayCapability(clientId, connection.overlayAnnotations);
+      }
       let appearance;
       if (message.appearance === true) {
         // A bad saved theme must never break the device heartbeat or input path.
@@ -127,7 +136,7 @@ export function attachRemoteClient(socket: SocketLike, clientId: string, ownerId
 export function requestRemoteClient(input: {
   clientId: string;
   ownerId: string;
-  action: RemoteAction;
+  action: RemoteAction | "desktop_overlay";
   params?: Record<string, unknown>;
   source?: "user" | "agent";
   approvalId?: string;
@@ -141,54 +150,64 @@ export function requestRemoteClient(input: {
 }) {
   // Keep the wire operation and any approval bound to the same arguments, even
   // if the caller changes its object while the native request is in flight.
-  input = { ...input, params: structuredClone(input.params || {}) };
+  // Overlay validation runs before cloning so prototypes/accessors cannot be erased.
+  if (input.action !== "desktop_overlay") input = { ...input, params: structuredClone(input.params || {}) };
   const client = getRemoteClient(input.clientId, input.ownerId);
   if (!client) throw new Error("Remote client not found");
+  if (input.action === "desktop_overlay") {
+    const target = validateDesktopOverlayTarget(client, input.ownerId);
+    if (!target.allowed) throw new Error(target.reason);
+    input = { ...input, params: hydrateDesktopOverlay(input.params || {}, input.ownerId, createDesktopOverlayFileResolver(input.ownerId,input.chatId)) };
+  }
+  // Overlay is a GUI action, governed by the existing explicit Computer Use policy.
+  const policyInput = { ...input, action: input.action === "desktop_overlay" ? "computer_use" as const : input.action };
+  const requestAuditData = input.action === "desktop_overlay" ? summarizeDesktopOverlay(input.params) : redact(input.params);
   if (input.action === "edit_file") normalizeFileEdit(input.params);
-  const authorization = authorizeRemoteAction(client, input.action, input.params);
+  const authorization = authorizeRemoteAction(client, policyInput.action, input.params);
   if (!authorization.allowed) {
     appendRemoteAudit({
       ownerId: input.ownerId,
       clientId: input.clientId,
       source: input.source || "user",
       action: input.action,
-      requestData: redact(input.params),
+      requestData: requestAuditData,
       status: "denied",
       error: authorization.reason,
     });
     throw new Error(authorization.reason || "Remote action denied");
   }
   if (authorization.requiresApproval) {
-    const approvalId = input.approvalId || approvedRemoteActionId(input);
+    const approvalId = input.approvalId || approvedRemoteActionId(policyInput);
     if (!approvalId || !consumeRemoteApproval({
       id: approvalId,
       ownerId: input.ownerId,
       clientId: input.clientId,
-      action: input.action,
+      action: policyInput.action,
       params: input.params,
     })) {
       if (approvalId) throw new Error(`Remote approval ${approvalId} is pending, expired, already used, or does not match this action.`);
       const approval = createRemoteApproval({
         ownerId: input.ownerId,
         clientId: input.clientId,
-        action: input.action,
+        action: policyInput.action,
         params: input.params,
         source: input.source,
         runId: input.runId,
         toolCallId: input.toolCallId,
       });
-      publishRemoteApproval(input, approval.id);
+      publishRemoteApproval(policyInput, approval.id);
       throw new RemoteApprovalRequiredError(approval.id);
     }
   }
   const connection = connections.get(input.clientId);
-  if (!connection || connection.socket.readyState !== OPEN) throw new Error("Remote client is offline");
+  if (!connection || connection.ownerId !== input.ownerId || connection.socket.readyState !== OPEN) throw new Error("Remote client is offline");
+  if (input.action === "desktop_overlay" && connection.overlayAnnotations !== true) throw new Error("Remote client update needed: the active connection has not reported overlay_annotations");
   const audit = input.ephemeralPreview ? null : appendRemoteAudit({
     ownerId: input.ownerId,
     clientId: input.clientId,
     source: input.source || "user",
     action: input.action,
-    requestData: redact(input.params),
+    requestData: requestAuditData,
     status: "running",
   });
   const desktopActivity = input.source === "agent" && input.chatId && client.capabilities.includes("desktop_gui")
@@ -240,6 +259,9 @@ export function requestRemoteClient(input: {
     });
   };
   const resultPromise = promise.catch((error) => {
+    if (input.action === "desktop_overlay" && error instanceof Error && /unsupported remote action/i.test(error.message)) {
+      throw new Error("Remote client update needed: desktop_overlay is unsupported; no shell fallback was executed");
+    }
     const legacyAction = input.action === "write_file" || input.action === "edit_file" || input.action === "delete_file";
     const unsupported = error instanceof Error && /unsupported remote action/i.test(error.message);
     if (!legacyAction || !unsupported) throw error;
@@ -253,12 +275,12 @@ export function requestRemoteClient(input: {
     if (currentClient.permissionMode === "user" && !safety.allowed) {
       throw new Error(safety.reason || "Remote file operation denied");
     }
-    const fileAuthorization = authorizeRemoteAction(currentClient, input.action, params);
+    const fileAuthorization = authorizeRemoteAction(currentClient, policyInput.action, params);
     if (!fileAuthorization.allowed) throw new Error(fileAuthorization.reason || "Remote file operation denied");
     if (fileAuthorization.requiresApproval && !authorization.requiresApproval) {
       throw new Error("Remote file operation now requires confirmation");
     }
-    const command = legacyFileCommand(currentClient, input.action, params);
+    const command = legacyFileCommand(currentClient, policyInput.action, params);
     const commandAuthorization = authorizeRemoteAction(currentClient, "execute_command", { command });
     if (!commandAuthorization.allowed) throw new Error(commandAuthorization.reason || "Legacy file command denied");
     // This is only the exact file operation authorized above. Its one-time file
@@ -279,7 +301,7 @@ export function requestRemoteClient(input: {
     if (audit) updateRemoteAudit(audit.id, {
       status: "completed",
       resultData: result && typeof result === "object"
-        ? (input.action === "computer_use"
+        ? (input.action === "desktop_overlay" ? summarizeDesktopOverlay(result) : input.action === "computer_use"
           ? Object.fromEntries(Object.entries(result as Record<string, unknown>).filter(([key]) => key !== "png"))
           : result as Record<string, unknown>)
         : { value: result },
@@ -291,8 +313,8 @@ export function requestRemoteClient(input: {
     const message = error instanceof Error ? error.message : "Remote request failed";
     if (audit) updateRemoteAudit(audit.id, {
       status: /disconnected|timed out/i.test(message) ? "unknown" : "error",
-      error: message,
-      resultData: error instanceof Error ? (error as Error & { resultData?: Record<string, unknown> }).resultData : undefined,
+      error: input.action === "desktop_overlay" ? "Desktop overlay request failed" : message,
+      resultData: input.action === "desktop_overlay" ? undefined : error instanceof Error ? (error as Error & { resultData?: Record<string, unknown> }).resultData : undefined,
       durationMs: Date.now() - startedAt,
     });
     publishDesktop("end");
@@ -308,7 +330,8 @@ export async function requestRemoteClientWithApproval(
     return await requestRemoteClient(input);
   } catch (error) {
     if (!(error instanceof RemoteApprovalRequiredError)
-      || !(await waitForRemoteApproval(input, error.approvalId, signal))) throw error;
+      || input.action === "desktop_overlay"
+      || !(await waitForRemoteApproval({ ...input, action: input.action }, error.approvalId, signal))) throw error;
     return requestRemoteClient({ ...input, approvalId: error.approvalId });
   }
 }

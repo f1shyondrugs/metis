@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { getDatabase, isSqliteBusyError, transaction } from "@/lib/sqlite";
 import { queueRemotePresence, getRemotePresence } from "@/lib/remote-presence";
-import { normalizePermissionMode, validateUserRemoteRequest, type RemotePermissionMode } from "@/lib/remote-security";
+import { applyRuntimeCapabilities, normalizePermissionMode, validateUserRemoteRequest, type RemotePermissionMode } from "@/lib/remote-security";
 import { redactSensitiveData } from "@/lib/agent-trace";
 
 export type RemotePolicyMode = "restricted" | "approval_required" | "full_access";
@@ -247,12 +247,7 @@ export function registerRemoteClient(token: string, input: {
 function withPresence(client:RemoteClient):RemoteClient {
  const update=getRemotePresence(client.id,client.ownerId);
  if(!update || client.status==="revoked" || (client.lastSeenAt && client.lastSeenAt>update.at))return client;
- let capabilities=client.capabilities;
- if(update.status==="online" && typeof update.desktopGui==="boolean"){
-  const next=new Set(capabilities);
-  if(update.desktopGui)next.add("desktop_gui");else next.delete("desktop_gui");
-  capabilities=[...next];
- }
+ const capabilities=update.status==="online" ? applyRuntimeCapabilities(client.capabilities,update) : client.capabilities;
  return {...client,status:update.status,capabilities,
   ...(update.status==="online"?{lastSeenAt:update.at}:{}),
   ...(update.address?{address:update.address}:{}),
@@ -315,6 +310,13 @@ export function updateRemoteClientDesktopCapability(id: string, available: boole
   const current = client.capabilities.includes("desktop_gui");
   if (current === available) return true;
   return queueRemotePresence({clientId:id,ownerId:client.ownerId,status:"online",at:iso(),desktopGui:available});
+}
+
+export function updateRemoteClientOverlayCapability(id: string, available: boolean) {
+  const client = getRemoteClient(id);
+  if (!client || client.status === "revoked") return false;
+  if (client.capabilities.includes("overlay_annotations") === available) return true;
+  return queueRemotePresence({clientId:id,ownerId:client.ownerId,status:"online",at:iso(),overlayAnnotations:available});
 }
 
 export function markRemoteClientOffline(id: string) {

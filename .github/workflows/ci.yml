@@ -45,6 +45,9 @@ jobs:
       - name: Verify assistant sessions and durable message queue
         run: pnpm exec tsx --test tests/desktop-assistant-session.test.ts tests/desktop-assistant.test.ts tests/queue-client.test.ts tests/queue-drain.test.ts tests/queue-removal.test.ts tests/queue-persistence-race.test.ts tests/queue-send-now.test.ts
 
+      - name: Verify desktop annotations, file ownership and live capabilities
+        run: pnpm exec tsx --test tests/desktop-overlay.test.ts tests/desktop-overlay-files.test.ts tests/desktop-overlay-gateway.test.ts tests/desktop-overlay-tool.test.ts tests/overlay-pdf-worker.test.ts tests/remote-presence-worker.test.ts
+
       - name: Verify usage charts and bounded runtime timing
         run: pnpm exec tsx --test tests/usage-chart.test.tsx tests/runtime-performance.test.ts tests/usage-model-contributions.test.ts tests/usage-api-costs.test.ts tests/account-profile-usage.test.ts
 

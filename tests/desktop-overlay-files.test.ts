@@ -1,0 +1,28 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),"metis-overlay-files-"));
+Object.assign(process.env,{AI_CHAT_ROOT:dir,CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"db.sqlite"),AGENT_CWD:dir});
+test("registered provide_file/chat snapshots resolve only in the authorized current chat",async()=>{
+ const {createUser}=await import("../lib/auth");
+ const {createChat,appendMessage}=await import("../lib/db-store");
+ const {saveFileAttachment}=await import("../lib/uploads");
+ const {resolveDesktopOverlayFile}=await import("../lib/desktop-overlay-files");
+ const {hydrateDesktopOverlay}=await import("../lib/desktop-overlay");
+ const owner=createUser("overlay-file-owner","synthetic-password"),other=createUser("overlay-file-other","synthetic-password");
+ const chat=createChat("Overlay files",undefined,owner.id),elsewhere=createChat("Other chat",undefined,owner.id);
+ const file=path.join(dir,"example (1).txt");fs.writeFileSync(file,"Preview bytes");
+ const attachment=await saveFileAttachment(chat.id,file,{name:"example (1).txt",mimeType:"text/plain"},owner.id);
+ assert.throws(()=>resolveDesktopOverlayFile(owner.id,attachment.id,chat.id),/not found/,"a real path is not enough: attachment registration is required");
+ appendMessage(chat.id,{id:"fixture-message",role:"assistant",content:"Provided",attachments:[attachment]},owner.id);
+ const expected="/api/uploads/"+chat.id+"/"+encodeURIComponent(attachment.storedName);
+ assert.equal(resolveDesktopOverlayFile(owner.id,attachment.id,chat.id).overlayUrl,expected);
+ for(const [o,c]of ([[other.id,chat.id],[owner.id,elsewhere.id],[owner.id,undefined]] as const))assert.throws(()=>resolveDesktopOverlayFile(o,attachment.id,c),/not found/);
+ const hydrated=hydrateDesktopOverlay({operation:"add",display_id:"real",items:[{id:"file",type:"card",x:0,y:0,width:300,height:200,content:{kind:"file",file:{id:attachment.id},imageFit:"cover",imagePosition:{x:25,y:70}}}]},owner.id,(o,id)=>resolveDesktopOverlayFile(o,id,chat.id));
+ const result=hydrated as {items:Array<{content:{file:{url:string},imageFit:string,imagePosition:unknown}}>};
+ assert.equal(result.items[0].content.file.url,expected);assert.equal(result.items[0].content.imageFit,"cover");
+ assert.deepEqual(result.items[0].content.imagePosition,{x:25,y:70});
+ assert.ok(!JSON.stringify(hydrated).includes(dir),"native receives no filesystem paths");
+});

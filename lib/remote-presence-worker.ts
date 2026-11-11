@@ -1,5 +1,6 @@
 import {getDatabase} from "./sqlite";
 import type {RemotePresence} from "./remote-presence";
+import {applyRuntimeCapabilities} from "./remote-security";
 export function initialize(){getDatabase().exec("PRAGMA busy_timeout=100");}
 export function writePresence(updates:RemotePresence[]){
  const db=getDatabase();
@@ -10,11 +11,9 @@ export function writePresence(updates:RemotePresence[]){
     .get(update.clientId,update.ownerId) as {capabilities:string;last_seen_at:string|null}|undefined;
    if(!row || (row.last_seen_at && row.last_seen_at>update.at))continue;
    let capabilities=row.capabilities;
-   if(update.status==="online" && typeof update.desktopGui==="boolean"){
+   if(update.status==="online" && (typeof update.desktopGui==="boolean" || typeof update.overlayAnnotations==="boolean")){
     let values:string[]=[];try{values=JSON.parse(capabilities);}catch{}
-    const next=new Set(Array.isArray(values)?values:[]);
-    if(update.desktopGui)next.add("desktop_gui");else next.delete("desktop_gui");
-    capabilities=JSON.stringify([...next]);
+    capabilities=JSON.stringify(applyRuntimeCapabilities(Array.isArray(values)?values:[],update));
    }
    db.prepare("UPDATE remote_clients SET status=?,last_seen_at=CASE WHEN ?='online' THEN ? ELSE last_seen_at END,address=COALESCE(?,address),capabilities=?,updated_at=CASE WHEN updated_at>? THEN updated_at ELSE ? END WHERE id=? AND owner_id=? AND revoked_at IS NULL")
     .run(update.status,update.status,update.at,update.address??null,capabilities,update.at,update.at,update.clientId,update.ownerId);
