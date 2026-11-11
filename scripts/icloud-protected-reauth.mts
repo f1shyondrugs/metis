@@ -36,6 +36,13 @@ async function calendar(tool:string,args:Record<string,unknown>={}){
 }
 try{
  await client.connect(transport);
+ if(process.argv.includes("--vault-check")){
+  const vault=await core("credential_vault_list");
+  assert(!vault.partial,"Browser/console vault must also be available.");
+  fs.writeFileSync(path.join(process.cwd(),"output/vault-mcp-release/vault-live.json"),JSON.stringify({complete:true,count:vault.credentials.length,kinds:[...new Set(vault.credentials.map((entry:any)=>entry.kind))],checkedAt:new Date().toISOString()},null,2),{mode:0o600});
+  console.log("LIVE_VAULT_COMPLETE COUNT="+vault.credentials.length);
+  await client.close();process.exit(0);
+ }
  await core("upsert_mcp_server",{id:"icloud-calendar-personal",name:"Noahs iCloud Calendar",kind:"stdio",command:"node",args:["/opt/metis-integrations/icloud-calendar/0.1.3-metis-auth-v1/dist/cli.js"]});
  console.log("PROTECTED_ICLOUD_INPUT_REQUIRED");
  const input=await core("mcp_request_credentials",{server:"icloud-calendar-personal",fields:["ICLOUD_APP_PASSWORD"]});
@@ -59,7 +66,9 @@ try{
   }
   console.log("ICLOUD_AUTHENTICATED CALENDARS="+calendars.length+" WRITE_TEST="+proof.writeTest+" CLEANUP="+proof.cleanup);
  }
-}catch{
+}catch(error){
+ console.error("VERIFICATION_ERROR_NAME="+(error instanceof Error?error.name:"Unknown"));
+ if(error instanceof Error && /^(MCP operation failed:|Browser\/console vault)/.test(error.message))console.error(error.message);
  console.error("ICLOUD_REAUTH_NOT_COMPLETED; inspect protected input or connection evidence. No blind retry was performed.");
  process.exitCode=1;
 }finally{await client.close();}

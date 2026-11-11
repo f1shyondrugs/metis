@@ -16,7 +16,9 @@ export async function POST(req:Request){
   const {listMcpCredentialTargets}=await import("@/packages/mcp-gateway/index.mjs");
   const mcp=await listMcpCredentialTargets(owner);
   try{
-   const reply=await browserLoginRequest(owner,chat,"vault_list");
+   // Reuse the existing read-only management index, including older live engines.
+   // It returns routing metadata only; no credential envelope is retrieved.
+   const reply=await browserLoginRequest(owner,chat,"list",{},true);
    // Re-project service replies; transport fields and encrypted values never reach agents.
    return Response.json({credentials:[...savedLoginSummaries((reply.credentials||[]) as SavedLogin[]),...mcp]},{headers});
   }catch{
