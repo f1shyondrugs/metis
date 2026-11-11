@@ -1,5 +1,8 @@
 import { browserPasswordSecrets } from "../../lib/browser-secure-input";
 import type { Page, Request } from "playwright";
+import { MAX_OPERATOR_RETURN_ORIGINS } from "./operator-return-origins";
+
+const MAX_DECLARED_ORIGINS = 4;
 
 // Only initial declared return sites and the operator's exact credential-origin
 // mapping join the session. A website's links/redirects cannot grow this set.
@@ -10,7 +13,7 @@ export function loginNavigationOrigins(target: URL, operatorReturns: readonly st
     for (const candidate of [value, Buffer.from(value,"base64").toString("utf8")]) {
       try {
         const url = new URL(candidate);
-        if (url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") && origins.size < 4) origins.add(url.origin);
+        if (url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") && origins.size < MAX_DECLARED_ORIGINS) origins.add(url.origin);
       } catch { /* Not an absolute HTTPS return URL. */ }
     }
   }
@@ -18,9 +21,13 @@ export function loginNavigationOrigins(target: URL, operatorReturns: readonly st
 }
 
 export function withOperatorReturnOrigins(declaredOrigins: ReadonlySet<string>, operatorReturns: readonly string[] = []) {
+  // Declared entry/return sites and reviewed operator grants have separate
+  // bounds. Their union can legitimately exceed either individual budget.
+  if (declaredOrigins.size > MAX_DECLARED_ORIGINS || operatorReturns.length > MAX_OPERATOR_RETURN_ORIGINS) {
+    throw Error("Too many protected-login return origins");
+  }
   const origins = new Set(declaredOrigins);
   for (const origin of operatorReturns) origins.add(origin);
-  if (origins.size > 4) throw Error("Too many protected-login return origins");
   return origins;
 }
 

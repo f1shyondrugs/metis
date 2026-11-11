@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const MAX_CREDENTIAL_ORIGINS = 64;
-const MAX_RETURN_ORIGINS = 3;
+export const MAX_OPERATOR_RETURN_ORIGINS = 3;
 const MAX_CONFIG_BYTES = 32768;
 export type OperatorReturnOrigins = Readonly<Record<string, readonly string[]>>;
 
@@ -25,7 +25,7 @@ export function snapshotOperatorReturnOrigins(value: unknown = {}): OperatorRetu
   if (entries.length > MAX_CREDENTIAL_ORIGINS) invalid();
   const snapshot: Record<string, readonly string[]> = Object.create(null);
   for (const [credentialOrigin, returns] of entries) {
-    if (!exactOrigin(credentialOrigin) || !Array.isArray(returns) || returns.length > MAX_RETURN_ORIGINS ||
+    if (!exactOrigin(credentialOrigin) || !Array.isArray(returns) || returns.length > MAX_OPERATOR_RETURN_ORIGINS ||
       returns.some(origin => !exactOrigin(origin) || origin === credentialOrigin) ||
       new Set(returns).size !== returns.length) invalid();
     snapshot[credentialOrigin] = Object.freeze([...returns]);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {loginNavigationOrigins,protectedRequestAllowed} from "../services/browser-login/navigation-policy";
+import {loginNavigationOrigins,protectedRequestAllowed,withOperatorReturnOrigins} from "../services/browser-login/navigation-policy";
 import type {Page,Request} from "playwright";
 import fs from "node:fs";
 import os from "node:os";
@@ -19,14 +19,30 @@ test("only explicitly declared HTTPS return origins join protected navigation",(
 });
 
 
-test("operator returns are exact credential-origin mappings and preserve the fixed session cap",()=>{
+test("operator returns are exact credential-origin mappings with separate bounded budgets",()=>{
   const config=snapshotOperatorReturnOrigins({"https://login.example.test":["https://task.example.test"]});
   const target=new URL("https://login.example.test/?return_url="+encodeURIComponent("https://app.example.test/home"));
   assert.deepEqual([...loginNavigationOrigins(target)],["https://login.example.test","https://app.example.test"]);
   assert.deepEqual([...loginNavigationOrigins(target,config[target.origin])],["https://login.example.test","https://app.example.test","https://task.example.test"]);
   assert.deepEqual([...loginNavigationOrigins(new URL("https://other.example.test/"),config["https://other.example.test"])],["https://other.example.test"]);
   const full=new URL(target.href+"&next="+encodeURIComponent("https://third.example.test")+"&returnto="+encodeURIComponent("https://fourth.example.test"));
-  assert.throws(()=>loginNavigationOrigins(full,config[target.origin]),/Too many/);
+  assert.equal(loginNavigationOrigins(full,config[target.origin]).size,5);
+});
+
+test("a five-origin SSO flow combines declared sites and reviewed relays without granting other origins",()=>{
+  const declared=new Set(["https://login.test","https://connect.test","https://portal.test"]);
+  const reviewed=["https://portal.test","https://moodle.test","https://relay.test"];
+  const origins=withOperatorReturnOrigins(declared,reviewed);
+  assert.equal(origins.size,5);
+  assert.deepEqual([...declared],["https://login.test","https://connect.test","https://portal.test"]);
+  const page={context:()=>({})} as Page;
+  const request=(url:string)=>({url:()=>url,postData:()=>null}) as Request;
+  assert.equal(protectedRequestAllowed(page,request("https://relay.test/sso"),"https://login.test",origins),true);
+  assert.equal(protectedRequestAllowed(page,request("https://foreign.test/sso"),"https://login.test",origins),false);
+  const four=new Set(["https://a.test","https://b.test","https://c.test","https://d.test"]);
+  assert.equal(withOperatorReturnOrigins(four,["https://e.test","https://f.test","https://g.test"]).size,7);
+  assert.throws(()=>withOperatorReturnOrigins(new Set([...four,"https://e.test"])),/Too many/);
+  assert.throws(()=>withOperatorReturnOrigins(declared,[...reviewed,"https://extra.test"]),/Too many/);
 });
 
 test("operator configuration rejects malformed, ambiguous and unbounded origin grants",()=>{
