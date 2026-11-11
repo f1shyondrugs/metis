@@ -36,6 +36,10 @@ async function calendar(tool:string,args:Record<string,unknown>={}){
 }
 try{
  await client.connect(transport);
+ if(process.argv.includes("--read-check")){
+  const listed=await calendar("list_calendars");assert(Array.isArray(listed.calendars));
+  console.log("ICLOUD_READ_VERIFIED_COUNT="+listed.calendars.length);await client.close();process.exit(0);
+ }
  if(process.argv.includes("--vault-check")){
   const vault=await core("credential_vault_list");
   assert(!vault.partial,"Browser/console vault must also be available.");
