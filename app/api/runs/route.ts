@@ -9,6 +9,7 @@ import {
 } from "@/lib/db-jobs";
 import { appendMessageInTransaction, getChat } from "@/lib/db-store";
 import { SSE_HEADERS } from "@/lib/sse";
+import { canAccessChat } from "@/lib/project-access";
 import { createRunEventStream } from "@/lib/run-event-stream";
 import { saveAttachments, type IncomingAttachment } from "@/lib/uploads";
 import { isModelAllowed } from "@/lib/model-access";
@@ -27,6 +28,11 @@ export async function GET(req: Request) {
   try {
     const userId = (await getAuthenticatedUserId(req)) ?? undefined;
     const after = Number(search.get("after") || "0");
+    if (search.get("status") === "1") {
+      const job = jobId ? getJob(jobId) : null;
+      if (!chatId || !job || job.chatId !== chatId || job.userId !== userId || !canAccessChat(chatId, userId)) return Response.json({ error: "Run not found." }, { status: 404 });
+      return Response.json({ job: { id: job.id, status: job.status, error: job.error, queueMessage: job.queueMessage } }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (chatId && search.get("events") === "1") {
       if (search.get("stream") === "1") {
         const stream = createRunEventStream({

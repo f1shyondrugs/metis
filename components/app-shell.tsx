@@ -304,6 +304,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { modelAttrSummary } from "@/lib/model-label";
 import { clientConfig } from "@/lib/client-config";
+import { MODEL_STORAGE_KEY, PARAMS_STORAGE_KEY } from "@/lib/client-model-selection";
 import { loginErrorMessage } from "@/lib/login-error";
 import {
   DEFAULT_RUNTIME_MODE,
@@ -836,8 +837,6 @@ type ConfiguredModelProvider = {
 
 const CHAT_MESSAGE_LOAD_LIMIT = 10;
 const CHAT_MESSAGE_PRELOAD_MAX = CHAT_MESSAGE_LOAD_LIMIT;
-const MODEL_STORAGE_KEY = `${clientConfig.storagePrefix}_model`;
-const PARAMS_STORAGE_KEY = `${clientConfig.storagePrefix}_model_params`;
 const MODE_STORAGE_KEY = `${clientConfig.storagePrefix}_mode`;
 const RUNTIME_MODE_STORAGE_KEY = "metis.runtimeMode";
 const RUNTIME_MODE_OPTIONS: Array<{ value: RuntimeMode; label: string }> = [

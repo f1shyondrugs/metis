@@ -17,6 +17,8 @@ type VoiceInputProps = {
   onStart?: () => void;
   chatId?: string | null;
   onTranscript: (text: string) => void | ((finalText: string) => void);
+  /** Fires only for the final transcript, after any streamed draft has been finalized. */
+  onTranscriptFinalized?: (text: string) => void;
   onPreviewChange?: (text: string) => void;
   onRecordingChange?: (recording: boolean) => void;
   onStateChange?: (state: VoiceState) => void;
@@ -57,6 +59,7 @@ export function VoiceInput({
   variant = "composer", onStart,
   chatId,
   onTranscript,
+  onTranscriptFinalized,
   onPreviewChange,
   onRecordingChange,
   onStateChange,
@@ -99,6 +102,8 @@ export function VoiceInput({
   } | null>(null);
   const transcriptCallbackRef = useRef(onTranscript);
   transcriptCallbackRef.current = onTranscript;
+  const finalizedCallbackRef = useRef(onTranscriptFinalized);
+  finalizedCallbackRef.current = onTranscriptFinalized;
   const startedAtRef = useRef(0);
   const lastStopSignalRef = useRef(stopSignal);
   const lastCancelSignalRef = useRef(cancelSignal);
@@ -210,8 +215,8 @@ export function VoiceInput({
       void finalText.then((text) => {
         if (pendingRealtimeRef.current !== pending) return;
         pendingRealtimeRef.current = null;
-        if (pending.inserted) pending.finalize?.(text);
-        else if (text) commitTranscript(text);
+        if (pending.inserted) { pending.finalize?.(text); finalizedCallbackRef.current?.(text); }
+        else if (text) { commitTranscript(text); finalizedCallbackRef.current?.(text); }
         else {
           setState("error");
           setError("No speech was detected.");
@@ -268,7 +273,7 @@ export function VoiceInput({
     if (connectionId) form.append("connectionId", connectionId);
     try {
       const transcript = await transcribeRecording(blob, form, () => setState("transcribing"));
-      if (captureEpoch.current === epoch) commitTranscript(transcript);
+      if (captureEpoch.current === epoch) { commitTranscript(transcript); finalizedCallbackRef.current?.(transcript); }
     } catch (cause) {
       if (captureEpoch.current !== epoch) return;
       setState("error");
@@ -342,7 +347,7 @@ export function VoiceInput({
           discardingRef.current = false;
           return;
         }
-        if (livePreviewRef.current) commitTranscript(livePreviewRef.current);
+        if (livePreviewRef.current) { const text = livePreviewRef.current; commitTranscript(text); finalizedCallbackRef.current?.(text); }
         else {
           setState("error");
           setError("No speech was detected.");

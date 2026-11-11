@@ -26,6 +26,41 @@ before(async () => {
   ]);
 });
 after(() => { supervisor(); rmSync(dataDir, { recursive: true, force: true }); });
+test("an early failure publishes chat status, visible error and event before releasing the child lease", () => {
+  const { chat, job, claimed } = fixture();
+  store.appendMessage(chat.id, { role: "user", content: "Original assistant request" });
+  store.updateChat(chat.id, { runStatus: "running" });
+  process.env.AI_CHAT_JOB_ID = job.id;
+  process.env.AI_CHAT_WORKER_ID = claimed.leaseOwner;
+  process.env.AI_CHAT_JOB_LEASE_TOKEN = claimed.leaseToken;
+  try {
+    assert.equal(failure.markWorkerJobError(claimed, "No model is selected for this chat.")?.status, "error");
+    assert.equal(store.getChat(chat.id)!.runStatus, "error");
+    assert.equal(store.getChat(chat.id)!.messages.at(-2)?.content, "Original assistant request");
+    assert.equal(store.getChat(chat.id)!.messages.at(-1)?.errorMessage, "No model is selected for this chat.");
+    assert.equal(jobs.getJob(job.id)!.status, "error");
+    assert.equal(sqlite.getDatabase().prepare("SELECT 1 FROM job_leases WHERE job_id=?").get(job.id), undefined);
+    assert.equal(store.appendMessage(chat.id, { role: "assistant", content: "late" }), null);
+    assert.equal(failure.markWorkerJobError(claimed, "duplicate"), null);
+  } finally { supervisor(); }
+  assert.equal(sqlite.getDatabase().prepare("SELECT COUNT(*) AS count FROM run_events WHERE job_id=? AND event=?").get(job.id, "error")?.count, 1);
+});
+
+test("an expired child's early failure cannot overwrite the chat or replacement run", () => {
+  const { chat, job, claimed } = fixture();
+  store.appendMessage(chat.id, { role: "user", content: "Original assistant request" });
+  store.updateChat(chat.id, { runStatus: "running" });
+  sqlite.getDatabase().prepare("UPDATE job_leases SET expires_at=? WHERE job_id=?").run(new Date(Date.now()-1000).toISOString(), job.id);
+  process.env.AI_CHAT_JOB_ID=job.id;process.env.AI_CHAT_WORKER_ID=claimed.leaseOwner;process.env.AI_CHAT_JOB_LEASE_TOKEN=claimed.leaseToken;
+  try {
+    assert.equal(failure.markWorkerJobError(claimed, "stale failure"), null);
+    assert.equal(jobs.getJob(job.id)!.status, "running");
+    assert.equal(store.getChat(chat.id)!.runStatus, "running");
+    assert.equal(store.getChat(chat.id)!.messages.length, 1);
+    assert.equal(store.getChat(chat.id)!.messages[0].content, "Original assistant request");
+  } finally { supervisor(); jobs.updateJob(job.id, { status: "cancelled" }); }
+});
+
 const message = "Isolated worker exited cleanly without publishing a terminal run state.";
 function fixture() {
   supervisor();

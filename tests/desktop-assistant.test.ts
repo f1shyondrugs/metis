@@ -3,6 +3,50 @@ import { test } from "node:test";
 import { desktopShortcutFromEvent, desktopShortcutLabel } from "../lib/desktop-shortcuts";
 import { settingsSearchEntries, visibleSettingsTabs } from "../lib/settings-navigation";
 import { desktopCaptureContext, type DesktopCapture } from "../lib/desktop-assistant";
+import { latestClientModelSelection, rememberClientModelSelection, MODEL_STORAGE_KEY, PARAMS_STORAGE_KEY } from "../lib/client-model-selection";
+const availableModels=[
+  {id:"first/account/model",displayName:"First",parameters:[],defaultParams:[]},
+  {id:"recent/account/model",displayName:"Recent",legacyIds:["old/recent"],parameters:[{id:"effort",values:[{value:"high"},{value:"low"}]}],defaultParams:[{id:"effort",value:"low"}]},
+];
+function storage(values:Record<string,string>={}){return {getItem:(key:string)=>values[key]??null,setItem:(key:string,value:string)=>{values[key]=value;}};}
+test("assistant uses New chat's latest local model and validates its own remembered parameters",()=>{
+  const saved=storage({[MODEL_STORAGE_KEY]:"old/recent",[PARAMS_STORAGE_KEY]:JSON.stringify([{id:"effort",value:"high"},{id:"fast",value:"true"}])});
+  assert.deepEqual(latestClientModelSelection(availableModels,{},saved),{modelId:"recent/account/model",modelParams:[{id:"effort",value:"high"}]});
+});
+test("explicit empty parameters stay empty and cannot borrow another model's values",()=>{
+  const saved=storage({[MODEL_STORAGE_KEY]:"recent/account/model",[PARAMS_STORAGE_KEY]:JSON.stringify([{id:"effort",value:"high"}])});
+  assert.deepEqual(latestClientModelSelection(availableModels,{modelParamsByModel:{"recent/account/model":[]}},saved)?.modelParams,[]);
+  assert.deepEqual(latestClientModelSelection(availableModels,{},storage({[MODEL_STORAGE_KEY]:"removed",[PARAMS_STORAGE_KEY]:JSON.stringify([{id:"effort",value:"high"}])})),{modelId:"first/account/model",modelParams:[]});
+});
+test("empty discovery stays unavailable; latest selection is shared through the normal New chat keys",()=>{
+  assert.equal(latestClientModelSelection([],{},storage()),null);
+  const saved=storage();rememberClientModelSelection({modelId:"recent/account/model",modelParams:[]},saved);
+  assert.equal(saved.getItem(MODEL_STORAGE_KEY),"recent/account/model");
+  assert.equal(saved.getItem(PARAMS_STORAGE_KEY),"[]");
+});
+
+test("run status endpoint returns the submitted job's terminal state without exposing payloads or another account",async()=>{
+  const {mkdtempSync,rmSync}=await import("node:fs");const os=await import("node:os");const path=await import("node:path");const {createHash}=await import("node:crypto");
+  const root=mkdtempSync(path.join(os.tmpdir(),"metis-assistant-run-"));
+  Object.assign(process.env,{CHAT_DATA_DIR:root,CHAT_DB_PATH:path.join(root,"chat.sqlite"),AI_CHAT_ROOT:root,AGENT_CWD:root,METIS_AI_BOOTSTRAP_PASSWORD:""});
+  const {getDatabase}=await import("../lib/sqlite");const db=getDatabase();
+  for(const id of ["owner","other"]){
+    db.prepare("INSERT INTO users(id,username,password_hash,created_at,is_admin) VALUES(?,?,?,?,?)").run(id,id,"fixture",new Date().toISOString(),0);
+    db.prepare("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)").run(createHash("sha256").update(id).digest("hex"),id,new Date(Date.now()+60000).toISOString());
+  }
+  try{
+    const store=await import("../lib/db-store"),jobs=await import("../lib/db-jobs"),api=await import("../app/api/runs/route");
+    const chat=store.createChat("Assistant test",undefined,"owner");
+    const job=jobs.enqueueJob({chatId:chat.id,userId:"owner",message:"private fixture payload"});
+    jobs.updateJob(job.id,{status:"error",error:"No model selected."});
+    store.updateChat(chat.id,{runStatus:"running"},"owner");
+    const req=(owner?:string,chatId=chat.id)=>new Request("http://localhost/api/runs?status=1&chatId="+chatId+"&jobId="+job.id,{headers:owner?{cookie:"ai_chat_auth="+owner}:{}});
+    const response=await api.GET(req("owner"));assert.equal(response.status,200);
+    const body=await response.json();assert.equal(body.job.status,"error");assert.equal(body.job.error,"No model selected.");
+    assert.equal(JSON.stringify(body).includes("private fixture payload"),false);assert.equal(body.job.leaseToken,undefined);
+    assert.equal((await api.GET(req())).status,401);assert.equal((await api.GET(req("other"))).status,404);assert.equal((await api.GET(req("owner","wrong"))).status,404);
+  }finally{db.close();rmSync(root,{recursive:true,force:true});}
+});
 test("shortcut recording keeps physical keys and platform labels",()=>{
   const event={key:"M",code:"KeyM",ctrlKey:true,shiftKey:true,altKey:false,metaKey:false};
   assert.equal(desktopShortcutFromEvent(event),"Control+Shift+M");

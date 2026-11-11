@@ -28,6 +28,9 @@ export function ModelPicker({
   placeholder = "Select a model",
   noneLabel,
   allowPinning = true,
+  contentClassName,
+  onOpenChange,
+  modal = true,
 }: {
   models: ModelInfo[];
   value: string;
@@ -40,8 +43,12 @@ export function ModelPicker({
   placeholder?: string;
   noneLabel?: string;
   allowPinning?: boolean;
+  contentClassName?: string;
+  onOpenChange?: (open: boolean) => void;
+  modal?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const changeOpen = (value: boolean) => { setOpen(value); onOpenChange?.(value); };
   const [search, setSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -84,7 +91,7 @@ export function ModelPicker({
         onClick={() => {
           onValueChange(model.id);
           setSearch("");
-          setOpen(false);
+          changeOpen(false);
         }}
         className="gap-2"
       >
@@ -108,7 +115,7 @@ export function ModelPicker({
   }
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu open={open} onOpenChange={changeOpen} modal={modal}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -127,7 +134,7 @@ export function ModelPicker({
           <ChevronDown className="size-3.5 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[min(28rem,calc(100vw-2rem))] p-1.5">
+      <DropdownMenuContent align="start" className={cn("w-[min(28rem,calc(100vw-2rem))] p-1.5", contentClassName)}>
         <Input
           ref={searchRef}
           value={search}
@@ -165,7 +172,7 @@ export function ModelPicker({
               onClick={() => {
                 onValueChange("");
                 setSearch("");
-                setOpen(false);
+                changeOpen(false);
               }}
               className="gap-2"
             >

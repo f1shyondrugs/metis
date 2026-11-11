@@ -56,6 +56,7 @@ import { contextModeOf, contextWindowForSelection } from "@/lib/context-window";
 import { appendAgentTrace } from "@/lib/agent-trace";
 import { parseAgentTranscript, stripTranscriptDump } from "@/lib/agent-transcript";
 import { snapshotInterruptedJob } from "@/lib/recovery";
+import { markWorkerJobError } from "@/lib/worker-failure";
 import { createSnapshot } from "@/lib/shared-context";
 import { allModes } from "@/lib/modes";
 import { runtimeModeForChat } from "@/lib/runtime-mode";
@@ -344,15 +345,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 }
 
 function markJobError(job: AgentJob, message: string) {
-  updateJob(job.id, { status: "error", error: message });
-  updateChat(job.chatId, {
-    runStatus: "error",
-    runUpdatedAt: new Date().toISOString(),
-    queueMessage: null,
-    badge: "red",
-  }, job.userId);
-  appendRunEvent(job.id, job.chatId, job.userId, "error", { message });
-  appendAgentTrace(job, "error", { message });
+  if (markWorkerJobError(job, message)) appendAgentTrace(job, "error", { message });
 }
 
 /**
