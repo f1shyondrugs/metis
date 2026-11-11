@@ -26,6 +26,7 @@ export function DesktopClientSettings() {
       <dt className="text-muted-foreground">Connection</dt><dd className="min-w-0 break-words">{state.paired?state.connection||"Unknown":"Not paired"}</dd>
       <dt className="text-muted-foreground">Access</dt><dd>{state.permissionMode||"Not paired"}</dd>
       <dt className="text-muted-foreground">App version</dt><dd>{state.version||"Unknown"}</dd>
+      {state.fileDrop?<><dt className="text-muted-foreground">File drops</dt><dd>{state.fileDrop.available?"Ready":state.fileDrop.error?"Unavailable":"Starting…"}{state.fileDrop.error?<p className="mt-1 text-xs text-destructive" role="alert">{state.fileDrop.error}</p>:null}</dd></>:null}
     </dl>
     <section className="border-t border-border pt-4" aria-label="App updates">
       <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-medium">App updates</h3>

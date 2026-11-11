@@ -5,6 +5,7 @@ import type { DesktopShortcuts } from "@/lib/desktop-assistant";
 export type LocalDeviceState = {
   paired?: boolean; clientId?: string; connection?: string; permissionMode?: string;
   platform?: string; version?: string; hideOverlayFromCapture?: boolean; autostartEnabled?: boolean;
+  fileDrop?: { available: boolean; error: string };
   appUpdate?: { phase: string; available: boolean; version: string; message: string };
   assistant?: { hotkey: string; shortcuts?:DesktopShortcuts; defaults?:DesktopShortcuts; hotkeyAvailable: boolean; error?: string };
 };
