@@ -1,8 +1,8 @@
 # Provider context efficiency
 
 Codex receives the stable Metis instruction layer through a private, per-invocation
-`model_instructions_file`. The native CLI places it in the request's instruction
-field instead of appending it as another user message. Each invocation supplies
+`model_instructions_file`. The native CLI places it in its native instruction
+layer instead of appending it as another user message. Each invocation supplies
 the current file, including resumed turns, so mode, rule, skill and memory-policy
 changes take effect. The file is deleted after success, cancellation or failure.
 With native isolation it lives inside the already mounted account home.

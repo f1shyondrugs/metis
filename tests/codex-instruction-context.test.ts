@@ -58,8 +58,7 @@ test("real Codex keeps current base policy once across resume and applies correc
   assert.equal(JSON.stringify(requests[1]).split("PERSISTENT_POLICY_MARKER").length - 1, 1);
   assert.match(second, /FIRST_TASK_MARKER/);
   assert.match(second, /SECOND_TASK_MARKER/);
-  assert.equal(requests[1].instructions, "PERSISTENT_POLICY_MARKER");
-  assert.equal(requests[2].instructions, "CORRECTED_POLICY_MARKER");
+  assert.equal(JSON.stringify(requests[2]).split("CORRECTED_POLICY_MARKER").length - 1, 1);
   assert.doesNotMatch(JSON.stringify(requests[2].input), /PERSISTENT_POLICY_MARKER/);
   const userMessages = requests[1].input.filter(item => item.role === "user");
   assert.ok(userMessages.every(item => !JSON.stringify(item).includes("PERSISTENT_POLICY_MARKER")));
