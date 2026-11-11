@@ -4,17 +4,21 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {Client} from "@modelcontextprotocol/sdk/client/index.js";
 import {StreamableHTTPClientTransport} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import {getJob} from "../lib/db-jobs";
-import {getMcpServers} from "../lib/mcp";
+import {importWorkerModule} from "../lib/worker-module.mjs";
+const {getJob}=await importWorkerModule(new URL("../lib/db-jobs.ts",import.meta.url).href);
+const {getMcpServers}=await importWorkerModule(new URL("../lib/mcp.ts",import.meta.url).href);
 
 const [jobId,expectedOwner,expectedChat]=process.argv.slice(2);
 const job=getJob(jobId);
 assert(job&&job.userId===expectedOwner&&job.chatId===expectedChat&&job.status==="running","The current owner/chat job must be running.");
-assert(job.leaseOwner&&job.leaseToken,"A live run lease is required.");
-process.env.AI_CHAT_WORKER_ID=job.leaseOwner;
-process.env.AI_CHAT_JOB_LEASE_TOKEN=job.leaseToken;
+const {getDatabase}=await importWorkerModule(new URL("../lib/sqlite.ts",import.meta.url).href);
+const lease=getDatabase().prepare("SELECT worker_id,lease_token FROM job_leases WHERE job_id=? AND expires_at>?").get(jobId,new Date().toISOString());
+assert(lease,"A live run lease is required.");
+process.env.AI_CHAT_WORKER_ID=lease.worker_id;
+process.env.AI_CHAT_JOB_LEASE_TOKEN=lease.lease_token;
 const connection=getMcpServers({jobId,userId:job.userId,chatId:job.chatId}).gateway;
 assert(connection.type==="http");
+if(process.argv.includes("--check")){console.log("CURRENT_RUN_CONTEXT_VALIDATED");process.exit(0);}
 const client=new Client({name:"metis-protected-icloud-verification",version:"1"},{capabilities:{}});
 const transport=new StreamableHTTPClientTransport(new URL("http://127.0.0.1:8799/mcp"),{requestInit:{headers:connection.headers}});
 const evidence=path.join(process.cwd(),"output/vault-mcp-release/icloud-live.json");
