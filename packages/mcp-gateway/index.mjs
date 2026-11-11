@@ -16,6 +16,9 @@ export {
   runtimeModeRequiresApproval,
   shouldAutoApprove,
   removeMcpServer,
+  getMcpEnvironment,
+  listMcpCredentialTargets,
+  updateMcpEnvironment,
   tools,
   visibleToolsForContext,
 } from "../../lib/mcp-core/gateway-core.mjs";

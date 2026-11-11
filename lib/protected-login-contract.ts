@@ -4,7 +4,8 @@ export const protectedInputSchema = z.object({
   requestId: z.string(),
   origin: z.string(),
   expiresAt: z.string(),
-  kind: z.literal("console").optional(),
+  kind: z.enum(["console","mcp"]).optional(),
+  envFields: z.array(z.string()).max(32).optional(),
   sessionId: z.string().optional(),
   fields: z.array(z.enum(["password", "username", "email"])).optional(),
 });

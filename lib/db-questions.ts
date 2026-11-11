@@ -6,7 +6,7 @@ import { normalizeAskUserInput, normalizeQuestionAnswers, questionSummary, type 
 type QuestionStatus = "waiting_for_user" | "answered" | "cancelled" | "expired";
 
 type StoredQuestion = QuestionForm & {
-  secureBrowserInput?: {requestId:string;origin:string;expiresAt:string;kind?:"console";sessionId?:string;fields?:Array<"password"|"username"|"email">};
+  secureBrowserInput?: {requestId:string;origin:string;expiresAt:string;kind?:"console"|"mcp";envFields?:string[];sessionId?:string;fields?:Array<"password"|"username"|"email">};
   questionId: string;
   runId?: string;
   jobId?: string;

@@ -1,23 +1,11 @@
 import { gatewayToolForRequest as gatewayTool } from "@/lib/gateway-request";
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import { isHostAdmin } from "@/lib/user-access";
+import { sanitizeMcpServer as sanitizeServer } from "@/lib/mcp-env-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-
-function sanitizeServer(value: unknown) {
-  if (!value || typeof value !== "object") return value;
-  const server = value as Record<string, unknown>;
-  const env = server.env && typeof server.env === "object" ? server.env : {};
-  const headers = server.headers && typeof server.headers === "object" ? server.headers : {};
-  const { env: _env, headers: _headers, ...safe } = server;
-  return {
-    ...safe,
-    configured_env_keys: Object.keys(env),
-    configured_header_keys: Object.keys(headers),
-  };
-}
 
 function requiredString(value: unknown, field: string) {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field} is required`);
@@ -81,12 +69,13 @@ function parseServer(body: Record<string, unknown>) {
 export async function GET(req: Request) {
   if (!(await isAuthenticated(req))) return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
+    const userId = await getAuthenticatedUserId(req);
     const servers = await gatewayTool(req, "list_mcp_servers", { include_disabled: true });
     return Response.json({
-      servers: Array.isArray(servers) ? servers.map(sanitizeServer) : [],
+      servers: Array.isArray(servers) ? servers.map(server => ({ ...sanitizeServer(server), can_edit_environment: server.ownerId === userId && server.kind === "stdio" })) : [],
     });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Failed to list MCP servers" }, { status: 500 });
+    return Response.json({ error: "Failed to list MCP servers" }, { status: 500 });
   }
 }
 
@@ -100,6 +89,6 @@ export async function POST(req: Request) {
     const server = await gatewayTool(req, "upsert_mcp_server", parseServer(body));
     return Response.json({ server: sanitizeServer((server as { server?: unknown }).server) }, { status: 201 });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Failed to save MCP server" }, { status: 400 });
+    return Response.json({ error: "Failed to save MCP server" }, { status: 400 });
   }
 }

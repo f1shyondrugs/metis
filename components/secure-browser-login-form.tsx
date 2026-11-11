@@ -1,10 +1,14 @@
 "use client";
 import { useState, type FormEvent } from "react";
+import {SecureMcpInputForm} from "@/components/secure-mcp-input-form";
 import { Input } from "@/components/ui/input";
 import { QuestionFormFrame } from "@/components/question-form-frame";
 import type { PendingChatQuestion, QuestionAnswers } from "@/lib/question-contract";
 
-export function SecureBrowserLoginForm({form,disabled,error,onSubmit,onCancel}:{form:PendingChatQuestion;disabled?:boolean;error?:string|null;onSubmit:(result:QuestionAnswers)=>void;onCancel:()=>void}) {
+export function SecureBrowserLoginForm(props:Parameters<typeof BrowserLoginForm>[0]) {
+  return props.form.secureBrowserInput?.kind==="mcp"?<SecureMcpInputForm {...props}/>:<BrowserLoginForm {...props}/>;
+}
+function BrowserLoginForm({form,disabled,error,onSubmit,onCancel}:{form:PendingChatQuestion;disabled?:boolean;error?:string|null;onSubmit:(result:QuestionAnswers)=>void;onCancel:()=>void}) {
   const [password,setPassword]=useState(""),[busy,setBusy]=useState(false),[filled,setFilled]=useState(false),[failure,setFailure]=useState("");
   const [persist,setPersist]=useState(false);
   const [username,setUsername]=useState(""),[email,setEmail]=useState("");

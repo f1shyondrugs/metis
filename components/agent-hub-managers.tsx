@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ConnectionCatalog } from "@/components/connection-catalog";
+import { McpEnvEditor } from "@/components/mcp-env-editor";
 import type { AgentMode, ToolPermissionCategory } from "@/lib/store";
 import { TOOL_PERMISSION_CATEGORIES } from "@/lib/modes";
 type McpServer = {
@@ -21,6 +22,7 @@ type McpServer = {
   args?: string[];
   enabled?: boolean;
   configured_env_keys?: string[];
+  can_edit_environment?: boolean;
   configured_header_keys?: string[];
 };
 
@@ -31,7 +33,6 @@ type McpDraft = {
   url: string;
   command: string;
   args: string;
-  env: string;
   headers: string;
 };
 
@@ -42,7 +43,6 @@ const emptyMcpDraft: McpDraft = {
   url: "",
   command: "",
   args: "",
-  env: "",
   headers: "",
 };
 
@@ -95,7 +95,6 @@ useEffect(() => { void loadMcpServers(); }, [loadMcpServers]);
       if (!mcpDraft.name.trim()) throw new Error("Name is required");
       if (mcpDraft.kind === "remote" && !mcpDraft.url.trim()) throw new Error("URL is required");
       if (mcpDraft.kind === "stdio" && !mcpDraft.command.trim()) throw new Error("Command is required");
-      const env = parseLines(mcpDraft.env);
       const headers = parseLines(mcpDraft.headers);
       const body = {
         id: mcpDraft.id.trim(),
@@ -104,7 +103,6 @@ useEffect(() => { void loadMcpServers(); }, [loadMcpServers]);
         ...(mcpDraft.url.trim() ? { url: mcpDraft.url.trim() } : {}),
         ...(mcpDraft.command.trim() ? { command: mcpDraft.command.trim() } : {}),
         ...(mcpDraft.args.trim() ? { args: mcpDraft.args.split(/\r?\n/).map((item) => item.trim()).filter(Boolean) } : {}),
-        ...(Object.keys(env).length ? { env } : {}),
         ...(Object.keys(headers).length ? { headers } : {}),
       };
       const res = await fetch("/api/mcp-servers", {
@@ -135,7 +133,6 @@ useEffect(() => { void loadMcpServers(); }, [loadMcpServers]);
       url: server.url || "",
       command: server.command || "",
       args: server.args?.join("\n") || "",
-      env: "",
       headers: "",
     });
   }
@@ -194,6 +191,7 @@ useEffect(() => { void loadMcpServers(); }, [loadMcpServers]);
         <div className="border-t border-border pt-3"><label className="flex items-center gap-3 text-sm"><Switch checked={Boolean(selected.enabled)} disabled={!isHostAdmin || mcpBusy} aria-label={"Enable " + selected.name} onCheckedChange={() => void toggleMcpServer(selected)} />Enabled</label></div>
         <p className="text-xs text-muted-foreground">Saved credentials remain private. Their values are never returned to the editor.</p>
       </div>
+      {selected.kind === "stdio" ? selected.can_edit_environment ? <McpEnvEditor key={selected.id} serverId={selected.id} onSaved={() => void loadMcpServers()} /> : <p className="mt-4 text-xs text-muted-foreground">Only the connection owner can edit environment variables.</p> : null}
       {mcpError ? <p role="alert" className="mt-4 text-sm text-destructive">{mcpError}</p> : null}
       {!isHostAdmin ? <p className="mt-4 text-xs text-muted-foreground">A host administrator can manage server connections.</p> : null}
     </div>{confirmation}
@@ -291,14 +289,7 @@ useEffect(() => { void loadMcpServers(); }, [loadMcpServers]);
                     placeholder="server-id"
                     aria-label="MCP server ID"
                   />
-
-                  <Textarea
-                    value={mcpDraft.env}
-                    onChange={(e) => setMcpDraft((current) => ({ ...current, env: e.target.value }))}
-                    placeholder={"Environment (NAME=value)\nAPI_KEY=..."}
-                    aria-label="MCP environment"
-                    rows={4}
-                  />
+                  <p className="text-xs leading-5 text-muted-foreground">Save the connection, then open its details to manage environment variables securely.</p>
                   <Textarea
                     value={mcpDraft.headers}
                     onChange={(e) => setMcpDraft((current) => ({ ...current, headers: e.target.value }))}

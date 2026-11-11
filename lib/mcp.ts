@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import {activeMcpEndpoint} from "@/lib/mcp-active-endpoint";
 import { getDatabase } from "@/lib/sqlite";
 import path from "node:path";
 import { signTrustedMcpSession } from "@/lib/mcp-core/session-token.mjs";
@@ -237,7 +238,7 @@ export function getMcpServers(context: McpContext = {}): McpServerMap {
     return {
       gateway: {
         type: "http",
-        url: `${config.mcpPublicUrl.replace(/\/+$/, "")}/mcp`,
+        url: `${activeMcpEndpoint(config.mcpStateDir,config.mcpPublicUrl).replace(/\/+$/, "")}/mcp`,
         headers: { Authorization: `Bearer ${token}` },
       },
     };

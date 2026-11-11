@@ -10,6 +10,7 @@ import { normalizeAskUserInput, QuestionValidationError, type AskUserInput } fro
 import { bearerTokenMatches } from "@/lib/security";
 import { performSharedBrowserAction } from "@/lib/shared-browser-client";
 import { z } from "zod";
+import {prepareMcpInput} from "@/lib/mcp-protected-input";
 import {parseProtectedLoginReply,type ProtectedLoginReply} from "@/lib/protected-login-contract";
 import {browserLoginRequest} from "@/lib/browser-login-client";
 import { protectedLoginFailure } from "@/lib/protected-login-errors";
@@ -35,10 +36,14 @@ export async function POST(req: Request) {
   if (!chat || !jobId) return Response.json({ error: "Invalid chat context" }, { status: 400 });
 
   let input: AskUserInput;
-  let secureBrowserInput: {requestId:string;origin:string;expiresAt:string;kind?:"console";sessionId?:string;fields?:Array<"password"|"username"|"email">}|undefined;
+  let secureBrowserInput: {requestId:string;origin:string;expiresAt:string;kind?:"console"|"mcp";envFields?:string[];sessionId?:string;fields?:Array<"password"|"username"|"email">}|undefined;
   try {
     const raw=await req.json();
-    if(raw.consoleLogin){
+    if(raw.mcpInput){
+      if(automation)return Response.json({error:"MCP credential changes require interactive protected input."},{status:403});
+      secureBrowserInput=await prepareMcpInput(userId!,chatId,jobId,raw.mcpInput);
+      input=normalizeAskUserInput({title:"Configure MCP credentials securely",description:`Connection: ${secureBrowserInput.origin}`,questions:[{key:"secure_login",type:"text",question:"Protected MCP input",required:false}],responseTemplate:"MCP credentials configured securely."});
+    }else if(raw.consoleLogin){
       const consoleInput=z.object({consoleLogin:z.object({action:z.enum(["connect","authenticate","request_password"]),method:z.enum(["ssh","sudo","su"]).optional(),user:z.string().regex(/^[a-z_][a-z0-9_.-]{0,63}$/).optional(),host:z.string().max(253).optional(),port:z.number().int().min(1).max(65535).optional(),replace:z.boolean().optional()}).strict()}).strict().parse(raw).consoleLogin;
       if(consoleInput.action!=="request_password"&&(!consoleInput.method||!consoleInput.user))throw Error("Account and method required");
       const prepared=await browserLoginRequest(userId!,chatId,consoleInput.action==="authenticate"?"console_elevate":"console_prepare",{...consoleInput,replaceSession:consoleInput.action==="connect"});

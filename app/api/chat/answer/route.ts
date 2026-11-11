@@ -9,6 +9,7 @@ import { userInputProgress } from "@/lib/user-input-progress";
 import { transaction } from "@/lib/sqlite";
 import { browserLoginRequest, browserLoginSameOrigin } from "@/lib/browser-login-client";
 import { requiresProtectedCredentials } from "@/lib/mcp-core/credential-question-policy.mjs";
+import {mcpInputStatus} from "@/lib/mcp-protected-input";
 
 export const runtime = "nodejs";
 
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
   if(!cancelled && secure && pending.status!=="answered") {
     if(!req.headers.get("cookie") || !browserLoginSameOrigin(req))return Response.json({error:"Forbidden"},{status:403});
     try {
-      const status=await browserLoginRequest(userId!,pending.chatId,secure.kind==="console"?"console_status":"status",{requestId:secure.requestId},true);
+      const status=secure.kind==="mcp"?mcpInputStatus(userId!,pending.chatId,pending.jobId!,secure.requestId):await browserLoginRequest(userId!,pending.chatId,secure.kind==="console"?"console_status":"status",{requestId:secure.requestId},true);
       if(!status.filled)throw Error();
       const label=secure.kind==="console"?"Password":"Credentials";
       input={secure_login:status.scope==="permanent"?`${label} entered securely and saved permanently.`:`${label} entered securely and saved for this chat only.`};
