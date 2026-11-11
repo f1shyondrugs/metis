@@ -5,7 +5,7 @@ import type {LocalDeviceState} from "../lib/desktop-bridge";
 import {DesktopFileDrop} from "../components/desktop-file-drop";
 import {ChatFileDropZone} from "../components/chat-file-drop-zone";
 const mode=new URLSearchParams(location.search).get("mode")||"client";
-const state:LocalDeviceState={paired:true,connection:"online",permissionMode:"admin",platform:"win32",version:"fixture",hideOverlayFromCapture:true,autostartEnabled:true,appUpdate:{phase:"ready",available:true,version:"next",message:"Update ready; restart the app to install"}};
+const state:LocalDeviceState={paired:true,connection:"online",permissionMode:"admin",platform:"win32",version:"fixture",fileDrop:{available:true,error:""},hideOverlayFromCapture:true,autostartEnabled:true,appUpdate:{phase:"ready",available:true,version:"next",message:"Update ready; restart the app to install"}};
 let receive:((value:unknown)=>void)|undefined,reads=0,captures=0;
 Object.defineProperty(window,"metisApp",{value:mode==="browser"?undefined:{
  openDeviceSettings:async()=>{},deviceState:async()=>{reads++;return structuredClone(state);},
@@ -39,6 +39,7 @@ void(async()=>{
  if(mode!=="browser"){
   await select(button("App settings"));
   check(Boolean(document.querySelector('[role=dialog]')),"profile entry opens in-app settings dialog");
+  check(document.querySelector('[role=dialog]')?.textContent?.includes("File dropsReady"),"native file-drop availability is readable");
   check(document.activeElement?.closest('[role=dialog]'),"keyboard focus moves into dialog");
   const streams=document.getElementById("client-streams") as HTMLElement;
   check(streams?.getAttribute("aria-checked")==="false","saved hidden setting is shown without reset");
