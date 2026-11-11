@@ -31,7 +31,7 @@ async function core(name:string,args:Record<string,unknown>={}){
 async function calendar(tool:string,args:Record<string,unknown>={}){
  const result=await client.callTool({name:"call_mcp_tool",arguments:{server:"icloud-calendar-personal",tool,arguments:args}},undefined,{timeout:120000});
  const data=json(result);
- if(result.isError||data.error)throw Error("iCloud operation rejected: "+(data.error?.code??"REQUEST_FAILED"));
+ if(result.isError||data.error){const code=String(data.error?.code??"REQUEST_FAILED");throw Error("iCloud operation rejected: "+(/^[A-Z_]{1,64}$/.test(code)?code:"REQUEST_FAILED"));}
  return data;
 }
 try{
@@ -68,7 +68,7 @@ try{
  }
 }catch(error){
  console.error("VERIFICATION_ERROR_NAME="+(error instanceof Error?error.name:"Unknown"));
- if(error instanceof Error && /^(MCP operation failed:|Browser\/console vault)/.test(error.message))console.error(error.message);
+ if(error instanceof Error && /^(MCP operation failed:|iCloud operation rejected:|Browser\/console vault)/.test(error.message))console.error(error.message);
  console.error("ICLOUD_REAUTH_NOT_COMPLETED; inspect protected input or connection evidence. No blind retry was performed.");
  process.exitCode=1;
 }finally{await client.close();}
