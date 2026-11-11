@@ -42,7 +42,8 @@ test("native policy stays stable while task context, project selection and expli
   assert.doesNotMatch(first.instructions, /EXPLICIT_MARKER|quartz rendering convention/);
   assert.match(first.context, /quartz rendering convention/);
   assert.doesNotMatch(first.context, /Unrelated saxophone/);
-  assert.match(first.context, /Preserve all capabilities/);
+  assert.match(first.instructions, /Preserve all capabilities/);
+  assert.doesNotMatch(first.context, /Preserve all capabilities/);
   assert.equal(first.context.split("EXPLICIT_MARKER").length - 1, 1);
   assert.equal(support.providerCurrentTurnPrompt({ job } as ProviderContext), "quartz");
   store.updateChat(chat.id, { title: "Renamed context fixture" }, owner);
@@ -53,10 +54,14 @@ test("native policy stays stable while task context, project selection and expli
   assert.deepEqual(projects.getProject(project.id, owner)!.memories, before.memories);
   const ask = prompts.buildProviderPromptParts({ job: { ...job, modeId: "ask" } });
   assert.match(ask.instructions, /Current agent mode: Ask/);
+  projects.updateProject(project.id, { instructions: "UPDATED_PROJECT_POLICY" }, owner);
+  const changedPolicy = prompts.buildProviderPromptParts({ job });
+  assert.match(changedPolicy.instructions, /UPDATED_PROJECT_POLICY/);
+  assert.doesNotMatch(changedPolicy.instructions, /Preserve all capabilities/);
   const attachment = { id: "fixture-attachment", name: "ATTACHMENT_MARKER.png", storedName: "fixture.png", kind: "image" as const, mimeType: "image/png", size: 10 };
   const attached = prompts.buildProviderPromptParts({ job: { ...job, referenceText: "x".repeat(100_000), attachments: [attachment] } });
   assert.equal(attached.context.split("ATTACHMENT_MARKER.png").length - 1, 1);
   const privateTurn = prompts.buildProviderPromptParts({ job: { ...job, incognito: true } });
-  assert.doesNotMatch(privateTurn.context, /quartz rendering convention|Preserve all capabilities/);
+  assert.doesNotMatch(privateTurn.context + privateTurn.instructions, /quartz rendering convention|Preserve all capabilities/);
   console.log("CONTEXT_EFFICIENCY", JSON.stringify({ storedFacts: before.memories.length, selectedContextChars: first.context.length, broadContextChars: next.context.length }));
 });

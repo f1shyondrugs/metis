@@ -497,7 +497,7 @@ export function projectAgentsFilePath(project: Project, ownerId?: string) {
  return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile()) || null;
 }
 
-export function projectContextBlock(project: Project, ownerId?: string, chats?: ChatIndexEntry[], options: { query?: string } = {}) {
+export function projectContextBlock(project: Project, ownerId?: string, chats?: ChatIndexEntry[], options: { query?: string; includeInstructions?: boolean } = {}) {
  const memories = selectProjectContextFacts(options.query || "", project.memories);
  const files = listProjectFiles(project.id, ownerId);
  // Chat/agent working facts must not become shared project-note context.
@@ -520,7 +520,7 @@ export function projectContextBlock(project: Project, ownerId?: string, chats?: 
   : [];
  return [
   `Active project: ${project.name}`,
-  `Project instructions override the user's global custom instructions while this chat is in the project:\n${project.instructions || "(none)"}`,
+  options.includeInstructions !== false ? `Project instructions override the user's global custom instructions while this chat is in the project:\n${project.instructions || "(none)"}` : "",
   project.memoryMode === "project_only"
    ? "Include global memory is OFF: global memory and personal context-hub reads and writes are forbidden. Use memory tools with scope project only. Stay inside this project's instructions, files, notes, and chats."
    : "Include global memory is ON: choose scope project for facts specific to this project, or scope global for account-wide facts and preferences. Memory tools default to project scope in this chat. Global memories also apply.",

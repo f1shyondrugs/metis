@@ -145,7 +145,7 @@ export function buildProviderPromptParts(input: ProviderPromptContext): { instru
 
   const agentMemory = project?.mode === "agents";
   const workingBlock = factBlock(agentMemory ? "Agent working memory" : "Chat working memory", workingFacts, CHAT_FACT_CHARS);
-  const projectBlock = project ? projectContextBlock(project, ownerId, undefined, { query: taskQuery }) : "";
+  const projectBlock = project ? projectContextBlock(project, ownerId, undefined, { query: taskQuery, includeInstructions: false }) : "";
   const globalBlock = factBlock("Retrieved global durable memory", retrievedGlobalFacts, GLOBAL_CONTEXT_CHARS);
 
   const instructions = [
@@ -159,6 +159,7 @@ export function buildProviderPromptParts(input: ProviderPromptContext): { instru
     "Working style: precise, technically fluent, proactive. Act with tools instead of narrating steps. Reply in the user's language. On clear orders decide and act; ask only when genuinely ambiguous or destructive.",
     "Execution efficiency: batch related read-only inspection instead of issuing many tiny calls; reuse the known project/repository cwd instead of rediscovering it; run targeted checks while iterating and the expensive full test/build pass only once after the working tree has stopped changing. Parallelize independent lightweight reads when safe, but do not run competing heavyweight builds. Keep progress narration to short milestone updates rather than one message per tool call.",
     !incognito ? agentRulesPrompt(globalSettings) : "",
+    project?.instructions ? `Project instructions override the user\'s global custom instructions while this chat is in the project:\n${project.instructions}` : "",
     METIS_SHARED_AGENT_CONTROL,
     toolContractPrompt({
       modeId: job.modeId || chat.sessionState?.modeId || "agent",

@@ -13,6 +13,8 @@ CLI regression test uses a local Responses fixture; no provider account or paid
 model requests are involved.
 
 `buildProviderPromptParts` separates instructions from current task context.
+Explicit project instructions stay in the instruction layer after global custom
+rules, preserving their precedence, and are omitted from the task-context copy.
 Other adapters retain the combined `buildProviderPrompt` interface. Explicit
 references and attachments are resolved and bounded once by that builder; native
 current-turn/recovery text does not add another copy.
