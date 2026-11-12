@@ -43,7 +43,7 @@ jobs:
         run: pnpm exec tsx --test tests/targeted-sql-reads.test.ts tests/question-flow.test.ts tests/question-reload.test.ts tests/user-input-continuation.test.ts tests/user-input-lease.test.ts tests/chat-checkpoints.test.ts tests/chat-memory-view.test.ts tests/context-layers.test.ts tests/shared-context.test.ts tests/reference-search-performance.test.ts
 
       - name: Verify assistant sessions and durable message queue
-        run: pnpm exec tsx --test tests/desktop-assistant-session.test.ts tests/desktop-assistant.test.ts tests/queue-client.test.ts tests/queue-drain.test.ts tests/queue-removal.test.ts tests/queue-persistence-race.test.ts tests/queue-send-now.test.ts
+        run: pnpm exec tsx --test tests/desktop-assistant-session.test.ts tests/desktop-assistant.test.ts tests/codex-vision-input.test.ts tests/inspect-image.test.ts tests/assistant-screen-uploads.test.ts tests/queue-client.test.ts tests/queue-drain.test.ts tests/queue-removal.test.ts tests/queue-persistence-race.test.ts tests/queue-send-now.test.ts
 
       - name: Verify desktop annotations, file ownership and live capabilities
         run: pnpm exec tsx --test tests/desktop-overlay.test.ts tests/desktop-overlay-files.test.ts tests/desktop-overlay-gateway.test.ts tests/desktop-overlay-tool.test.ts tests/overlay-pdf-worker.test.ts tests/remote-presence-worker.test.ts

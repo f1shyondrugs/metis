@@ -1,3 +1,4 @@
+import { prepareCodexInput } from "@/lib/providers/codex-input";
 import { createCodexInstructionFile } from "@/lib/providers/codex-instructions";
 import { buildProviderPromptParts } from "@/lib/providers/prompt-context";
 import { codexEventsUntilCompleted, isCodexReconnectNotice } from "@/lib/providers/codex-events";
@@ -234,6 +235,7 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
         )
       : undefined;
   let instructionsFile: string | undefined;
+  let imageInput: ReturnType<typeof prepareCodexInput> | undefined;
   try {
     const agentCwd = getUserAgentCwd(context.job.userId);
     const nativeMcp=getMcpServers(providerMcpContext(context));assertNativeMcpServers(nativeMcp);
@@ -316,8 +318,9 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
     ]
       .filter(Boolean)
       .join("\n\nUser request:\n");
+    imageInput = prepareCodexInput(prompt, context.job, selectedModel, codexHome?.home);
     const events = codexEventsWithResumeRetry(async () => {
-      const streamed = await thread.runStreamed(prompt, { signal: context.signal });
+      const streamed = await thread.runStreamed(imageInput!.input, { signal: context.signal });
       return streamed.events;
     }, { resume: Boolean(previousId), signal: context.signal });
     let usage: ProviderResult["usage"] | undefined;
@@ -406,6 +409,7 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
       usage,
     };
   } finally {
+    imageInput?.dispose();
     if (instructionsFile) await rm(instructionsFile, { force: true }).catch(() => undefined);
     if (codexHome) {
       await persistCodexOAuthHome(context, codexHome);
