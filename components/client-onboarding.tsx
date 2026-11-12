@@ -1,18 +1,17 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
-import {ArrowLeft,ArrowRight,Check,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Play,Palette,X} from "lucide-react";
+import {ArrowLeft,ArrowRight,Check,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Shield} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from "@/components/ui/dialog";
 import {OnboardingStage,OnboardingMotion,OnboardingProgress} from "@/components/onboarding-stage";
-import {AppearanceSettings} from "@/components/appearance-settings";
 import {AppInstallOffer} from "@/components/app-install-offer";
-import {DesktopClientSettings} from "@/components/desktop-client-settings";
 import {desktopBridge} from "@/lib/desktop-bridge";
 import {onboardingStorageKey,parseOnboardingState,PRODUCT_TOUR,type ClientOnboardingState,type TourTarget} from "@/lib/client-onboarding";
 const sessionProgress=new Map<string,ClientOnboardingState>();
 const tourIcons=[MessageSquare,Folder,NotebookPen,Monitor,Puzzle,Settings];
-export function ClientOnboarding({userId,username,onNavigate,onConnectProvider,hasProvider,onPairDevice}:{userId:string;username:string;onNavigate:(target:TourTarget)=>void;onConnectProvider:()=>void;hasProvider:boolean;onPairDevice?:()=>void}){
+export function ClientOnboarding({userId,username,onNavigate,hasProvider,onPairDevice}:{userId:string;username:string;onNavigate:(target:TourTarget)=>void;onConnectProvider:()=>void;hasProvider:boolean;onPairDevice?:()=>void}){
  const [scope,setScope]=useState<{key:string;native:boolean;userId:string}|null>(null),[state,setState]=useState<ClientOnboardingState|null>(null);
+ const [setupDevice,setSetupDevice]=useState(false);
  const [paused,setPaused]=useState(false),[storageUnavailable,setStorageUnavailable]=useState(false);
  const scene=useRef(state);scene.current=state;
  useEffect(()=>{
@@ -42,19 +41,19 @@ export function ClientOnboarding({userId,username,onNavigate,onConnectProvider,h
  },[scope,save]);
  const finish=()=>save({version:1,phase:"done",tourIndex:0});
  if(!scope||scope.userId!==userId||!state||state.phase==="done"||paused)return null;
- if(state.phase==="tour")return <ProductTour index={state.tourIndex} onNavigate={onNavigate} onPause={()=>setPaused(true)} onIndex={index=>save({...state,tourIndex:index})} onFinish={finish}/>;
+ if(state.phase==="tour")return <ProductTour index={state.tourIndex} onNavigate={onNavigate} onPause={()=>setPaused(true)} onIndex={index=>save({...state,tourIndex:index})} onBack={()=>save({...state,phase:scope.native?"device":"app",tourIndex:0})} onFinish={finish}/>;
  const native=scope.native;
  const steps=native?[{id:"welcome",label:"Welcome"},{id:"device",label:"This device"}]:[{id:"welcome",label:"Welcome"},{id:"app",label:"Get the app"}];
  const index=state.phase==="welcome"?0:1;
  const next=()=>save({...state,phase:native?"device":"app"});
- const beginTour=()=>save({...state,phase:"tour",tourIndex:0});
+ const beginTour=()=>{onNavigate("chat");save({...state,phase:"tour",tourIndex:0});};
+ const advance=()=>{if(state.phase==="welcome")next();else if(native&&setupDevice&&onPairDevice){setSetupDevice(false);setPaused(true);onPairDevice();}else beginTour();};
  return <Dialog open onOpenChange={open=>{if(!open)setPaused(true);}}><DialogContent className="max-h-[100dvh] w-screen max-w-none gap-0 overflow-y-auto rounded-none border-0 p-0 sm:max-w-none data-open:animate-none data-closed:animate-none" showCloseButton={false}>
   <DialogTitle className="sr-only">Getting started with Metis</DialogTitle><DialogDescription className="sr-only">A guide for this account on this browser or desktop. You can continue later.</DialogDescription>
   <OnboardingStage key={scope.key+state.phase} eyebrow={native?"Metis · This desktop":"Metis · This browser"} title={state.phase==="welcome"?"Welcome, "+username:state.phase==="device"?"Set up this desktop":"Get the app"} description={state.phase==="welcome"?"Your workspace. Your way.":state.phase==="device"?"Device access is optional. Chat works without it.":"Desktop Assistant, notifications and device access."}
    progress={<OnboardingProgress steps={steps} index={index}/>} footer={<>
-    {index>0?<Button variant="ghost" size="icon" aria-label="Back" title="Back" onClick={()=>save({...state,phase:"welcome"})}><ArrowLeft aria-hidden="true" className="size-4"/></Button>:null}
-    <Button variant="ghost" size="icon" aria-label="Continue later" title="Continue later" onClick={()=>setPaused(true)}><X aria-hidden="true" className="size-4"/></Button>
-    {state.phase==="welcome"?<Button onClick={next}>Continue<ArrowRight className="size-4"/></Button>:<><Button variant="outline" onClick={finish}>{native?"Use Metis":"Skip tour"}</Button><Button onClick={beginTour}><Play className="size-4"/>Show me around</Button></>}
+    {index>0?<Button variant="ghost" onClick={()=>save({...state,phase:"welcome"})}><ArrowLeft aria-hidden="true" className="size-4"/>Back</Button>:null}
+    <Button onClick={advance}>Continue<ArrowRight aria-hidden="true" className="size-4"/></Button>
    </>}>
     {storageUnavailable?<p role="status" className="mb-4 text-xs text-muted-foreground">Browser storage is unavailable. Progress is kept for this session only.</p>:null}
     {state.phase==="welcome"?<div>
@@ -63,13 +62,12 @@ export function ClientOnboarding({userId,username,onNavigate,onConnectProvider,h
       <li><Folder aria-hidden="true"/><div><strong>Projects</strong><p>Your work and context, together.</p></div></li>
       <li><Check aria-hidden="true"/><div><strong>Your choice</strong><p>Enable only what you need.</p></div></li>
      </ul>
-     {!hasProvider?<div className="mt-6 border-t border-border pt-4"><p className="mb-3 text-sm text-muted-foreground">Connect a provider to start chatting.</p><Button variant="outline" onClick={onConnectProvider}>Connect a model provider</Button></div>:null}
-     <details className="onboarding-appearance"><summary><Palette aria-hidden="true"/>Appearance</summary><AppearanceSettings/></details>
-    </div>:state.phase==="device"&&native?<><div className="mb-4 border-b border-border pb-4"><p className="mb-3 text-sm text-muted-foreground">Create a pairing code, then enter it in local device settings.</p>{onPairDevice?<Button variant="outline" onClick={()=>{setPaused(true);onPairDevice();}}>Create a pairing code</Button>:null}</div><DesktopClientSettings compact/></>:<AppInstallOffer/>}
+     {!hasProvider?<p className="mt-6 text-sm text-muted-foreground">Add a provider in Settings to start chatting.</p>:null}
+    </div>:state.phase==="device"&&native?<div className="grid gap-5"><Shield className="size-8" aria-hidden="true"/><p className="text-sm text-muted-foreground">Pair this device in Settings → Devices. Permissions stay under your control.</p>{onPairDevice?<label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm"><input type="checkbox" checked={setupDevice} onChange={event=>setSetupDevice(event.target.checked)} className="size-4 accent-current"/>Set up computer access now</label>:null}</div>:<AppInstallOffer/>}
   </OnboardingStage>
  </DialogContent></Dialog>;
 }
-export function ProductTour({index,onIndex,onNavigate,onPause,onFinish}:{index:number;onIndex:(index:number)=>void;onNavigate:(target:TourTarget)=>void;onPause:()=>void;onFinish:()=>void}){
+export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish}:{index:number;onIndex:(index:number)=>void;onNavigate:(target:TourTarget)=>void;onPause:()=>void;onBack:()=>void;onFinish:()=>void}){
  const item=PRODUCT_TOUR[index]||PRODUCT_TOUR[0],Icon=tourIcons[index]||MessageSquare;
  const [rect,setRect]=useState<{left:number;top:number;width:number;height:number}|null>(null);
  const [topAligned,setTopAligned]=useState(false);
@@ -93,9 +91,9 @@ export function ProductTour({index,onIndex,onNavigate,onPause,onFinish}:{index:n
   <section className="onboarding-tour" style={topAligned?{top:16,bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingMotion/>
    <p className="onboarding-eyebrow">Getting started · {index+1} of {PRODUCT_TOUR.length}</p><Icon className="mb-3 size-5 text-primary"/>
    <h2 aria-live="polite" tabIndex={-1}>{item.label}</h2><p>{item.description}</p>
-   <Button className="mt-4" variant="outline" onClick={()=>onNavigate(item.id)}>{item.action}<ArrowRight className="size-4"/></Button>
-   <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
-    <Button variant="ghost" size="icon" aria-label="Continue later" title="Continue later" onClick={onPause}><X aria-hidden="true" className="size-4"/></Button><div className="flex gap-2">{index>0?<Button variant="ghost" onClick={()=>onIndex(index-1)} aria-label="Previous tour step"><ArrowLeft className="size-4"/></Button>:null}<Button onClick={()=>index===PRODUCT_TOUR.length-1?onFinish():onIndex(index+1)}>{index===PRODUCT_TOUR.length-1?"Finish":"Next"}<ArrowRight className="size-4"/></Button></div>
+   <div className="mt-5 flex items-center justify-between gap-3">
+    <Button variant="ghost" onClick={()=>{if(index===0)onBack();else{onNavigate(PRODUCT_TOUR[index-1].id);onIndex(index-1);}}}><ArrowLeft className="size-4" aria-hidden="true"/>Back</Button>
+    <Button onClick={()=>{if(index===PRODUCT_TOUR.length-1)onFinish();else{onNavigate(PRODUCT_TOUR[index+1].id);onIndex(index+1);}}}>Continue<ArrowRight className="size-4" aria-hidden="true"/></Button>
    </div>
   </section></>;
 }
