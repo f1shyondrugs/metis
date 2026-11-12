@@ -1,5 +1,6 @@
 "use client";
-import {Fragment,useCallback,useEffect,useLayoutEffect,useRef,useState,type ReactNode} from "react";
+import {Fragment,createContext,useContext,useCallback,useEffect,useLayoutEffect,useRef,useState,type ReactNode} from "react";
+import {createPortal} from "react-dom";
 import {mountOnboardingMotion,ONBOARDING_TIMING} from "@/public/metis-onboarding-motion.js";
 import {useReducedMotion} from "@/components/use-chart-motion";
 import "./onboarding.css";
@@ -31,13 +32,20 @@ export function OnboardingTransition({step,ready=true,className="",children}:{st
   <Fragment key={shown}>{shown===step?children:last.current}</Fragment>
  </div>;
 }
+const NavigationTarget=createContext<HTMLElement|null|undefined>(undefined);
+/** Keep embedded step navigation in the stage footer without changing action owners. */
+export function OnboardingFooterActions({children}:{children:ReactNode}){
+ const target=useContext(NavigationTarget);
+ return target===undefined?<div className="onboarding-actions">{children}</div>:target?createPortal(children,target):null;
+}
 export function OnboardingStage({children,title,description,eyebrow="Welcome to Metis",progress,footer,transitionKey}:{children:ReactNode;title:string;description:string;eyebrow?:string;progress?:ReactNode;footer?:ReactNode;transitionKey?:string}){
  const [ready,setReady]=useState(false),show=useCallback(()=>setReady(true),[]);
- return <section className="onboarding-stage" aria-label="Metis onboarding"><OnboardingMotion onReady={show}/><OnboardingTransition step={transitionKey||title} ready={ready} className="onboarding-shell">
-  <header className="onboarding-intro"><span className="metis-wordmark" role="img" aria-label="Metis"/><p className="onboarding-eyebrow">{eyebrow}</p><h1 tabIndex={-1} data-onboarding-heading>{title}</h1><p className="onboarding-description">{description}</p></header>
+ const [navigationTarget,setNavigationTarget]=useState<HTMLDivElement|null>(null);
+ return <section className="onboarding-stage" aria-label="Metis onboarding"><OnboardingMotion onReady={show}/><NavigationTarget.Provider value={navigationTarget}><OnboardingTransition step={transitionKey||title} ready={ready} className="onboarding-shell">
+  <header className="onboarding-intro"><span className="metis-wordmark" role="img" aria-label="Metis"/>{eyebrow?<p className="onboarding-eyebrow">{eyebrow}</p>:null}<h1 tabIndex={-1} data-onboarding-heading>{title}</h1><p className="onboarding-description">{description}</p></header>
   <div className="onboarding-body">{children}</div>
-  <footer className="onboarding-footer">{progress}<div className="onboarding-actions">{footer}</div></footer>
- </OnboardingTransition></section>;
+  <footer className="onboarding-footer">{progress}<div className="onboarding-actions" ref={setNavigationTarget}>{footer}</div></footer>
+ </OnboardingTransition></NavigationTarget.Provider></section>;
 }
 export function OnboardingProgress({steps,index}:{steps:readonly {id:string;label:string}[];index:number}){
  return <ol className="onboarding-progress" aria-label={`Step ${index+1} of ${steps.length}`}>{steps.map((step,n)=><li key={step.id} aria-current={n===index?"step":undefined}><span className={n<=index?"is-reached":""}/><span className="sr-only">{step.label}{n===index?", current step":""}</span></li>)}</ol>;

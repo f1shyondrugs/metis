@@ -34,7 +34,7 @@ window.fetch=async(input,init)=>{
   return Response.json({downloads:[{label:platform==="macos"?"macOS · Apple Silicon":platform==="linux"?"Linux · Intel / AMD":"Windows installer",url:"https://github.com/f1shyondrugs/Metis-Apps/releases/download/v-fixture/"+platform+".bin"}]});
  }
  if(url==="/api/setup"){const body=init?.body?JSON.parse(String(init.body)):{};if(body.action==="bootstrap"){bootstrapCalls++;return Response.json({user:{id:"fixture-admin",username:"Demo",isAdmin:true}});}if(body.action==="complete"){setupCompleteRequests++;return Response.json({ok:true});}return Response.json({platform:"linux",osUsers:[],osUsersAvailable:false});}
- if(url==="/api/providers")return Response.json({providers:[]});
+ if(url==="/api/providers")return Response.json({providers:[{key:"synthetic-provider",name:"Fixture provider",description:"Isolated UI test only",authTypes:["api_key"],capabilities:[]}]});
  if(url==="/api/admin/users")return Response.json({users:[{id:"fixture-admin",username:"Demo",isAdmin:true}]});
  return originalFetch(input,init);
 };
@@ -54,7 +54,9 @@ async function mount(owner="alice",hasProvider=true){root.render(<Harness key={+
 function button(text:string){const scope=document.querySelector(".onboarding-tour")||document;return Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).find(button=>button.textContent?.trim()===text||button.getAttribute("aria-label")?.split(",")[0]===text);}
 function linearNavigation(){const scope=document.querySelector(".onboarding-tour")||document.querySelector(".onboarding-stage");const buttons=Array.from(scope?.querySelectorAll("button")||[]);return buttons.length>=1&&buttons.length<=2&&buttons.every(el=>["Back","Continue"].includes(el.textContent?.trim()||""));}
 async function selectPlatform(value:string){const select=document.querySelector<HTMLSelectElement>('select[aria-label="App platform"]')!;select.value=value;select.dispatchEvent(new Event("change",{bubbles:true}));await pause(150);}
-async function click(text:string){const target=button(text);if(!target)throw Error("Missing button "+text);target.click();await pause(150);for(let i=0;i<60&&document.querySelector('.onboarding-transition[data-phase="out"]');i++)await pause(20);}
+async function click(text:string){const target=button(text);if(!target)throw Error("Missing button "+text);
+ if(text==="Continue"||text==="Enter Metis"){const footer=target.closest(".onboarding-footer"),dots=footer?.querySelector(".onboarding-progress"),actions=target.closest(".onboarding-actions");const b=target.getBoundingClientRect(),p=dots?.getBoundingClientRect(),f=footer?.getBoundingClientRect();check(!!footer&&!!actions&&!!p&&!!f&&Math.abs(p.top+p.height/2-b.top-b.height/2)<2&&Math.abs(f.right-b.right)<2&&p.right<b.left,"Continue stays bottom-right on the dots row: "+(document.querySelector(".onboarding-tour h2")?.textContent||document.querySelector(".onboarding-stage h1")?.textContent));}
+ target.click();await pause(150);for(let i=0;i<60&&document.querySelector('.onboarding-transition[data-phase="out"]');i++)await pause(20);}
 function read(owner:string,client="browser"){return JSON.parse(localStorage.getItem(onboardingStorageKey(owner,client))||"null");}
 async function fill(label:string,value:string){
  const el=Array.from(document.querySelectorAll<HTMLInputElement>("input")).find(el=>el.getAttribute("aria-label")===label||el.closest("label")?.textContent?.includes(label));
@@ -142,7 +144,7 @@ async function run(){
  check(read("bob")?.phase==="done"&&document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')?.value==="Keep this draft","finishing tour preserves the existing workspace draft");
  dispatchEvent(new Event("metis:onboarding-open"));await pause();check(!!document.querySelector(".onboarding-stage"),"account menu event can restart a completed guide");
  native("one");await mount("alice");
- check(document.body.textContent?.includes("This desktop")&&read("alice")?.phase==="done","native client is separate from web completion");
+ check(!document.body.textContent?.includes("Metis · This desktop")&&document.body.textContent?.includes("Welcome, alice")&&read("alice")?.phase==="done","native client is separate from web completion without desktop eyebrow");
  await click("Continue");
  check(!document.querySelector('[aria-label="Get the Metis app"]')&&!!document.querySelector('input[type="checkbox"]'),"native onboarding offers one optional device choice instead of another settings panel");
  check(linearNavigation(),"native device step has only Back and Continue buttons");
@@ -195,7 +197,7 @@ async function run(){
  check(bootstrapCalls===1&&document.body.textContent?.includes("Admin"),"first admin setup uses the existing bootstrap action");
  await click("Continue");await pause(150);
  check(!!document.querySelector('[aria-label="Setup progress"]')||document.body.textContent?.includes("Connect a provider"),"provider setup follows the first account");
- await click("Skip for now");await click("Enter Metis");check(setupCompleteRequests===1&&setupFinished===1,"server completion reuses the authenticated setup completion action");
+ await click("Continue");check(!!Array.from(document.querySelectorAll(".onboarding-footer button")).find(el=>el.textContent?.includes("Save & continue")),"embedded provider continuation stays in the shared footer");await click("Back");await click("Skip for now");await click("Enter Metis");check(setupCompleteRequests===1&&setupFinished===1,"server completion reuses the authenticated setup completion action");
  check(![...Object.keys(localStorage)].some(k=>(localStorage.getItem(k)||"").includes("synthetic-password")||(localStorage.getItem(k)||"").includes("synthetic-token")),"setup secrets never enter client onboarding storage");
  root.render(<div/>);await pause(100);check(!document.querySelector(".onboarding-motion svg"),"leaving onboarding disposes its animation controller");
  applyAppearanceTheme(document.documentElement,getSelectedTheme(createDefaultAppearanceState()),"metis");

@@ -50,18 +50,13 @@ export function ClientOnboarding({userId,username,onNavigate,hasProvider,onPairD
  const advance=()=>{if(state.phase==="welcome")next();else if(native&&setupDevice&&onPairDevice){setSetupDevice(false);setPaused(true);onPairDevice();}else beginTour();};
  return <Dialog open onOpenChange={open=>{if(!open)setPaused(true);}}><DialogContent className="max-h-[100dvh] w-screen max-w-none gap-0 overflow-y-auto rounded-none border-0 p-0 sm:max-w-none data-open:animate-none data-closed:animate-none" showCloseButton={false}>
   <DialogTitle className="sr-only">Getting started with Metis</DialogTitle><DialogDescription className="sr-only">A guide for this account on this browser or desktop. You can continue later.</DialogDescription>
-  <OnboardingStage key={scope.key} transitionKey={state.phase} eyebrow={native?"Metis · This desktop":"Metis · This browser"} title={state.phase==="welcome"?"Welcome, "+username:state.phase==="device"?"Set up this desktop":"Get the app"} description={state.phase==="welcome"?"Your workspace. Your way.":state.phase==="device"?"Device access is optional. Chat works without it.":"Desktop Assistant, notifications and device access."}
+  <OnboardingStage key={scope.key} transitionKey={state.phase} eyebrow="" title={state.phase==="welcome"?"Welcome, "+username:state.phase==="device"?"Set up this desktop":"Get the app"} description={state.phase==="welcome"?"Your workspace. Your way.":state.phase==="device"?"Device access is optional. Chat works without it.":"Desktop Assistant, notifications and device access."}
    progress={<OnboardingProgress steps={steps} index={index}/>} footer={<>
     {index>0?<Button variant="ghost" onClick={()=>save({...state,phase:"welcome"})}><ArrowLeft aria-hidden="true" className="size-4"/>Back</Button>:null}
     <Button onClick={advance}>Continue<ArrowRight aria-hidden="true" className="size-4"/></Button>
    </>}>
     {storageUnavailable?<p role="status" className="mb-4 text-xs text-muted-foreground">Browser storage is unavailable. Progress is kept for this session only.</p>:null}
     {state.phase==="welcome"?<div>
-     <ul className="onboarding-feature-list">
-      <li><MessageSquare aria-hidden="true"/><div><strong>Chat</strong><p>Models, files and voice.</p></div></li>
-      <li><Folder aria-hidden="true"/><div><strong>Projects</strong><p>Your work and context, together.</p></div></li>
-      <li><Check aria-hidden="true"/><div><strong>Your choice</strong><p>Enable only what you need.</p></div></li>
-     </ul>
      {!hasProvider?<p className="mt-6 text-sm text-muted-foreground">Add a provider in Settings to start chatting.</p>:null}
     </div>:state.phase==="device"&&native?<div className="grid gap-5"><Shield className="size-8" aria-hidden="true"/><p className="text-sm text-muted-foreground">Pair this device in Settings → Devices. Permissions stay under your control.</p>{onPairDevice?<label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm"><input type="checkbox" checked={setupDevice} onChange={event=>setSetupDevice(event.target.checked)} className="size-4 accent-current"/>Set up computer access now</label>:null}</div>:<AppInstallOffer/>}
   </OnboardingStage>
@@ -92,9 +87,9 @@ export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish}:{
   <section className="onboarding-tour" style={topAligned?{top:16,bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingTransition step={thanks?"thanks":item.id}>
    <p className="onboarding-eyebrow">{thanks?"Getting started":`Getting started · ${index+1} of ${PRODUCT_TOUR.length}`}</p>{thanks?<Check aria-hidden="true" className="mb-3 size-5 text-primary"/>:<Icon aria-hidden="true" className="mb-3 size-5 text-primary"/>}
    <h2 aria-live="polite" tabIndex={-1} data-onboarding-heading>{thanks?"Thanks for using Metis!":item.label}</h2>{!thanks?<p>{item.description}</p>:null}
-   <div className="mt-5 flex items-center justify-between gap-3">
+   <footer className="onboarding-footer"><OnboardingProgress steps={[...PRODUCT_TOUR,{id:"thanks",label:"Thanks"}]} index={thanks?PRODUCT_TOUR.length:index}/><div className="onboarding-actions">
     <Button variant="ghost" onClick={()=>{if(thanks)setThanks(false);else if(index===0)onBack();else{onNavigate(PRODUCT_TOUR[index-1].id);onIndex(index-1);}}}><ArrowLeft className="size-4" aria-hidden="true"/>Back</Button>
     <Button onClick={()=>{if(thanks)onFinish();else if(index===PRODUCT_TOUR.length-1)setThanks(true);else{onNavigate(PRODUCT_TOUR[index+1].id);onIndex(index+1);}}}>Continue<ArrowRight className="size-4" aria-hidden="true"/></Button>
-   </div>
+   </div></footer>
   </OnboardingTransition></section></>;
 }

@@ -210,15 +210,9 @@ export function SetupWizard({
   }
 
   return (
-    <OnboardingStage transitionKey={step} eyebrow="Metis · Server setup" title={step === "welcome" ? "Welcome to Metis" : step === "people" ? "Create your account" : step === "provider" ? "Connect a provider" : "Metis is ready"} description={step === "welcome" ? "A fresh Metis installation. Let’s set it up." : step === "people" ? "Your first account manages this server." : step === "provider" ? "Choose a provider, or add one later." : "Your workspace is ready."} progress={<OnboardingProgress steps={steps} index={stepIndex}/>} footer={stepIndex>0?<Button type="button" variant="ghost" disabled={busy} onClick={()=>goToStep(steps[Math.max(0,stepIndex-1)].id)}>Back</Button>:null}>
+    <OnboardingStage transitionKey={step} eyebrow="Metis · Server setup" title={step === "welcome" ? "Welcome to Metis" : step === "people" ? "Create your account" : step === "provider" ? "Connect a provider" : "Metis is ready"} description={step === "welcome" ? "A fresh Metis installation. Let’s set it up." : step === "people" ? "Your first account manages this server." : step === "provider" ? "Choose a provider, or add one later." : "Your workspace is ready."} progress={<OnboardingProgress steps={steps} index={stepIndex}/>} footer={<>{stepIndex>0?<Button type="button" variant="ghost" disabled={busy} onClick={()=>goToStep(steps[Math.max(0,stepIndex-1)].id)}>Back</Button>:null}{step==="welcome"?<Button type="button" onClick={()=>goToStep("people")}>Continue<ArrowRight aria-hidden="true" className="size-4"/></Button>:step==="people"&&users.length?<Button type="button" disabled={busy} onClick={()=>goToStep("provider")}>Continue<ArrowRight aria-hidden="true" className="size-4"/></Button>:step==="ready"?<Button type="button" disabled={busy} onClick={()=>void finish()}>Enter Metis<ArrowRight aria-hidden="true" className="size-4"/></Button>:null}</>}>
 
       {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
-
-      {step === "welcome" ? (
-        <Button type="button" className="h-11 min-h-11 rounded-xl" onClick={() => goToStep("people")}>
-          Continue <ArrowRight className="size-4" />
-        </Button>
-      ) : null}
 
       {step === "people" ? (
         <div className="grid gap-6">
@@ -282,11 +276,6 @@ export function SetupWizard({
               <Button type="submit" className="h-11 min-h-11 rounded-xl" disabled={busy}>
                 {busy ? <LoaderCircle className="size-4 animate-spin" /> : users.length ? <><Plus className="size-4" /> Add person</> : <>Create admin <ArrowRight className="size-4" /></>}
               </Button>
-              {users.length ? (
-                <Button type="button" variant="secondary" className="h-11 min-h-11 rounded-xl" disabled={busy} onClick={() => goToStep("provider")}>
-                  Continue <ArrowRight className="size-4" />
-                </Button>
-              ) : null}
             </div>
           </form>
         </div>
@@ -305,11 +294,6 @@ export function SetupWizard({
         </div>
       ) : null}
 
-      {step === "ready" ? (
-        <Button type="button" className="h-11 min-h-11 rounded-xl" disabled={busy} onClick={() => void finish()}>
-          Enter Metis <ArrowRight className="size-4" />
-        </Button>
-      ) : null}
     </OnboardingStage>
   );
 }

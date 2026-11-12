@@ -36,6 +36,12 @@ The shared motion controller waits for page load and font readiness, with a boun
 
 The native local domain launcher uses the same timing constants and readiness event. It makes the new scene interactive before focusing its URL input. A ready remote view still replaces the launcher immediately and disposes its motion controller. No authentication, bootstrap, pairing or system-permission action waits on an animation.
 
+## Clean launcher and consistent navigation
+
+Native fresh-profile setup uses a frameless, menu-free host with a draggable header. The logo, title and short description replace the old desktop eyebrow and right-hand feature checklist. On the first successful server load, the same authorized WebContentsView transfers to the regular framed app window without a page reload. Configured installations still open directly in their normal window; closing a retired splash cannot dispose the workspace. No pairing, authentication, permissions or autostart state changes as part of this presentation.
+
+Native and web welcome, account setup, client guide and tour use one bottom navigation row: progress dots on the left and Continue at the far right, with Back immediately before it. Forms use their original submit handlers through associated footer buttons; embedded provider continuation uses the stage footer portal without moving credentials or changing provider actions. The footer stays on one row on small viewports. Full-screen dots/glow and the thin white tour outline retain their existing motion behavior.
+
 ## Verification
 
 - `tests/client-onboarding.test.ts`: platform detection and per-account/client state parsing.

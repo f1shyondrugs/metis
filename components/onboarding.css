@@ -1,13 +1,13 @@
 .onboarding-stage{position:relative;min-height:100dvh;display:grid;place-items:center;isolation:isolate;padding:48px 28px;background:var(--background);color:var(--foreground);overflow:auto}
 .onboarding-motion{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:-1}
-.onboarding-shell{display:grid;grid-template-columns:minmax(220px,.85fr) minmax(0,1.15fr);gap:44px 56px;width:100%;max-width:960px;padding:36px;position:relative}
-.onboarding-intro .metis-wordmark{display:block;width:108px;height:32px;margin-bottom:42px}
+.onboarding-shell{display:flex;flex-direction:column;gap:28px;width:100%;max-width:640px;min-height:360px;padding:36px;position:relative}
+.onboarding-intro .metis-wordmark{display:block;width:108px;height:32px;margin-bottom:32px}
 .onboarding-eyebrow{color:var(--muted-foreground);font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:14px}
 .onboarding-intro h1{font-size:clamp(26px,3.5vw,38px);font-weight:600;letter-spacing:-.035em;line-height:1.15;text-wrap:balance;margin:0 0 16px}
 .onboarding-description{font-size:14px;line-height:1.75;color:var(--muted-foreground);max-width:38ch}
 .onboarding-body{min-width:0;max-height:65dvh;overflow-y:auto;align-self:center}
-.onboarding-footer{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;padding-top:16px}
-.onboarding-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.onboarding-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:24px;margin-top:auto;min-height:68px}.onboarding-body:empty{display:none}
+.onboarding-actions{display:flex;gap:8px;align-items:center;margin-left:auto;flex-shrink:0}.onboarding-actions>button{min-height:44px}.onboarding-tour .onboarding-footer{margin-top:20px;padding-top:0;min-height:44px}.onboarding-tour .onboarding-progress{gap:5px}
 .onboarding-progress{display:flex;gap:7px;list-style:none;margin:0;padding:12px 0}
 .onboarding-progress li>span:first-child{display:block;width:6px;height:6px;border-radius:50%;background:var(--muted-foreground);opacity:.25;transition:opacity 180ms,transform 180ms}
 .onboarding-progress li>span.is-reached{opacity:.7;background:var(--primary)}
@@ -25,5 +25,5 @@
 .onboarding-tour-highlight{position:fixed;z-index:89;pointer-events:none;border:2px solid var(--primary);border-radius:8px;box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 12%,transparent)}
 .onboarding-transition{opacity:1;transform:none}.onboarding-transition[data-ready=false]{opacity:0}.onboarding-transition[data-phase=out]{opacity:0;transform:translateY(-3px);transition:opacity 110ms ease,transform 110ms ease;pointer-events:none}.onboarding-transition[data-phase=in]{animation:onboarding-enter 280ms cubic-bezier(.2,.8,.2,1) both}
 @keyframes onboarding-enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@media(max-width:767px){.onboarding-stage{padding:30px 18px;align-items:start}.onboarding-shell{grid-template-columns:minmax(0,1fr);gap:28px;padding:24px 8px}.onboarding-intro .metis-wordmark{margin-bottom:24px}.onboarding-description{max-width:60ch}.onboarding-body{max-height:none;overflow:visible}.onboarding-body:has([aria-label="Client settings"]){max-height:50dvh;overflow:auto}.onboarding-footer{margin-top:4px}.onboarding-tour{right:16px;bottom:16px;max-height:calc(100dvh - 32px);overflow:auto}}
+@media(max-width:767px){.onboarding-stage{padding:32px 18px}.onboarding-shell{gap:24px;padding:24px 8px;min-height:340px}.onboarding-intro .metis-wordmark{margin-bottom:24px}.onboarding-description{max-width:60ch}.onboarding-body{max-height:none;overflow:visible}.onboarding-body:has([aria-label="Client settings"]){max-height:50dvh;overflow:auto}.onboarding-footer{margin-top:4px}.onboarding-tour{right:16px;bottom:16px;max-height:calc(100dvh - 32px);overflow:auto}}
 @media(prefers-reduced-motion:reduce){.onboarding-transition{opacity:1!important;transform:none!important;animation:none!important;transition:none!important}.onboarding-progress li>span:first-child{transition:none}}

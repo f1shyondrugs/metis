@@ -21,7 +21,7 @@ import { modelAccountGroups, modelAccountKey, modelAccountLabel, modelMatchesAcc
 import { notifyClientError } from "@/lib/client-error-notifications";
 import { useNotificationInbox } from "@/components/account/use-notification-inbox";
 import { DesktopFileDrop } from "@/components/desktop-file-drop";
-import { OnboardingStage } from "@/components/onboarding-stage";
+import { OnboardingStage, OnboardingProgress } from "@/components/onboarding-stage";
 import { AccountMenu, useAccountProfile } from "@/components/account/account-menu";
 import type { AccountView } from "@/components/account/account-panel";
 
@@ -10122,8 +10122,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   if (!authed) {
     return (
-      <OnboardingStage eyebrow="Metis · Your account" title="Sign in to your Metis" description="Use the account on this server. If this is a fresh installation, Metis will guide you through server setup first. Desktop pairing and system permissions come after sign-in.">
-        <form onSubmit={login} className="w-full max-w-[320px] space-y-4">
+      <OnboardingStage eyebrow="Metis · Your account" title="Sign in to your Metis" description="Use the account on this server. If this is a fresh installation, Metis will guide you through server setup first. Desktop pairing and system permissions come after sign-in." progress={<OnboardingProgress steps={[{id:"account",label:"Account"}]} index={0}/>} footer={<Button type="submit" form="metis-onboarding-sign-in">Continue</Button>}>
+        <form id="metis-onboarding-sign-in" onSubmit={login} className="w-full space-y-4">
           <div className="space-y-1 text-center">
             <h2 className="text-base font-medium">Your account</h2>
             <p className="text-sm text-muted-foreground">Password</p>
@@ -10156,9 +10156,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               {passwordVisible ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
             </button>
           </div>
-          <Button type="submit" className="h-10 w-full rounded-xl">
-            Continue
-          </Button>
           {authError ? (
             <p role="alert" aria-live="polite" className="text-center text-sm text-destructive">{authError}</p>
           ) : null}
