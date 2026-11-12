@@ -127,8 +127,8 @@ async function run(){
  await click("Continue");await click("Continue");
  check(!!document.querySelector('[aria-label="Metis product tour"]'),"product tour opens on the real workspace");
  const smallTour=document.querySelector<HTMLElement>(".onboarding-tour")!;
- check(!smallTour.querySelector(".onboarding-motion")&&getComputedStyle(smallTour).borderTopWidth==="0px"&&getComputedStyle(smallTour).outlineStyle==="none","small tour widget has no white border dots or glow");
- check(getComputedStyle(smallTour.querySelector(".onboarding-transition")!).animationName==="onboarding-enter","borderless widget retains the actual step fade animation");
+ check(!smallTour.querySelector(".onboarding-motion")&&getComputedStyle(smallTour).borderTopWidth==="1px"&&getComputedStyle(smallTour).borderTopStyle==="solid"&&getComputedStyle(smallTour).borderTopColor==="rgb(255, 255, 255)"&&getComputedStyle(smallTour).outlineStyle==="none","small tour widget has a thin solid white border without dots or glow");
+ check(getComputedStyle(smallTour.querySelector(".onboarding-transition")!).animationName==="onboarding-enter","white-border widget retains the actual step fade animation");
  check(nav.at(-1)==="chat","explicit Continue opens the ordinary chat view");
  const draft=document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')!,draftRect=draft.getBoundingClientRect(),tourRect=document.querySelector(".onboarding-tour")!.getBoundingClientRect();
  check(tourRect.bottom<draftRect.top&&document.elementFromPoint(draftRect.left+10,draftRect.top+10)===draft,"tour card leaves the real chat input reachable");
