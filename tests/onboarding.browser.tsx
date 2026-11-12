@@ -82,6 +82,9 @@ async function run(){
  const wave=document.querySelector(".onboarding-motion mask path")!,before=wave.getAttribute("d");await pause(160);
  check(before!==wave.getAttribute("d"),"real dot/wave contour animates");
  check(document.querySelectorAll(".onboarding-motion svg").length===1,"one wave controller is mounted");
+ const motion=document.querySelector<SVGSVGElement>(".onboarding-motion svg")!;
+ check(getComputedStyle(motion).color==="rgb(255, 255, 255)"&&getComputedStyle(motion).opacity==="1","onboarding dots use white at full opacity");
+ check(motion.querySelector('[data-onboarding-geometry]')?.getAttribute("stroke")==="none"&&motion.querySelectorAll(":scope > g > rect").length===1&&motion.querySelector(":scope > g > rect")?.getAttribute("fill")?.startsWith("url("),"only dots are painted: no perimeter stroke or solid border band");
  await click("Continue");
  check(!!document.querySelector('[aria-label="Get the Metis app"]'),"web onboarding offers the desktop app");
  check(document.querySelectorAll(".onboarding-platforms option:not([disabled])").length===5,"Windows macOS Linux iOS Android can all be selected");

@@ -2,8 +2,8 @@
 export function mountOnboardingMotion(host) {
   const ns="http://www.w3.org/2000/svg", id="onboarding-"+Math.random().toString(36).slice(2);
   const svg=document.createElementNS(ns,"svg");svg.setAttribute("aria-hidden","true");
-  svg.style.cssText="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;color:var(--primary,#d6ba84);opacity:.46";
-  svg.innerHTML='<defs><pattern id="'+id+'-dots" width="9" height="9" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.1" fill="currentColor"/></pattern><mask id="'+id+'-mask" maskUnits="userSpaceOnUse"><rect width="100%" height="100%" fill="white"/><path fill="black"/></mask></defs><path fill="none" stroke="currentColor" stroke-width=".8" opacity=".5"/><g mask="url(#'+id+'-mask)"><rect width="100%" height="100%" fill="currentColor" opacity=".18"/><rect width="100%" height="100%" fill="url(#'+id+'-dots)"/></g>';
+  svg.style.cssText="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;color:#fff;opacity:1";
+  svg.innerHTML='<defs><pattern id="'+id+'-dots" width="9" height="9" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.1" fill="currentColor"/></pattern><mask id="'+id+'-mask" maskUnits="userSpaceOnUse"><rect width="100%" height="100%" fill="white"/><path fill="black"/></mask></defs><path fill="none" stroke="none" data-onboarding-geometry="true"/><g mask="url(#'+id+'-mask)"><rect width="100%" height="100%" fill="url(#'+id+'-dots)"/></g>';
   host.append(svg);
   const perimeter=svg.querySelectorAll("path")[1],wave=svg.querySelector("mask path"),pattern=svg.querySelector("pattern");
   const media=matchMedia("(prefers-reduced-motion: reduce)");
