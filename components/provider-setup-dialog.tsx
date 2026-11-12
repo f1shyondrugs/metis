@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { OnboardingFooterActions } from "@/components/onboarding-stage";
 import { ArrowRight, Check, KeyRound, LoaderCircle, PlugZap, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { ProviderLogo } from "@/components/provider-logo";
@@ -14,8 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-// For first-run onboarding, the parent should open this dialog until completion and persist
-// onConnected/onSkip in localStorage under metis-onboarding-completed.
+// Client onboarding owns account/client-scoped progress. Connecting a provider
+// must not mark a shared, global browser introduction as completed.
 
 type ProviderDefinition = {
   key: string;
@@ -221,6 +222,7 @@ export function ProviderSetupDialog({
     }
   }
 
+  const ContinueSlot = embedded ? OnboardingFooterActions : Fragment;
   const body = (
     <>
       {embedded ? null : (
@@ -280,9 +282,9 @@ export function ProviderSetupDialog({
             </div>
             <div className="flex justify-end gap-2">
  {onSkip ? <Button type="button" variant="ghost" onClick={onSkip}>Skip for now</Button> : null}
-              <Button type="button" onClick={() => setStep(2)} disabled={!selected}>
+              <ContinueSlot><Button type="button" onClick={() => setStep(2)} disabled={!selected}>
                 Continue <ArrowRight className="size-4" />
-              </Button>
+              </Button></ContinueSlot>
             </div>
             </>
             ) : null}
@@ -330,10 +332,10 @@ export function ProviderSetupDialog({
                     </Button>
                   ) : null}
                   {supportsApiKey ? (
-                    <Button type="button" onClick={() => void connectApiKey()} disabled={busy || !secret.trim()}>
+                    <ContinueSlot><Button type="button" onClick={() => void connectApiKey()} disabled={busy || !secret.trim()}>
                       {busy ? <LoaderCircle className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
                       Save & continue
-                    </Button>
+                    </Button></ContinueSlot>
                   ) : null}
                 </div>
                 {oauthFlow ? (

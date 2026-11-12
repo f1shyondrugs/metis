@@ -23,6 +23,7 @@ export async function GET(req: Request) {
   return Response.json({
     authenticated: authed,
     username: user?.username,
+    userId: user?.id,
     agentCwd: ownerId ? getUserAgentCwd(ownerId) : undefined,
     cursorSdkConfigured: hasCursorSdkConnection,
     isHostAdmin: Boolean(ownerId && isHostAdmin(ownerId)),

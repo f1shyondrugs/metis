@@ -377,7 +377,7 @@ function preset(
 
 /** Complete portable definitions; IDs preserve the existing Midnight/Graphite settings. */
 export const THEME_PRESETS: readonly ThemePreset[] = Object.freeze([
-  preset("midnight", "Midnight", "Deep neutral surfaces", "dark"),
+  preset("midnight", "Midnight", "Deep neutral surfaces · default", "dark"),
   preset("graphite", "Graphite", "Softer charcoal surfaces", "dark", {
     "--background": "oklch(0.245 0 0)",
     "--foreground": "oklch(0.96 0 0)",

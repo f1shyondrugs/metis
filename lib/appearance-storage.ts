@@ -149,7 +149,7 @@ export function readAppearanceStateForBootstrap(
   try { legacy = storage.getItem(config.legacyStorageKey); } catch { /* Storage can be disabled. */ }
   return {
     version: 1,
-    selected: legacy === "graphite" ? "graphite" : config.defaultThemeId,
+    selected: legacy === "graphite" || legacy === "midnight" ? legacy : config.defaultThemeId,
     customThemes: [],
   };
 }
@@ -175,7 +175,8 @@ export function normalizeAppearanceState(input: unknown): AppearanceState {
     ids.add(item.id);
     return { id: item.id, theme: normalizeStoredTheme(item.theme) };
   });
-  const normalized: AppearanceState = { version: 1, selected: state.selected, customThemes };
+  // Retired built-in selection migrates without discarding account custom themes or revisions.
+  const normalized: AppearanceState = { version: 1, selected: state.selected === "metis" ? DEFAULT_THEME_ID : state.selected, customThemes };
   if (!hasTheme(normalized, normalized.selected)) throw new Error("The selected theme does not exist.");
   stateJson(normalized);
   return normalized;

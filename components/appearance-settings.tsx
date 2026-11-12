@@ -178,7 +178,7 @@ export function AppearanceSettings() {
             <Button type="button" size="icon-sm" variant="ghost" aria-label={"Delete theme " + custom.theme.name} disabled={locked || importing} onClick={() => setDeleteTarget(custom.id)}><Trash2 className="size-3.5" /></Button>
           </div>
           {deleteTarget === custom.id ? <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-            <p className="flex-1 text-xs">Delete this custom theme? {state.selected === custom.id ? "Midnight will be applied." : ""}</p>
+            <p className="flex-1 text-xs">Delete this custom theme? {state.selected === custom.id ? "The default theme will be applied." : ""}</p>
             <Button type="button" size="sm" variant="ghost" onClick={() => setDeleteTarget(null)}>Keep theme</Button>
             <Button type="button" size="sm" variant="destructive" disabled={locked || importing} onClick={() => void attempt(async () => {
               await remove(custom.id);

@@ -14,6 +14,7 @@ import {
   deleteCustomTheme,
   getSelectedTheme,
   persistAppearanceState,
+  normalizeAppearanceState,
   readAppearanceState,
   readAppearanceStateForBootstrap,
   selectAppearanceTheme,
@@ -69,11 +70,23 @@ test("empty and disabled browser storage fall back to Midnight without writes", 
   assert.deepEqual(readAppearanceState({ getItem() { throw new Error("Storage disabled"); } }), createDefaultAppearanceState());
 });
 
+test("retired Metis browser and account selections preserve custom themes without writes", () => {
+  const customThemes = [{id:"custom-kept", theme:theme("Keep my colors")}];
+  const input = {version:1 as const, selected:"metis", customThemes};
+  const storage = stored(customThemes, "metis");
+  assert.deepEqual(readAppearanceState(storage), {...input,selected:"midnight"});
+  assert.deepEqual(normalizeAppearanceState(input), {...input,selected:"midnight"});
+  assert.deepEqual(storage.writes, []);
+  assert.equal(input.selected,"metis");
+  assert.deepEqual(normalizeAppearanceState({...input,selected:"custom-kept"}),{...input,selected:"custom-kept"});
+  assert.throws(()=>normalizeAppearanceState({...input,selected:"unknown"}),/does not exist/);
+});
+
 test("legacy Midnight and Graphite choices migrate on the next successful save", () => {
-  for (const id of ["midnight", "graphite"]) {
+  for (const id of ["metis", "midnight", "graphite"]) {
     const storage = memoryStorage({ [LEGACY_APPEARANCE_STORAGE_KEY]: id });
     const state = readAppearanceState(storage);
-    assert.equal(state.selected, id);
+    assert.equal(state.selected, id === "metis" ? "midnight" : id);
     assert.deepEqual(storage.writes, []);
     persistAppearanceState(storage, state);
     assert.deepEqual(storage.writes, [APPEARANCE_STORAGE_KEY]);

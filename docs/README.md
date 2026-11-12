@@ -40,6 +40,7 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 
 | Doc | Status |
 | --- | --- |
+| [ONBOARDING.md](./ONBOARDING.md) | Per-user/client onboarding, native connection setup, platform downloads and guided product tour |
 | [DESKTOP-OVERLAY.md](./DESKTOP-OVERLAY.md) | Agent-managed annotations and isolated rich content boxes on native desktop monitors |
 | [DESKTOP-ASSISTANT.md](./DESKTOP-ASSISTANT.md) | Assistant autosizing, resizable conversation and server-persisted draft/queue |
 | [FIELD-DICTATION.md](./FIELD-DICTATION.md) | Shared voice input for Ask-User prose fields and opaque HTML previews |

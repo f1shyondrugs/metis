@@ -19,7 +19,7 @@ export function AccountPanel({view,onClose,onOpenNav,profile,onProfileChange,pro
       <Button variant="ghost" size="icon" className="size-11 md:hidden" onClick={onOpenNav} aria-label="Open sidebar"><Menu className="size-4"/></Button>
       <Button variant="ghost" className="h-11 gap-2 px-2 text-muted-foreground" onClick={onClose} aria-label="Back to chat"><ArrowLeft className="size-4"/><span>Back to chat</span></Button>
     </header>
-    {managementPage ? <main aria-label={view === "agent-hub" ? "Agent Hub" : "Settings"} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main> : <main className="min-h-0 flex-1 overflow-y-auto">
+    {managementPage ? <main data-onboarding-target={view==="agent-hub"?"agents":"settings"} aria-label={view === "agent-hub" ? "Agent Hub" : "Settings"} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main> : <main className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-[1100px] px-5 py-8 sm:px-8 sm:py-10 lg:px-12">
         {view==="notifications"?<NotificationsPanel onOpenProject={onOpenProject} onOpenChat={onOpenChat} onNotificationsChanged={onNotificationsChanged}/>:view==="usage"?<UsageDashboard/>:profile?<ProfilePanel profile={profile} onChange={onProfileChange}/>:<div role="status" className="text-sm text-muted-foreground">{profileError?<><p>Could not load your profile.</p><Button variant="outline" className="mt-3" onClick={onRetry}>Try again</Button></>:"Loading profile…"}</div>}
       </div>

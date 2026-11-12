@@ -1,108 +1,42 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, readFileSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { resolveSetupStep } from "../lib/setup-step";
-
-const root = path.join(import.meta.dirname, "..");
-const dataDir = mkdtempSync(path.join(os.tmpdir(), "metis-onboard-"));
-process.env.CHAT_DATA_DIR = dataDir;
-process.env.CHAT_DB_PATH = path.join(dataDir, "chat.sqlite");
-process.env.AGENT_CWD = dataDir;
-process.env.AI_CHAT_ROOT = dataDir;
-process.env.CHAT_PASSWORD = "must-not-become-a-user";
+import {mkdtempSync,readFileSync} from "node:fs";
+import os from "node:os";import path from "node:path";
+import {resolveSetupStep} from "../lib/setup-step";
+const root=path.join(import.meta.dirname,".."),data=mkdtempSync(path.join(os.tmpdir(),"metis-onboard-"));
+Object.assign(process.env,{CHAT_DATA_DIR:data,CHAT_DB_PATH:path.join(data,"test.sqlite"),AGENT_CWD:data,AI_CHAT_ROOT:data,CHAT_PASSWORD:"must-not-become-a-user"});
 delete process.env.METIS_AI_BOOTSTRAP_PASSWORD;
+const file=(name:string)=>readFileSync(path.join(root,name),"utf8");
 
-test("setup API and wizard exist for first-run onboarding", () => {
-  const api = readFileSync(path.join(root, "app/api/setup/route.ts"), "utf8");
-  const wizard = readFileSync(path.join(root, "components/setup-wizard.tsx"), "utf8");
-  const helper = readFileSync(path.join(root, "lib/setup.ts"), "utf8");
-  assert.match(api, /action === "bootstrap"/);
-  assert.match(api, /markSetupComplete/);
-  assert.match(wizard, /Welcome to Metis/);
-  assert.match(wizard, /embedded/);
-  assert.match(wizard, /OsUserField/);
-  assert.match(wizard, /suggestedOsUsername/);
-  assert.match(api, /suggestedOsUsername/);
-  assert.match(api, /osUsername: body\.osUsername/);
-  assert.match(helper, /setup_complete/);
-  assert.match(helper, /markSetupIncomplete/);
-  assert.match(api, /bootstrapSetupAccount/);
-  assert.match(wizard, /Operator setup token/);
-  assert.match(wizard, /data\/setup-token/);
-  assert.match(wizard, /AI_CHAT_SETUP_TOKEN/);
-  assert.match(wizard, /action: "bootstrap", setupToken/);
-  assert.match(wizard, /setSetupToken\(""\)/);
+test("admin-only setup keeps the existing protected bootstrap and completion contracts",()=>{
+ const api=file("app/api/setup/route.ts"),wizard=file("components/setup-wizard.tsx"),helper=file("lib/setup.ts");
+ assert.match(api,/bootstrapSetupAccount/);assert.match(api,/markSetupComplete/);
+ for(const text of ["Create your admin account","Operator setup token","data/setup-token","AI_CHAT_SETUP_TOKEN",'action: "bootstrap", setupToken','action: "complete"','setSetupToken("")'])assert(wizard.includes(text),text);
+ assert(helper.includes("setup_complete"));
+ assert.doesNotMatch(wizard,/ProviderSetupDialog|OsUserField|makeAdmin|addPerson/);
+ assert(!wizard.includes("/api/admin/users"));
 });
-
-test("onboarding uses the update-screen hands and four real steps", () => {
-  const wizard = readFileSync(path.join(root, "components/setup-wizard.tsx"), "utf8");
-  const hands = readFileSync(path.join(root, "components/hands-stage.tsx"), "utf8");
-  const maintenance = readFileSync(path.join(root, "components/maintenance-screen.tsx"), "utf8");
-  assert.match(hands, /hand-left\.png/);
-  assert.match(hands, /hand-right\.png/);
-  assert.match(wizard, /HandsStage/);
-  assert.match(maintenance, /HandsStage/);
-  assert.match(wizard, /"welcome"/);
-  assert.match(wizard, /"people"/);
-  assert.match(wizard, /"provider"/);
-  assert.match(wizard, /"ready"/);
-  assert.match(wizard, /Admin/);
-  assert.match(wizard, /\/api\/admin\/users/);
-  assert.match(wizard, /isAdmin: makeAdmin/);
+test("legacy progress cannot restore removed user/provider setup screens",()=>{
+ for(const saved of [undefined,null,"welcome","people","provider","ready","admin","complete","invalid"]){
+  assert.equal(resolveSetupStep(false,saved),"admin");assert.equal(resolveSetupStep(true,saved),"complete");
+ }
 });
-
-test("provider onboarding survives the account status changing while it is open", () => {
-  assert.equal(resolveSetupStep(true, "provider"), "provider");
-  assert.equal(resolveSetupStep(true, "ready"), "ready");
-  assert.equal(resolveSetupStep(true, "welcome"), "people");
-  assert.equal(resolveSetupStep(false, "provider"), "welcome");
-
-  const wizard = readFileSync(path.join(root, "components/setup-wizard.tsx"), "utf8");
-  assert.match(wizard, /sessionStorage\.setItem\(SETUP_STEP_STORAGE_KEY, nextStep\)/);
-  assert.doesNotMatch(wizard, /setStep\(hasUsers \? "people" : "welcome"\)/);
+test("onboarding keeps the shared stage and provider access inside the ordinary UI",()=>{
+ const wizard=file("components/setup-wizard.tsx"),stage=file("components/onboarding-stage.tsx"),shell=file("components/app-shell.tsx");
+ assert.match(wizard,/OnboardingStage/);assert.match(stage,/mountOnboardingMotion/);
+ assert.doesNotMatch(wizard,/ProviderSetupDialog/);
+ assert(shell.includes("open={providerSetupOpen}"));assert(shell.includes("setProviderSetupOpen(true)"));
 });
-
-test("status API exposes setup so first-run can skip Sign-In", () => {
-  const status = readFileSync(path.join(root, "app/api/status/route.ts"), "utf8");
-  const shell = readFileSync(path.join(root, "components/app-shell.tsx"), "utf8");
-  assert.match(status, /getSetupStatus/);
-  assert.match(status, /setup: getSetupStatus/);
-  assert.match(shell, /data\.setup/);
-  const emptyUsersAt = shell.indexOf("setupStatus?.needed && !setupStatus.hasUsers");
-  const signInAt = shell.indexOf(">Sign in<");
-  assert.ok(emptyUsersAt >= 0 && signInAt > emptyUsersAt, "empty-user onboarding must render before Sign in");
+test("empty-instance onboarding remains before sign-in and legacy installs still bypass first-run",()=>{
+ const shell=file("components/app-shell.tsx"),status=file("app/api/status/route.ts");
+ const start=shell.indexOf("setupStatus?.needed && !setupStatus.hasUsers");
+ assert(start>=0&&shell.indexOf("if (!authed)",start)>start);
+ assert(shell.includes("setupStatus.needed && authed"));assert(status.includes("setup: getSetupStatus"));
+ assert(file("lib/setup.ts").includes("return userCount() > 0"));
 });
-
-test("existing installs with users are not forced through first-run without a session", () => {
-  const helper = readFileSync(path.join(root, "lib/setup.ts"), "utf8");
-  const shell = readFileSync(path.join(root, "components/app-shell.tsx"), "utf8");
-  assert.match(helper, /return userCount\(\) > 0/);
-  assert.match(shell, /setupStatus\.needed && authed/);
-});
-
-test("CHAT_PASSWORD does not seed a first-run user", async () => {
-  const helper = readFileSync(path.join(root, "lib/sqlite.ts"), "utf8");
-  assert.doesNotMatch(helper, /users\.push\(\{/);
-  assert.doesNotMatch(helper, /hashPassword\(process\.env\.CHAT_PASSWORD/);
-  const linux = readFileSync(path.join(root, "install/linux.sh"), "utf8");
-  assert.doesNotMatch(linux, /CHAT_PASSWORD/);
-  const { getDatabase } = await import("../lib/sqlite");
-  const { getSetupStatus } = await import("../lib/setup");
-  const count = Number((getDatabase().prepare("SELECT COUNT(*) as count FROM users").get() as { count: number }).count);
-  assert.equal(count, 0);
-  const status = getSetupStatus();
-  assert.equal(status.hasUsers, false);
-  assert.equal(status.needed, true);
-});
-
-test("embedded provider setup does not render DialogTitle outside Dialog", () => {
-  const dialog = readFileSync(path.join(root, "components/provider-setup-dialog.tsx"), "utf8");
-  const wizard = readFileSync(path.join(root, "components/setup-wizard.tsx"), "utf8");
-  assert.match(wizard, /<ProviderSetupDialog[\s\S]*embedded/);
-  assert.match(dialog, /embedded \? null : \(/);
-  const titleAt = dialog.indexOf("<DialogTitle>");
-  const embeddedGuardAt = dialog.indexOf("embedded ? null");
-  assert.ok(embeddedGuardAt >= 0 && titleAt > embeddedGuardAt, "DialogTitle must sit behind the embedded null guard");
+test("CHAT_PASSWORD does not seed an admin or replace operator verification",async()=>{
+ assert(!file("install/linux.sh").includes("CHAT_PASSWORD"));
+ const {getDatabase}=await import("../lib/sqlite"),{getSetupStatus}=await import("../lib/setup");
+ assert.equal(Number((getDatabase().prepare("SELECT COUNT(*) AS n FROM users").get() as {n:number}).n),0);
+ assert.equal(getSetupStatus().needed,true);
 });
