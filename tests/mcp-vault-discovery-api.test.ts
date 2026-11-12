@@ -15,14 +15,14 @@ test("vault discovery supports older live engines and reprojects metadata only",
  writeFileSync(path.join(root,"state","registry.json"),JSON.stringify({version:1,servers:[{id:"test-mcp",ownerId:owner.id,kind:"stdio",env:{PASSWORD:"SYNTHETIC-DO-NOT-RETURN"},enabled:false}]}));
  const {POST}=await import("../app/api/internal/mcp-credentials/route");
  let unavailable=false;
- t.mock.method(http,"request",(_options:any,callback:any)=>{
-  const request:any=new EventEmitter();
+ t.mock.method(http,"request",(_options:unknown,callback:(response:EventEmitter&{statusCode:number})=>void)=>{
+  const request=new EventEmitter() as EventEmitter&{end:(body:string)=>void};
   request.end=(text:string)=>queueMicrotask(()=>{
    if(unavailable){request.emit("error",new Error("SYNTHETIC-DO-NOT-RETURN"));return;}
    const input=JSON.parse(text);
    assert.equal(input.operation,"list");assert.equal(input.management,true);
    assert.equal(input.owner,owner.id);assert.equal(input.chat,chat.id);
-   const reply:any=Object.assign(new EventEmitter(),{statusCode:200});
+   const reply=Object.assign(new EventEmitter(),{statusCode:200});
    callback(reply);reply.emit("data",Buffer.from(JSON.stringify({credentials:[{origin:"https://portal.test",password:"SYNTHETIC-DO-NOT-RETURN",envelope:"SYNTHETIC-DO-NOT-RETURN"}]})));reply.emit("end");
   });
   return request;
