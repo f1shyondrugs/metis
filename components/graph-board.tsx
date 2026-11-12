@@ -1,5 +1,7 @@
 "use client";
 
+import { useReducedMotion } from "@/components/use-chart-motion";
+import { mixCurve, mixMotion, motionEase, OVERLAY_MOTION, snapshotCurve } from "@/lib/overlay-motion";
 import { useEscapeDismiss } from "@/components/use-escape-dismiss";
 import { StickyActions } from "@/components/ui/sticky-actions";
 
@@ -40,6 +42,7 @@ type JxgBoard = {
   unsuspendUpdate?: () => void;
 };
 type JxgObject = {
+  rendNode?: SVGGeometryElement;
   Y?: (...args: number[]) => number;
   X?: () => number;
   on?: (event: string, handler: () => void) => void;
@@ -151,10 +154,13 @@ export function GraphBoard({
   code,
   language,
   readOnly = false,
+  animateUpdates = false,
 }: {
   code: string;
   language?: string;
   readOnly?: boolean;
+  /** Overlay-only presentation; ordinary graph editors retain immediate input. */
+  animateUpdates?: boolean;
 }) {
   const reactId = useId().replace(/:/g, "");
   const [requestedMode, setMode] = useState<Mode>("board");
@@ -262,6 +268,7 @@ export function GraphBoard({
           boardId={`${reactId}-${index}`}
           tall={fullscreen}
           readOnly={readOnly}
+          animateUpdates={animateUpdates}
           onChange={(nextBoard) => {
             const current = graphRef.current;
             if (!current) return;
@@ -311,13 +318,20 @@ function InteractiveBoard({
   tall,
   onChange,
   readOnly = false,
+  animateUpdates = false,
 }: {
   spec: GraphBoardSpec;
   boardId: string;
   tall?: boolean;
   readOnly?: boolean;
+  animateUpdates?: boolean;
   onChange: (next: GraphBoardSpec) => void;
 }) {
+  const reducedMotion = useReducedMotion();
+  const animateRef = useRef(false);
+  animateRef.current = animateUpdates && !reducedMotion;
+  const tweenRef = useRef(0);
+  const entranceRef = useRef<Animation[]>([]);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -327,6 +341,7 @@ function InteractiveBoard({
   const specRef = useRef(spec);
   const onChangeRef = useRef(onChange);
   const winRef = useRef<GraphWindow>(defaultGraphWindow(spec.bounds));
+  const boundsRef = useRef(JSON.stringify(spec.bounds));
   const persistTimer = useRef(0);
   const selectedRef = useRef<number | null>(null);
   const hiddenRef = useRef<Set<number>>(new Set());
@@ -344,8 +359,10 @@ function InteractiveBoard({
   useEffect(() => {
     const next = sliderElements(spec);
     setSliders(next);
-    for (const slider of next) sliderValuesRef.current[slider.name] = slider.value;
-  }, [spec]);
+    if (!animateUpdates || !boardRef.current) {
+      for (const slider of next) sliderValuesRef.current[slider.name] = slider.value;
+    }
+  }, [spec, animateUpdates]);
 
   const applyWindow = useCallback((win: GraphWindow) => {
     winRef.current = win;
@@ -423,6 +440,7 @@ function InteractiveBoard({
         const axisColor = dark ? "#a1a1aa" : "#52525b";
         const current = specRef.current;
         const win = defaultGraphWindow(current.bounds);
+        boundsRef.current = JSON.stringify(current.bounds);
         winRef.current = win;
         const created = JXG.JSXGraph.initBoard(boxId, {
           boundingbox: windowToBoundingBox(win),
@@ -530,6 +548,20 @@ function InteractiveBoard({
           syncSize();
           requestAnimationFrame(syncSize);
         });
+        if (animateRef.current) {
+          for (const entry of curvesRef.current) {
+            const node = entry.object.rendNode;
+            if (!node) continue;
+            try {
+              const length = node.getTotalLength();
+              if (length > 0) entranceRef.current.push(node.animate(
+                [{ strokeDasharray: String(length), strokeDashoffset: String(length) },
+                 { strokeDasharray: String(length), strokeDashoffset: "0" }],
+                { duration: OVERLAY_MOTION.draw, easing: "cubic-bezier(.22,.61,.36,1)" },
+              ));
+            } catch { /* Discontinuous/empty curves need no draw reveal. */ }
+          }
+        }
         if (!cancelled) setMountError("");
       } catch (cause) {
         if (!cancelled) setMountError(cause instanceof Error ? cause.message : "Could not render graph.");
@@ -538,6 +570,9 @@ function InteractiveBoard({
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(tweenRef.current);
+      entranceRef.current.forEach(animation => animation.cancel());
+      entranceRef.current = [];
       resize?.disconnect();
       if (onResize) {
         window.removeEventListener("resize", onResize);
@@ -557,17 +592,80 @@ function InteractiveBoard({
   }, [tall]);
 
   useEffect(() => {
-    if (!boardRef.current) return;
+    const board = boardRef.current;
+    if (!board) return;
+    cancelAnimationFrame(tweenRef.current);
+    if (reducedMotion) {
+      entranceRef.current.forEach(animation => animation.cancel());
+      entranceRef.current = [];
+    }
     const hidden = new Set<number>();
-    spec.elements.forEach((element, index) => {
-      if (element.type === "function") {
-        replaceCurve(index, element.fn);
-        if (element.hidden) hidden.add(index);
-      }
-    });
+    if (!animateUpdates) {
+      spec.elements.forEach((element, index) => {
+        if (element.type === "function") {
+          replaceCurve(index, element.fn);
+          if (element.hidden) hidden.add(index);
+        }
+      });
+      hiddenRef.current = hidden;
+      paintSelection(selectedRef.current);
+      return;
+    }
+    const targetValues = Object.fromEntries(sliderElements(spec).map(slider => [slider.name, slider.value]));
+    const boundsKey = JSON.stringify(spec.bounds);
+    const targetWindow = boundsKey === boundsRef.current ? { ...winRef.current } : defaultGraphWindow(spec.bounds);
+    boundsRef.current = boundsKey;
+    const fromWindow = { ...winRef.current };
+    const windowChanged = JSON.stringify(fromWindow) !== JSON.stringify(targetWindow);
+    const min = Math.min(fromWindow.xmin, targetWindow.xmin), max = Math.max(fromWindow.xmax, targetWindow.xmax);
+    const transitions: { entry: typeof curvesRef.current[number]; from: (x:number)=>number; to: (scope:Record<string,number>)=>number }[] = [];
+    for (const entry of curvesRef.current) {
+      const element = spec.elements[entry.elementIndex];
+      if (element?.type !== "function") continue;
+      if (element.hidden) hidden.add(entry.elementIndex);
+      // Snapshot before changing parameter refs; interruption starts at the visible curve.
+      const currentY = entry.object.Y;
+      const from = reducedMotion ? () => NaN : snapshotCurve(x => currentY?.(x) ?? NaN, min, max);
+      const to = compileGraphExpression(element.fn, Object.keys(targetValues), { numericOnly: readOnly });
+      transitions.push({ entry, from, to });
+    }
     hiddenRef.current = hidden;
+    const animated = animateUpdates && !reducedMotion && transitions.length > 0;
+    let start: number | undefined;
+    const paint = (progress:number) => {
+      const t = motionEase(progress);
+      for (const {entry, from, to} of transitions) {
+        entry.evaluate = to;
+        entry.object.Y = progress >= 1
+          ? x => to(scopeAt(x))
+          : x => mixCurve(from(x), to({ x, ...targetValues }), t);
+      }
+      sliderValuesRef.current = targetValues;
+      if (windowChanged) {
+        applyWindow({
+          xmin: mixMotion(fromWindow.xmin, targetWindow.xmin, t),
+          xmax: mixMotion(fromWindow.xmax, targetWindow.xmax, t),
+          ymin: mixMotion(fromWindow.ymin, targetWindow.ymin, t),
+          ymax: mixMotion(fromWindow.ymax, targetWindow.ymax, t),
+        });
+      }
+      board.update();
+    };
+    if (!animated) paint(1);
+    else {
+      // Freeze old paint immediately. Only a bounded, cancellable RAF owns the morph.
+      paint(0);
+      const tick = (now:number) => {
+        start ??= now;
+        const progress = Math.min(1, (now - start) / OVERLAY_MOTION.graph);
+        paint(progress);
+        if (progress < 1) tweenRef.current = requestAnimationFrame(tick);
+      };
+      tweenRef.current = requestAnimationFrame(tick);
+    }
     paintSelection(selectedRef.current);
-  }, [spec, replaceCurve, paintSelection]);
+    return () => cancelAnimationFrame(tweenRef.current);
+  }, [spec, paintSelection, animateUpdates, reducedMotion, readOnly, applyWindow, scopeAt, replaceCurve]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -690,6 +788,8 @@ function InteractiveBoard({
   }
 
   function updateSlider(name: string, value: number, persistValue: boolean) {
+    cancelAnimationFrame(tweenRef.current);
+    for (const entry of curvesRef.current) entry.object.Y = x => entry.evaluate(scopeAt(x));
     sliderValuesRef.current[name] = value;
     setSliders((current) => current.map((item) => item.name === name ? { ...item, value } : item));
     boardRef.current?.update();

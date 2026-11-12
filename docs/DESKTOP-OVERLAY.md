@@ -106,6 +106,42 @@ PDFs use a local PDF.js canvas renderer, not a browser plugin or privileged ifra
 
 Previews are bounded to 32 MiB, 200 pages and 16 million canvas pixels (4096 per axis). File fetches keep the existing session authorization and reject redirects. Password-protected or unsupported PDFs show a recoverable error, never a credential prompt. PDF actions, links, attachments, JavaScript evaluation, XFA, remote fonts/CMaps and WASM fetching are not enabled. Page rendering uses an offscreen surface and cancels stale work on page/file changes or unmount.
 
+## Motion and cancellation
+
+The overlay renderer animates presentation only; native scene revisions, history,
+TTL and capture visibility remain authoritative. Existing 1.7.14 clients can use
+this web-renderer change without a new native installer.
+
+- New rectangles, ellipses, lines, paths and arrows draw their contours in 460 ms.
+  Arrowheads follow the shaft. Highlights fade in 280 ms; dimming in 420 ms;
+  labels in 180 ms and cards in 220 ms. These are one-shot entrances, not loops.
+- Numeric annotation updates retarget from the currently visible geometry, including
+  spotlight cutouts/opacity. Unrelated scene publications do not replay entrances.
+- Overlay graphs opt into 420 ms transitions for compatible function expressions,
+  parameter values and explicit bounds changes. Rapid updates snapshot a bounded
+  visible curve rather than nesting evaluators. New graph structures draw in;
+  different/discontinuous function domains are not joined across nonfinite gaps.
+  Other graph editors retain their immediate behavior. Manual slider input cancels
+  an outstanding morph and stays immediate; parameter updates preserve a panned view.
+- Cards keep stable native hit geometry during their opacity entrance. Graph updates
+  retain the board rather than remounting it. HTML remains opaque/offline.
+- `prefers-reduced-motion` is observed live. Enabling it cancels graph/geometry
+  frames and shows completed strokes and final opacity, without a trailing animation.
+- There is deliberately **no exit retention**: remove, TTL, clear and Escape remove
+  pixels immediately. Renderer Escape also hides locally before acknowledgement
+  and rejects same/older revision replays; native Escape remains responsible for
+  clearing all displays/history and invalidating queued loads. No timer can resurrect
+  a removed animation owner. The existing stream/capture setting is unchanged.
+
+Tests: `tests/overlay-motion.test.ts` checks pure interpolation/bounded curve
+snapshots; `tests/overlay-motion.browser.tsx` exercises actual components, paused
+animation timelines and live intermediate graph paths, reduced-motion toggles,
+interruptions and delayed clear acknowledgements at 390/768/1440 pixels. Run its
+isolated local fixture using `OVERLAY_FIXTURE_ENTRY=tests/overlay-motion.browser.tsx
+OVERLAY_FIXTURE_PORT=3260 OVERLAY_FIXTURE_DIR=data/artifacts/overlay-motion/browser
+node tests/desktop-overlay.preview.mjs` and open it in the Metis browser. Fixture
+data/bridge are synthetic; this is not a claim of installed-device testing.
+
 ## Limits and verification
 
 - At most 100 items per command **and per native monitor scene**.

@@ -6,9 +6,11 @@ import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
 const require=createRequire(import.meta.url);
 const {build}=createRequire(require.resolve("tsx"))("esbuild");
-const directory="data/artifacts/desktop-annotations-20261111/overlay-fixture";
+const directory=process.env.OVERLAY_FIXTURE_DIR || "data/artifacts/desktop-annotations-20261111/overlay-fixture";
+const entry=process.env.OVERLAY_FIXTURE_ENTRY || "tests/desktop-overlay.browser.tsx";
+const port=Number(process.env.OVERLAY_FIXTURE_PORT || 3257);
 fs.mkdirSync(directory,{recursive:true});
-await build({entryPoints:["tests/desktop-overlay.browser.tsx"],outdir:directory,entryNames:"app",bundle:true,platform:"browser",format:"esm",splitting:true,jsx:"automatic",define:{"process.env.NODE_ENV":'"production"',"process.env":"{}"},loader:{".woff2":"dataurl",".woff":"dataurl",".ttf":"dataurl"}});
+await build({entryPoints:[entry],outdir:directory,entryNames:"app",bundle:true,platform:"browser",format:"esm",splitting:true,jsx:"automatic",define:{"process.env.NODE_ENV":'"production"',"process.env":"{}"},loader:{".woff2":"dataurl",".woff":"dataurl",".ttf":"dataurl"}});
 const css=await postcss([tailwind()]).process(fs.readFileSync("app/globals.css","utf8"),{from:"app/globals.css"});
 fs.writeFileSync(directory+"/theme.css",css.css);
 fs.writeFileSync(directory+"/index.html",'<html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Overlay fixture</title><link rel="stylesheet" href="/theme.css"><body><script type="module" src="/app.js"></script></body></html>');
@@ -40,6 +42,6 @@ const server=http.createServer((request,response)=>{
  if(!["index.html","app.js","theme.css"].includes(file)&&!(/^[a-zA-Z0-9_-]+\.js$/.test(file)&&fs.existsSync(directory+"/"+file))){response.writeHead(404).end();return;}
  response.setHeader("Content-Type",file.endsWith(".js")?"text/javascript":file.endsWith(".css")?"text/css":"text/html");response.setHeader("Cache-Control","no-store");response.end(fs.readFileSync(directory+"/"+file));
 });
-server.listen(3257,"127.0.0.1",()=>console.log("OVERLAY_FIXTURE_READY pid="+process.pid+" http://127.0.0.1:3257"));
+server.listen(port,"127.0.0.1",()=>console.log("OVERLAY_FIXTURE_READY pid="+process.pid+" http://127.0.0.1:"+port));
 process.on("SIGTERM",()=>server.close(()=>process.exit(0)));
 }
