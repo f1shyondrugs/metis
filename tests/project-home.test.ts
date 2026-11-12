@@ -92,14 +92,16 @@ test("project hub uses clickable tiles that open bulky sections in a modal and k
   assert.match(homeSource, /<Switch id="include-global-memory"/);
   assert.doesNotMatch(homeSource, /<Tabs|setHomeTab/);
   const tilesAt = homeSource.indexOf('data-slot="project-home-tiles"');
-  const notesAt = homeSource.indexOf('data-slot="project-home-notes"');
+  const notesAt = homeSource.indexOf('<ProjectNotesPreview');
   assert.ok(notesAt > tilesAt, "Notes stay at the bottom");
 });
 
 test("project hub notes list shows a notes icon in the note color", () => {
   const homeClientSource = readFileSync(new URL("../lib/project-home-client.ts", import.meta.url), "utf8");
   assert.match(homeClientSource, /notes: Array<\{ id: string; title: string; color\?: string \}>/);
-  assert.match(homeSource, /<StickyNote className="size-3\.5 shrink-0" style=\{\{ color: note\.color \|\| "#fef08a" \}\} \/>/);
+  const previewSource = readFileSync(new URL("../components/project-notes-preview.tsx", import.meta.url), "utf8");
+  assert.match(previewSource, /note\.color\|\|"#fef08a"/);
+  assert.match(homeSource, /<ProjectNotesPreview notes=\{data.notes\} onOpenNotes=\{onOpenNotes\}/);
 });
 
 test("the unfiltered project chip is labelled All instead of None", () => {

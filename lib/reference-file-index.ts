@@ -29,14 +29,19 @@ export function referenceVersion(db:DatabaseSync,chatId:string){
  initializeChatVersionIndexes(db);
  return (db.prepare("SELECT 'n2:'||COALESCE(s.revision,0)||':'||c.updated_at AS version FROM chats c INDEXED BY chats_reference_version LEFT JOIN chat_page_state s INDEXED BY chat_pages_reference_revision ON s.chat_id=c.id WHERE c.id=?").get(chatId) as {version:string}|undefined)?.version;
 }
+export function referenceMetadataVersion(db:DatabaseSync,chatId:string){
+ const current=referenceVersion(db,chatId);
+ return current ? "full-workspaces:"+current : undefined;
+}
 export async function prepareReferenceMetadata(db:DatabaseSync,chatId:string){
- const version=referenceVersion(db,chatId);
+ const version=referenceMetadataVersion(db,chatId);
  if(!version)return;
  const chat=getChatMetadata(chatId);
  if(!chat)return;
  const metadata={id:chat.id,ownerId:chat.ownerId,projectId:chat.projectId,title:chat.title,keywords:chat.keywords,
   createdAt:chat.createdAt,updatedAt:chat.updatedAt,messages:[],
-  workspaces:chat.workspaces?.map(workspace=>({...workspace,content:workspace.content.slice(0,6000)})),
+  // Search the full document; returned reference previews remain capped separately.
+  workspaces:chat.workspaces,
   browserContext:chat.browserContext,
   sessionState:chat.sessionState?{terminalTabs:chat.sessionState.terminalTabs,terminalSessionId:chat.sessionState.terminalSessionId,
    terminalCwd:chat.sessionState.terminalCwd,remoteCwd:chat.sessionState.remoteCwd}:undefined};
@@ -46,7 +51,7 @@ export function indexedChatMetadata(db:DatabaseSync,entry:ChatIndexEntry,ownerId
  const state=db.prepare("SELECT revision,ready_revision,metadata FROM chat_page_state WHERE chat_id=?").get(entry.id) as {revision:number;ready_revision:number;metadata:string|null}|undefined;
  if(state?.metadata && state.revision===state.ready_revision)return {chat:chatForUser({...JSON.parse(state.metadata),messages:[]},ownerId),indexing:false};
  const snapshot=db.prepare("SELECT version,data FROM chat_reference_metadata WHERE chat_id=?").get(entry.id) as {version:string;data:string}|undefined;
- const indexing=snapshot?.version!==referenceVersion(db,entry.id);
+ const indexing=snapshot?.version!==referenceMetadataVersion(db,entry.id);
  if(indexing)schedule(entry.id,entry.title,"metadata");
  return {chat:chatForUser(snapshot?JSON.parse(snapshot.data) as Chat:{...entry,messages:[]} as Chat,ownerId),indexing};
 }

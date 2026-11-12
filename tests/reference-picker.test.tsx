@@ -17,4 +17,6 @@ test("the shared picker offers all categories before searching and exposes acces
  assert.match(loading,/Searching/);
  const error=renderToStaticMarkup(<ReferencePicker {...props} query="Launch" error="Search timed out"/>);
  assert.match(error,/role="alert"/);assert.match(error,/Try again/);
+    const incomplete=renderToStaticMarkup(<ReferencePicker {...props} query="Needle" notice="Some context is still being indexed. Search again shortly."/>);
+    assert.match(incomplete,/Search is incomplete/);assert.doesNotMatch(incomplete,/No matching references/);
 });

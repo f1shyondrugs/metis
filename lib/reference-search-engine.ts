@@ -11,6 +11,7 @@ import { indexedReferenceFiles,indexedChatMetadata,initializeReferenceIndex } fr
 import { getDatabase } from "./sqlite";
 import type { ReferenceResult } from "./reference-search";
 import { canAccessChat } from "@/lib/project-access";
+import { runSearch } from "@/lib/chat-search-engine";
 
 /** Initialize through the same module graph used by collection; avoid duplicate TS module loads. */
 export function initializeReferenceSearch(){initializeReferenceIndex(getDatabase());}
@@ -24,8 +25,8 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
   let indexing=false;
   const seen = new Set<string>();
 
-  const push = (item: ReferenceResult) => {
-    if (includes(item.kind) && referenceMatches(query, item.label, item.detail, item.path, item.content)) {
+  const push = (item: ReferenceResult, ...searchValues: string[]) => {
+    if (includes(item.kind) && referenceMatches(query, item.label, item.detail, item.path, item.content, ...searchValues)) {
       const key = item.kind === "chat" ? "chat:" + (item.chatId || item.id) : item.kind === "file" ? [item.kind,item.chatId,item.path].join(":") : [item.kind,item.id,item.chatId || ""].join(":");
       if(seen.has(key))return;
       if(results.filter(result=>result.kind===item.kind).length>=perKindLimit) {
@@ -70,7 +71,7 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
         chatId: chat.id,
         isCurrentChat: chat.id === currentChatId,
         content: workspace.content.slice(0, 6_000),
-      });
+      }, workspace.content);
     }
 
     for (const tab of chat.browserContext?.tabs || []) {
@@ -153,13 +154,21 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
         ...(note.parentId ? {parentId:note.parentId} : {}),
         ...(note.chatId ? { chatId: note.chatId, isCurrentChat: note.chatId === currentChatId } : {}),
         content: note.content.slice(0, 6_000),
-      });
+      }, note.content);
     }
   }
 
   if (includes("issue") && featureFlags(getGlobalModelSettings(ownerId)).notes) {
     const projects = new Map(listProjects(ownerId).map(project => [project.id, project.name]));
     for (const issue of listAccessibleIssues(ownerId)) push(issueReference(issue, issue.projectId ? projects.get(issue.projectId) : undefined));
+  }
+
+  if (includes("chat") && query.trim()) {
+    // Reuse the indexed, permission-checked message search; never parse histories here.
+    const matches = await runSearch(getDatabase(), query, ownerId, perKindLimit, false, cancelled, false, true);
+    indexing = Boolean(matches.indexing) || indexing;
+    for (const match of matches.results) push({kind:"chat",id:match.chatId,chatId:match.chatId,
+      label:match.chatTitle,detail:match.snippet,isCurrentChat:match.chatId===currentChatId});
   }
 
   check();

@@ -82,7 +82,7 @@ export function createReferenceLookup<T>(fetcher: typeof fetch = fetch, options:
           const indexing = Boolean(body.indexing);
           const exhausted = indexing && (poll + 1 >= (options.maxIndexPolls ?? 20) || Date.now() >= deadline);
           publish({ key: input.key, status: "ready", results, indexing: indexing && !exhausted,
-            ...(exhausted ? { notice: "Some files are still being indexed. Search again shortly." } : {}) });
+            ...(exhausted ? { notice: "Some context is still being indexed. Search again shortly." } : {}) });
           if (!indexing || exhausted) return;
           await new Promise<void>(resolve => {
             const done = () => { clearTimeout(wait); current.signal.removeEventListener("abort", done); resolve(); };

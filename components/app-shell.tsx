@@ -10545,9 +10545,15 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             onNewChat={(projectId) => openDraft({ projectId })}
             onAttachFile={(file) => void attachProjectFileToNextChat(projectHomeId, file)}
             onOpenNotes={(noteId) => {
+              suppressNotesRouteRef.current = false;
               setAccountView(null);
-      setNotesOpen(true);
+              setAutomationsOpen(false);
+              setWorkspaceOpen(false);
+              setWorkspaceFullscreen(false);
+              setMobileNavOpen(false);
+              setNotesOpen(true);
               setFocusedNoteId(noteId ?? null);
+              navigateChat("notes");
             }}
           onDeleted={() => {
            setProjectHomeId(null);

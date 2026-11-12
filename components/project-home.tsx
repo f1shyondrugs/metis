@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { Brain, FileText, Folder, ImagePlus, Layers, Paperclip, Plus, StickyNote, Trash2, Upload, X, type LucideIcon } from "lucide-react";
+import { Brain, FileText, Folder, ImagePlus, Layers, Paperclip, Plus, Trash2, Upload, X, type LucideIcon } from "lucide-react";
 import { ProjectAvatar } from "@/components/project-avatar";
 import { ProjectMembers } from "@/components/project-members";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ProjectColorPicker, ProjectIconPicker } from "@/components/project-appearance-picker";
 import { MAX_PROJECT_FILE_BYTES, PROJECT_COLORS } from "@/lib/project-constants";
 import { cn } from "@/lib/utils";
-import { noteDisplayTitle } from "@/lib/notes-tree";
+import { ProjectNotesPreview } from "@/components/project-notes-preview";
 
 import { fetchProjectHome, type ProjectHomeData } from "@/lib/project-home-client";
 
@@ -285,8 +285,6 @@ export function ProjectHome({
    if (generation !== loadGenerationRef.current) return;
    setData(current => current?.project.id === body.project!.id ? { ...current, project: body.project! } : current);
    window.dispatchEvent(new Event("metis:projects-changed"));
-  } catch (cause) {
-   throw cause;
   } finally { setDefaultModelSaving(false); }
  }
 
@@ -740,34 +738,7 @@ export function ProjectHome({
     </Dialog>
    ) : null}
 
-   <section className="grid gap-2 pb-10" data-slot="project-home-notes">
-    <h3 className="text-sm font-medium">Notes</h3>
-    {data.notes.length === 0 ? (
-     <button
-      type="button"
-      className="flex items-center gap-2 rounded-xl px-2 py-2 text-left text-sm text-muted-foreground hover:bg-muted/40"
-      onClick={() => onOpenNotes()}
-     >
-      <StickyNote className="size-3.5" />
-      Open notes
-     </button>
-    ) : (
-     <ul className="grid gap-1 text-sm">
-      {data.notes.map((note) => (
-       <li key={note.id}>
-        <button
-         type="button"
-         className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left hover:bg-muted/40"
-         onClick={() => onOpenNotes(note.id)}
-        >
-         <StickyNote className="size-3.5 shrink-0" style={{ color: note.color || "#fef08a" }} />
-         <span className="min-w-0 truncate">{noteDisplayTitle(note.title) || "Untitled note"}</span>
-        </button>
-       </li>
-      ))}
-     </ul>
-    )}
-   </section>
+   <ProjectNotesPreview notes={data.notes} onOpenNotes={onOpenNotes} />
 
    <ProjectMembers key={projectId} projectId={projectId} membershipRole={data.project.membershipRole} open={membersOpen} onOpenChange={setMembersOpen} onLeft={onDeleted} />
    <ConfirmDialog

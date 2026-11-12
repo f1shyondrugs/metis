@@ -56,7 +56,7 @@ export function ReferencePicker({ id, rootRef, inputRef, kind, query, results, l
               {item.detail?<span className="block truncate text-[11px] text-muted-foreground">{item.detail}</span>:null}
             </span>
           </button>;
-        }) : prefixCount ? null : <p role="status" className="px-2.5 py-4 text-center text-xs text-muted-foreground">{indexing?"Preparing more results…":query?"No matching references.":"No "+referenceLabel(kind||"file").toLowerCase()+" available."}</p>}
+        }) : prefixCount ? null : <p role="status" className="px-2.5 py-4 text-center text-xs text-muted-foreground">{indexing?"Preparing more results…":notice?"Search is incomplete.":query?"No matching references.":"No "+referenceLabel(kind||"file").toLowerCase()+" available."}</p>}
     </div>
     {indexing&&results.length>0?<p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">Preparing more results…</p>:null}
     {notice?<p role="status" className="px-2.5 py-2 text-xs text-muted-foreground">{notice} <button type="button" className="underline" onMouseDown={event=>event.preventDefault()} onClick={retry}>Try again</button></p>:null}
