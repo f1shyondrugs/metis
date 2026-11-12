@@ -10,8 +10,8 @@ const fixture=await(await fetch("/api/fixture")).json();
 const results:string[]=[];const converted:ConvertedDocument[]=[];
 const wait=(ms=80)=>new Promise(resolve=>setTimeout(resolve,ms));
 const check=(ok:unknown,label:string)=>results.push((ok?"PASS ":"FAIL ")+label);
-const originalFetch=fetch.bind(window);let failOnce=false,dropOnce=false;
-window.fetch=async(input,init)=>{if(String(input)==="/api/documents/convert"&&failOnce){failOnce=false;return Response.json({error:"Synthetic save failure"},{status:503});}const response=await originalFetch(input,init);if(String(input)==="/api/documents/convert"&&dropOnce){dropOnce=false;throw Error("Synthetic lost reply");}return response;};
+const originalFetch=fetch.bind(window);let failOnce=false,dropOnce=false,delayResponse=false;
+window.fetch=async(input,init)=>{if(String(input)==="/api/documents/convert"&&failOnce){failOnce=false;return Response.json({error:"Synthetic save failure"},{status:503});}const response=await originalFetch(input,init);if(String(input)==="/api/documents/convert"&&delayResponse){delayResponse=false;await wait(350);}if(String(input)==="/api/documents/convert"&&dropOnce){dropOnce=false;throw Error("Synthetic lost reply");}return response;};
 function Surface({kind}:{kind:DocumentKind}){
  const [value,setValue]=useState("# Editable document\n\nKeep this text."),[target,setTarget]=useState<DocumentKind|null>(null);
  const [choice,setChoice]=useNotesSpellcheck(fixture.owner);
@@ -65,6 +65,9 @@ async function run(){
  await menu("Spellcheck");await press(control("Browser default"));
  check(document.querySelector(".ProseMirror")?.getAttribute("spellcheck")==="true"&&!document.querySelector(".ProseMirror")?.getAttribute("lang"),"Browser default removes language override");
  await chooseTarget("plan","canvas");
+ const beforeLeaving=converted.length;delayResponse=true;control("Convert to Canvas")!.click();await wait(30);root.render(<div/>);await wait(500);
+ check(converted.length===beforeLeaving&&!document.querySelector('[role="dialog"]'),"late conversion result cannot reopen a document after navigation");
+ await mount("plan");await chooseTarget("plan","canvas");
  check(document.documentElement.scrollWidth<=innerWidth+1,"responsive actions and dialog do not overflow");
  const report={width:innerWidth,results};await originalFetch("/report",{method:"POST",body:JSON.stringify(report)});
  const pre=document.createElement("pre");pre.hidden=true;pre.textContent=JSON.stringify(report);document.body.append(pre);

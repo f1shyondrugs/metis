@@ -1,5 +1,5 @@
 "use client";
-import {useRef,useState} from "react";
+import {useEffect,useRef,useState} from "react";
 import {ArrowRightLeft,FileText,Layout,LoaderCircle,ListChecks} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Dialog,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle} from "@/components/ui/dialog";
@@ -19,18 +19,21 @@ export function openConvertedDocument(result:ConvertedDocument){
 }
 export function DocumentConversionDialog({source,target,onClose,prepare,onConverted=openConvertedDocument}:{source:ConversionSource;target:DocumentKind;onClose:()=>void;prepare?:()=>Promise<ConversionSource>;onConverted?:(result:ConvertedDocument)=>void}){
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
+ const mounted=useRef(true);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  const pending=useRef(false),payload=useRef<{source:ConversionSource;target:DocumentKind;requestId:string}|null>(null),id=useRef(createClientId());
  async function convert(){
   if(pending.current)return;pending.current=true;setBusy(true);setError("");
   try{
    if(!payload.current)payload.current={source:prepare?await prepare():source,target,requestId:id.current};
+   if(!mounted.current)return;
    const response=await fetch("/api/documents/convert",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload.current)});
    const body=await response.json();
    if(!response.ok){if(response.status<500)payload.current=null;throw new Error(body.error||"Could not convert document.");}
    if(body.kind!==target||target==="note"&&!body.note||target!=="note"&&!body.workspace)throw new Error("Conversion could not be confirmed. Retry safely.");
-   onConverted(body);onClose();
-  }catch(cause){setError(cause instanceof Error?cause.message:"Could not convert document.");}
-  finally{pending.current=false;setBusy(false);}
+   if(mounted.current){onConverted(body);onClose();}
+  }catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:"Could not convert document.");}
+  finally{pending.current=false;if(mounted.current)setBusy(false);}
  }
  return <Dialog open onOpenChange={open=>{if(!open&&!pending.current)onClose();}}><DialogContent showCloseButton={!busy}>
   <DialogHeader><DialogTitle>Convert to {DOCUMENT_LABELS[target]}</DialogTitle><DialogDescription>
