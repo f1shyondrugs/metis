@@ -4,7 +4,7 @@ import type { DesktopShortcuts } from "@/lib/desktop-assistant";
 
 export type LocalDeviceState = {
   paired?: boolean; clientId?: string; connection?: string; permissionMode?: string;
-  platform?: string; version?: string; hideOverlayFromCapture?: boolean; autostartEnabled?: boolean;
+  platform?: string; version?: string; desktopAvailable?: boolean; desktopReason?: string; hideOverlayFromCapture?: boolean; autostartEnabled?: boolean;
   fileDrop?: { available: boolean; error: string };
   appUpdate?: { phase: string; available: boolean; version: string; message: string };
   assistant?: { hotkey: string; shortcuts?:DesktopShortcuts; defaults?:DesktopShortcuts; hotkeyAvailable: boolean; error?: string };
@@ -12,6 +12,9 @@ export type LocalDeviceState = {
 export type DesktopBridge = {
   openDeviceSettings: () => Promise<void>;
   deviceState?: () => Promise<LocalDeviceState>;
+  onboardingContext?: () => Promise<{installationId:string;server:string}>;
+  openServerSettings?: () => Promise<void>;
+  requestDesktopPermissions?: () => Promise<unknown>;
   setOverlayCaptureHidden?: (hidden:boolean) => Promise<boolean>;
   setAutostart?: (enabled:boolean) => Promise<boolean>;
   checkUpdates?: () => Promise<string>;

@@ -14,8 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-// For first-run onboarding, the parent should open this dialog until completion and persist
-// onConnected/onSkip in localStorage under metis-onboarding-completed.
+// Client onboarding owns account/client-scoped progress. Connecting a provider
+// must not mark a shared, global browser introduction as completed.
 
 type ProviderDefinition = {
   key: string;

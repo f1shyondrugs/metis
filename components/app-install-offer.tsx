@@ -1,0 +1,27 @@
+"use client";
+import {useEffect,useState} from "react";
+import {Download,Monitor,Smartphone,RefreshCw} from "lucide-react";
+import {Button} from "@/components/ui/button";
+import {suggestedAppPlatform,type AppPlatform} from "@/lib/client-onboarding";
+const platforms:readonly {id:AppPlatform;label:string}[]=[{id:"windows",label:"Windows"},{id:"macos",label:"macOS"},{id:"linux",label:"Linux"},{id:"ios",label:"iOS"},{id:"android",label:"Android"}];
+export function AppInstallOffer(){
+ const [suggested,setSuggested]=useState<AppPlatform|null>(null),[platform,setPlatform]=useState<AppPlatform|null>(null);
+ const [downloads,setDownloads]=useState<{label:string;url:string}[]>([]),[loading,setLoading]=useState(false),[error,setError]=useState(""),[retry,setRetry]=useState(0);
+ useEffect(()=>{const found=suggestedAppPlatform(navigator);setSuggested(found);setPlatform(found);},[]);
+ useEffect(()=>{
+  setDownloads([]);setError("");if(!platform||platform==="ios"||platform==="android"){setLoading(false);return;}
+  const controller=new AbortController();setLoading(true);
+  void fetch("/api/onboarding/downloads?platform="+platform,{cache:"no-store",signal:controller.signal}).then(async response=>{
+   const body=await response.json();if(!response.ok)throw Error(body.error||"Could not load app downloads.");
+   if(!controller.signal.aborted)setDownloads((Array.isArray(body.downloads)?body.downloads:[]).filter((item:{url?:unknown})=>typeof item.url==="string"&&/^https:\/\/github\.com\/f1shyondrugs\/Metis-Apps\/releases\/(?:download|latest\/download)\//.test(item.url)));
+  }).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Could not load app downloads.");}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+  return ()=>controller.abort();
+ },[platform,retry]);
+ const mobile=platform==="ios"||platform==="android";
+ return <section aria-label="Get the Metis app">
+  <div className="flex items-start gap-3"><Monitor className="mt-1 size-6 shrink-0 text-primary"/><div><h2 className="text-lg font-medium">Your workspace, on your desktop</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Choose a platform below. Only published installers are offered; local device access is configured after sign-in.</p></div></div>
+  <div className="onboarding-platforms" aria-label="App platform">{platforms.map(item=><button type="button" key={item.id} aria-label={item.label+(item.id==="ios"||item.id==="android"?", in development":"")} aria-pressed={platform===item.id} onClick={()=>setPlatform(item.id)}>{item.label}{item.id==="ios"||item.id==="android"?<span className="ml-1 text-[10px] text-muted-foreground">In development</span>:null}</button>)}</div>
+  {platform===suggested&&platform?<p className="text-xs text-muted-foreground">Suggested for this device</p>:!platform?<p className="text-sm text-muted-foreground">Choose your operating system to see available downloads.</p>:null}
+  {mobile?<div className="mt-5 flex items-start gap-3 rounded-lg border border-border p-4"><Smartphone className="size-5 shrink-0"/><div><p className="font-medium">{platform==="ios"?"iOS":"Android"} · In development</p><p className="mt-1 text-sm text-muted-foreground">There is no mobile installer yet. You can use Metis in your browser in the meantime.</p></div></div>:loading?<p role="status" className="mt-4 text-sm">Checking available installers…</p>:error?<div role="alert" className="mt-4 text-sm"><p>{error}</p><Button variant="outline" className="mt-3" onClick={()=>setRetry(value=>value+1)}><RefreshCw className="size-4"/>Retry</Button></div>:platform?<div className="onboarding-downloads">{downloads.length?downloads.map(item=><a key={item.url} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-4" href={item.url} target="_blank" rel="noopener noreferrer"><Download className="size-4"/>Download {item.label}</a>):<p role="status" className="text-sm text-muted-foreground">No available installer could be confirmed for this platform.<button className="ml-2 underline" onClick={()=>setRetry(value=>value+1)}>Check again</button></p>}</div>:null}
+ </section>;
+}

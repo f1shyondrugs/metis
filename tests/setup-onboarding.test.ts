@@ -36,13 +36,15 @@ test("setup API and wizard exist for first-run onboarding", () => {
   assert.match(wizard, /setSetupToken\(""\)/);
 });
 
-test("onboarding uses the update-screen hands and four real steps", () => {
+test("onboarding uses the shared dot/wave stage and preserves four real server steps", () => {
   const wizard = readFileSync(path.join(root, "components/setup-wizard.tsx"), "utf8");
   const hands = readFileSync(path.join(root, "components/hands-stage.tsx"), "utf8");
   const maintenance = readFileSync(path.join(root, "components/maintenance-screen.tsx"), "utf8");
   assert.match(hands, /hand-left\.png/);
   assert.match(hands, /hand-right\.png/);
-  assert.match(wizard, /HandsStage/);
+  assert.match(wizard, /OnboardingStage/);
+  const stage=readFileSync(path.join(root,"components/onboarding-stage.tsx"),"utf8");
+  assert.match(stage,/mountOnboardingMotion/);
   assert.match(maintenance, /HandsStage/);
   assert.match(wizard, /"welcome"/);
   assert.match(wizard, /"people"/);
@@ -71,7 +73,7 @@ test("status API exposes setup so first-run can skip Sign-In", () => {
   assert.match(status, /setup: getSetupStatus/);
   assert.match(shell, /data\.setup/);
   const emptyUsersAt = shell.indexOf("setupStatus?.needed && !setupStatus.hasUsers");
-  const signInAt = shell.indexOf(">Sign in<");
+  const signInAt = shell.indexOf("if (!authed)", emptyUsersAt);
   assert.ok(emptyUsersAt >= 0 && signInAt > emptyUsersAt, "empty-user onboarding must render before Sign in");
 });
 

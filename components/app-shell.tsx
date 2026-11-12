@@ -21,6 +21,7 @@ import { modelAccountGroups, modelAccountKey, modelAccountLabel, modelMatchesAcc
 import { notifyClientError } from "@/lib/client-error-notifications";
 import { useNotificationInbox } from "@/components/account/use-notification-inbox";
 import { DesktopFileDrop } from "@/components/desktop-file-drop";
+import { OnboardingStage } from "@/components/onboarding-stage";
 import { AccountMenu, useAccountProfile } from "@/components/account/account-menu";
 import type { AccountView } from "@/components/account/account-panel";
 
@@ -343,6 +344,7 @@ const RemoteTerminal = dynamic(
 const AccountPanel = dynamic(() => import("@/components/account/account-panel").then(mod => mod.AccountPanel));
 const SettingsPanel = dynamic(() => import("@/components/settings-panel").then((mod) => mod.SettingsPanel));
 const AgentHub = dynamic(() => import("@/components/agent-hub").then((mod) => mod.AgentHub));
+const ClientOnboarding = dynamic(() => import("@/components/client-onboarding").then(mod => mod.ClientOnboarding));
 const SetupWizard = dynamic(() => import("@/components/setup-wizard").then((mod) => mod.SetupWizard));
 const SubagentChatView = dynamic(() => import("@/components/subagent-chat-view").then((mod) => mod.SubagentChatView));
 
@@ -764,6 +766,7 @@ type ReferenceItem = {
 
 type StatusPayload = {
   authenticated: boolean;
+  userId?: string;
   username?: string;
   isHostAdmin?: boolean;
   agentCwd?: string;
@@ -9313,7 +9316,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   window.requestAnimationFrame(() => textareaRef.current?.focus());
                 }} />
           )}
-          <div className="composer-input-area relative min-w-0 flex-1">
+          <div data-onboarding-target="chat" className="composer-input-area relative min-w-0 flex-1">
           <RichComposerInput
             ref={textareaRef}
             value={input}
@@ -9773,7 +9776,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           }}
         >
           <NotebookPen className="size-3.5 shrink-0 opacity-60" />
-          <span className="min-w-0 truncate">Notebooks</span>
+          <span data-onboarding-target="notebooks" className="min-w-0 truncate">Notebooks</span>
         </button>
         <button
           type="button"
@@ -9801,7 +9804,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         </button>
         
       </div>
-      <div className="metis-sidebar-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2">
+      <div data-onboarding-target="projects" className="metis-sidebar-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2">
         <div className="space-y-0.5 pb-3 pt-1">
           {!chatsLoaded ? (
             <div className="space-y-1 px-1.5 py-1" aria-label="Loading chats" role="status">
@@ -10010,7 +10013,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         </div>
       </div>
 
-      <div className="shrink-0 p-2">
+      <div className="shrink-0 p-2" data-onboarding-target="settings">
         <AccountMenu profile={accountProfile} username={username} updateAvailable={settingsUpdateAvailable} unreadCount={unreadNotifications} onNotifications={() => openAccountPage("notifications")}
           onSettings={() => openAccountPage("settings")}
           onAgentHub={() => openAccountPage("agent-hub")}
@@ -10119,10 +10122,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   if (!authed) {
     return (
-      <main className="flex min-h-dvh items-center justify-center p-8">
+      <OnboardingStage eyebrow="Metis · Your account" title="Sign in to your Metis" description="Use the account on this server. If this is a fresh installation, Metis will guide you through server setup first. Desktop pairing and system permissions come after sign-in.">
         <form onSubmit={login} className="w-full max-w-[320px] space-y-4">
           <div className="space-y-1 text-center">
-            <h1 className="text-base font-medium">Sign in</h1>
+            <h2 className="text-base font-medium">Your account</h2>
             <p className="text-sm text-muted-foreground">Password</p>
           </div>
           <Input
@@ -10160,7 +10163,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             <p role="alert" aria-live="polite" className="text-center text-sm text-destructive">{authError}</p>
           ) : null}
         </form>
-      </main>
+      </OnboardingStage>
     );
   }
 
@@ -10235,6 +10238,17 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       onTouchEnd={handleTouchEnd}
     >
       <DesktopFileDrop />
+      {status?.userId ? <ClientOnboarding key={status.userId} userId={status.userId} username={status.username || username}
+        hasProvider={Boolean(status.providers?.some(provider=>provider.enabled&&provider.hasSecret))}
+        onConnectProvider={()=>setProviderSetupOpen(true)}
+        onNavigate={target=>{
+          if(target==="chat"){setAccountView(null);openDraft();}
+          else if(target==="projects"){setDesktopSidebarOpen(true);setMobileNavOpen(true);setSidebarAllProjects(true);}
+          else if(target==="notebooks"){setAccountView(null);setWorkspaceOpen(false);setNotesOpen(true);setFocusedNoteId(null);navigateChat("notes");setMobileNavOpen(false);}
+          else if(target==="tools"){setAccountView(null);setNotesOpen(false);setAutomationsOpen(false);setWorkspaceMounted(true);setWorkspaceOpen(true);}
+          else if(target==="agents")openAccountPage("agent-hub");
+          else {setSettingsTab("general");openAccountPage("settings");}
+        }}/> : null}
       <UploadTray />
       <UpdateStatusProbe
         isHostAdmin={Boolean(status?.isHostAdmin)}
@@ -10574,7 +10588,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             />
           </div>
         ) : notesOpen ? (
-          <div className="h-full min-h-0 flex-1 overflow-hidden">
+          <div data-onboarding-target="notebooks" className="h-full min-h-0 flex-1 overflow-hidden">
             <NotesWorkspace focusNoteId={focusedNoteId} initialProjectId={projectHomeId ?? (activeChatId ? chats.find((chat) => chat.id === activeChatId)?.projectId ?? null : draftProjectId ?? null)} />
           </div>
         ) : loadingChatId ? (
@@ -11332,7 +11346,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         <div className="fixed inset-0 z-40 bg-background/55" aria-hidden="true" />
       ) : null}
       {!accountView && !notesOpen && !automationsOpen && workspaceMounted ? (
-        <aside
+        <aside data-onboarding-target="tools"
           className={cn(
             "workspace-surface relative flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-l border-border/55 bg-background",
             !workspaceFullscreen && "max-md:absolute max-md:inset-0 max-md:z-30 max-md:!w-full",
@@ -12102,17 +12116,14 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         open={providerSetupOpen}
         onOpenChange={setProviderSetupOpen}
         onConnected={() => {
-          try { window.localStorage.setItem("metis-onboarding-completed", "1"); } catch { /* ignore */ }
           setProviderSetupOpen(false);
           void refreshStatus();
           void loadModels();
         }}
         onSkip={() => {
-          try { window.localStorage.setItem("metis-onboarding-completed", "1"); } catch { /* ignore */ }
           setProviderSetupOpen(false);
         }}
         onStartChat={() => {
-          try { window.localStorage.setItem("metis-onboarding-completed", "1"); } catch { /* ignore */ }
           setProviderSetupOpen(false);
           openDraft();
           window.requestAnimationFrame(() => textareaRef.current?.focus());

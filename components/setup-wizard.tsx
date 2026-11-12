@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowRight, Check, LoaderCircle, Plus } from "lucide-react";
+import { ArrowRight, LoaderCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { HandsStage } from "@/components/hands-stage";
+import { OnboardingStage, OnboardingProgress } from "@/components/onboarding-stage";
 import { ProviderSetupDialog } from "@/components/provider-setup-dialog";
 import { resolveSetupStep, type SetupStep } from "@/lib/setup-step";
 import { OsUserField } from "@/components/os-user-field";
@@ -210,40 +210,8 @@ export function SetupWizard({
   }
 
   return (
-    <HandsStage contentClassName="space-y-8">
-      <div className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Metis setup</p>
-        <h1 className="text-3xl font-semibold tracking-tight">
-          {step === "welcome" ? "Welcome to Metis" : step === "people" ? "People on this instance" : step === "provider" ? "Connect a provider" : "Metis is ready"}
-        </h1>
-        <p className="text-sm leading-6 text-muted-foreground">
-          {step === "welcome"
-            ? "Create the first people on this instance, then connect a model."
-            : step === "people"
-              ? "The first account is an admin. Add more people if you want, and toggle admin on any of them."
-              : step === "provider"
-                ? "Connect at least one model provider so chats can run. You can skip and do this later in Settings."
-                : "Your admin session is already signed in. Enter the workspace when you are done."}
-        </p>
-      </div>
-      <ol className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" aria-label="Setup progress">
-        {steps.map((item, index) => (
-          <li key={item.id} className="flex min-w-0 items-center gap-2">
-            <span
-              className={`flex size-6 items-center justify-center rounded-full text-[11px] font-medium ${
-                index < stepIndex
-                  ? "bg-primary text-primary-foreground"
-                  : index === stepIndex
-                    ? "bg-foreground text-background"
-                    : "bg-muted"
-              }`}
-            >
-              {index < stepIndex ? <Check className="size-3" /> : index + 1}
-            </span>
-            <span className={index === stepIndex ? "text-foreground" : ""}>{item.label}</span>
-          </li>
-        ))}
-      </ol>
+    <OnboardingStage eyebrow="Metis · Server setup" title={step === "welcome" ? "Welcome to Metis" : step === "people" ? "People on this instance" : step === "provider" ? "Connect a provider" : "Metis is ready"} description={step === "welcome" ? "This is a fresh Metis installation. Create the first admin, then connect a provider. The same setup works inside the desktop app and in your browser." : step === "people" ? "The first account is an admin. Server access and a one-time operator token protect this step." : step === "provider" ? "Connect a provider now, or configure it later in Settings. Your client introduction follows after the server is ready." : "The instance is configured. Next, a personal introduction will guide you around this browser or desktop."} progress={<OnboardingProgress steps={steps} index={stepIndex}/>} footer={stepIndex>0?<Button type="button" variant="ghost" disabled={busy} onClick={()=>goToStep(steps[Math.max(0,stepIndex-1)].id)}>Back</Button>:null}>
+
       {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
 
       {step === "welcome" ? (
@@ -344,6 +312,6 @@ export function SetupWizard({
           Enter Metis <ArrowRight className="size-4" />
         </Button>
       ) : null}
-    </HandsStage>
+    </OnboardingStage>
   );
 }
