@@ -32,6 +32,7 @@ import { useReferenceSearch } from "@/components/use-reference-search";
 import { ReferencePicker } from "@/components/reference-picker";
 import { composerReferenceKeyAction } from "@/lib/composer-references";
 import { parseReferenceLink } from "@/lib/reference-link";
+import { resolveReferenceQuery } from "@/lib/reference-query";
 import { notesReferenceQuery, notesReferenceHref, NOTES_REFERENCE_KINDS } from "@/lib/notes-editor-references";
 import type { ReferenceKind, ReferenceResult } from "@/lib/reference-search";
 import { Type, Heading1, Heading2, Heading3, ListOrdered, ListTodo, Quote, Info, Minus, Table2, ImageIcon, Globe, Sigma, Columns2, ListTree, FilePlus2, CircleDot } from "lucide-react";
@@ -238,9 +239,9 @@ function NotesBlockEditorInstance({
   const referenceDismissed=useRef("");
   const referenceResultsRef=useRef<ReferenceResult[]>([]);
   const selectReferenceRef=useRef<(item:ReferenceResult)=>void>(()=>{});
-  const referenceQuery=referenceSearchText ?? reference?.query ?? "";
-  const referenceCategories=Boolean(reference&&!referenceKind&&!referenceQuery.trim());
-  const referenceSearch=useReferenceSearch<ReferenceResult>({enabled:Boolean(reference)&&!referenceCategories&&!disabled&&!sourceMode,chatId:workspace?.chatId,kind:referenceKind,query:referenceQuery});
+  const {kind: referenceSearchKind, query: referenceQuery}=resolveReferenceQuery(referenceSearchText ?? reference?.query ?? "", referenceKind);
+  const referenceCategories=Boolean(reference&&!referenceSearchKind&&!referenceQuery.trim());
+  const referenceSearch=useReferenceSearch<ReferenceResult>({enabled:Boolean(reference)&&!referenceCategories&&!disabled&&!sourceMode,chatId:workspace?.chatId,kind:referenceSearchKind,query:referenceQuery});
   const referenceResults=useMemo(()=>referenceSearch.results.filter(item=>item.kind!=="note" || item.id!==noteId),[referenceSearch.results,noteId]);
   referenceResultsRef.current=referenceResults;
   const referenceMenuId=useId();
@@ -386,7 +387,7 @@ function NotesBlockEditorInstance({
     editor.on("transaction", update);editor.on("focus",update);editor.on("blur",blur);update();
     return () => {cancelAnimationFrame(blurFrame);editor.off("transaction", update);editor.off("focus",update);editor.off("blur",blur); };
   }, [disabled, editor, sourceMode]);
-  useEffect(()=>{setReferenceIndex(0);referenceIndexRef.current=0;},[referenceQuery,referenceKind]);
+  useEffect(()=>{setReferenceIndex(0);referenceIndexRef.current=0;},[referenceQuery,referenceSearchKind]);
   useEffect(()=>{
     const dom=editor?.view.dom;
     if(!dom)return;
@@ -567,7 +568,7 @@ function NotesBlockEditorInstance({
   };
   referenceKeyHandler.current=event=>{
     if(!referenceRef.current || event.isComposing || event.nativeEvent?.isComposing)return false;
-    if(event.key==="Backspace"&&referenceKind&&!referenceQuery&&document.activeElement===referenceSearchInput.current){event.preventDefault();selectReferenceCategory(null);return true;}
+    if(event.key==="Backspace"&&referenceSearchKind&&!referenceQuery&&document.activeElement===referenceSearchInput.current){event.preventDefault();selectReferenceCategory(null);return true;}
     const action=composerReferenceKeyAction({key:event.key,shiftKey:event.shiftKey,repeat:event.repeat,count:referenceCategories?NOTES_REFERENCE_KINDS.length:referenceResultsRef.current.length,index:referenceIndexRef.current});
     if(action){
       event.preventDefault();
@@ -734,10 +735,10 @@ function NotesBlockEditorInstance({
       <div className="notes-menu-dismiss" onMouseDown={()=>{setReference(null);referenceRef.current=null;}}/>
       <div className="notes-reference-popover" style={{top:Math.max(8,Math.min(reference.top,window.innerHeight-304)),left:Math.max(8,Math.min(reference.left,window.innerWidth-392))}}>
         <ReferencePicker id={referenceMenuId} rootRef={referenceMenuRoot} inputRef={referenceSearchInput}
-          kind={referenceKind} query={referenceQuery} results={referenceResults} loading={referenceSearch.loading}
+          kind={referenceSearchKind} query={referenceQuery} results={referenceResults} loading={referenceSearch.loading}
           indexing={referenceSearch.indexing} notice={referenceSearch.notice} error={referenceSearch.error} retry={referenceSearch.retry}
           index={referenceIndex} onIndex={index=>{referenceIndexRef.current=index;setReferenceIndex(index);}}
-          onCategory={selectReferenceCategory} onQuery={query=>{setReferenceSearchText(query);setReferenceIndex(0);referenceIndexRef.current=0;}}
+          onCategory={selectReferenceCategory} onQuery={query=>{setReferenceKind(referenceSearchKind);setReferenceSearchText(query);setReferenceIndex(0);referenceIndexRef.current=0;}}
           onSelect={item=>selectReferenceRef.current(item)}
           onKeyDown={event=>{if(referenceKeyHandler.current(event))event.stopPropagation();}}
         />

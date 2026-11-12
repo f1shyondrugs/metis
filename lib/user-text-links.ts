@@ -1,3 +1,5 @@
+import { composerMentionTokens } from "./composer-references";
+
 export type UserTextPart =
   | { kind: "text"; text: string }
   | { kind: "mention"; text: string }
@@ -6,21 +8,12 @@ export type UserTextPart =
 const MARKDOWN_LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 const BARE_URL = /https?:\/\/[^\s<>]+/gi;
 
-function mentionPattern(labels: string[]) {
-  if (!labels.length) return null;
-  const escaped = labels
-    .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|");
-  return new RegExp(`@(?:${escaped})`, "g");
-}
-
 function pushText(parts: UserTextPart[], text: string) {
   if (text) parts.push({ kind: "text", text });
 }
 
 /** Split a user message into mentions, markdown links, and bare https URLs. */
 export function parseRichUserText(content: string, mentionLabels: string[] = []): UserTextPart[] {
-  const mentions = mentionPattern(mentionLabels);
   type Hit = { start: number; end: number; part: UserTextPart };
   const hits: Hit[] = [];
 
@@ -38,13 +31,8 @@ export function parseRichUserText(content: string, mentionLabels: string[] = [])
   const covered = (start: number, end: number) =>
     hits.some((hit) => start < hit.end && end > hit.start);
 
-  if (mentions) {
-    for (const match of content.matchAll(mentions)) {
-      const start = match.index ?? 0;
-      const end = start + match[0].length;
-      if (covered(start, end)) continue;
-      hits.push({ start, end, part: { kind: "mention", text: match[0] } });
-    }
+  for (const {start,end} of composerMentionTokens(content,mentionLabels)) {
+    if (!covered(start,end)) hits.push({start,end,part:{kind:"mention",text:content.slice(start,end)}});
   }
 
   for (const match of content.matchAll(BARE_URL)) {

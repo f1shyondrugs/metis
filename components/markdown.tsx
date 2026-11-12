@@ -149,7 +149,7 @@ function MarkdownLink({
       ) : null}
     </a>
   );
-  return (isWebUrl || internalTarget) && href ? <LinkPreview href={href}>{link}</LinkPreview> : link;
+  return (isWebUrl || internalTarget || parseReferenceLink(href)) && href ? <LinkPreview href={href}>{link}</LinkPreview> : link;
 }
 
 const markdownComponents = {

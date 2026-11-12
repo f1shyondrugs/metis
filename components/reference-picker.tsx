@@ -4,6 +4,7 @@ import type { KeyboardEvent, ReactNode, Ref } from "react";
 import { ArrowLeft, Brain, ClipboardList, File as FileIcon, MessageSquare, Palette, PanelRight, Search, StickyNote, Terminal } from "lucide-react";
 import { REFERENCE_KINDS, type ReferenceKind, type ReferenceResult } from "@/lib/reference-search";
 import { cn } from "@/lib/utils";
+import { REFERENCE_SHORTCUTS } from "@/lib/reference-query";
 
 export const referenceLabel = (kind: ReferenceKind) => ({
   file:"Files",canvas:"Canvases",plan:"Plans",note:"Notes",issue:"Issues",browser:"Browser",terminal:"Terminals",memory:"Memories",chat:"Chats",
@@ -42,7 +43,7 @@ export function ReferencePicker({ id, rootRef, inputRef, kind, query, results, l
         return <button key={category} id={optionIdPrefix+"-option-"+(position+prefixCount)} role="option" aria-selected={selected} type="button"
           aria-label={referenceLabel(category)} title={referenceLabel(category)} onMouseEnter={()=>onIndex(position+prefixCount)}
           className={cn("flex min-h-9 max-sm:min-h-11 w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-muted-foreground hover:bg-muted hover:text-foreground",selected&&"bg-muted text-foreground")}
-          onMouseDown={event=>event.preventDefault()} onClick={()=>onCategory(category)}><Icon className="size-4" aria-hidden="true"/><span className="text-xs">{referenceLabel(category)}</span></button>;
+          onMouseDown={event=>event.preventDefault()} onClick={()=>onCategory(category)}><Icon className="size-4" aria-hidden="true"/><span className="flex-1 text-xs">{referenceLabel(category)}</span><span className="text-[11px] text-muted-foreground">@{REFERENCE_SHORTCUTS[category]}</span></button>;
       })}</div> : loading ? <p role="status" className="px-2.5 py-4 text-center text-xs text-muted-foreground">Searching…</p>
         : error ? <div role="alert" className="px-2.5 py-3 text-xs"><p>{error}</p><button type="button" className="mt-2 underline underline-offset-2" onMouseDown={event=>event.preventDefault()} onClick={retry}>Try again</button></div>
         : results.length ? results.map((item,position)=>{

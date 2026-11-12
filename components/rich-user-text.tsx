@@ -7,6 +7,9 @@ import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
 import { parseWorkspaceFileLink } from "@/lib/workspace-file-link";
 import { isFileUrl } from "@/lib/file-types";
 import { parseRichUserText } from "@/lib/user-text-links";
+import { ReferenceLink } from "@/components/reference-link";
+import { parseReferenceLink } from "@/lib/reference-link";
+import type { ReferenceResult } from "@/lib/reference-search";
 import { ExternalLink } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 
@@ -17,6 +20,8 @@ type Reference = {
   chatId?: string;
   path?: string;
   sessionId?: string;
+  target?: string;
+  detail?: string;
 };
 
 function dispatchInternalLink(href: string) {
@@ -97,26 +102,13 @@ export const RichUserText = memo(function RichUserText({
           const reference = references.find(
             (item) => `@${item.label.trim()}` === part.text,
           );
-          return (
-            <button
-              key={`${part.text}-${index}`}
-              type="button"
-              className="inline cursor-pointer border-0 bg-transparent p-0 text-primary underline underline-offset-2 hover:text-primary/80"
-              title={reference ? `Open ${reference.label}` : part.text}
-              onClick={() => {
-                if (!reference?.kind || !reference.id) return;
-                window.dispatchEvent(
-                  new CustomEvent("ai-chat:open-reference", {
-                    detail: { ...reference, label: reference.label.trim() },
-                  }),
-                );
-              }}
-            >
-              {reference && <LinkIcon kind={reference.kind} id={reference.id} />}{part.text}
-            </button>
-          );
+          return reference?.kind && reference.id
+            ? <ReferenceLink key={index} reference={reference as ReferenceResult}>{part.text}</ReferenceLink>
+            : <span key={index}>{part.text}</span>;
         }
         if (part.kind === "link") {
+          const reference=parseReferenceLink(part.href);
+          if(reference)return <ReferenceLink key={index} reference={reference}>{part.label}</ReferenceLink>;
           if (parseWorkspaceFileLink(part.href) || isFileUrl(part.href)) {
             return <FileLink key={`${part.href}-${index}`} href={part.href}>{part.label}</FileLink>;
           }

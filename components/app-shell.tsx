@@ -29,6 +29,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { flushNoteEditors } from "@/lib/note-editor-lifecycle";
 import { composerMentionQuery, replaceComposerMention, composerReferenceKeyAction, composerIsComposing } from "@/lib/composer-references";
+import { resolveReferenceQuery } from "@/lib/reference-query";
+import { ReferenceLink } from "@/components/reference-link";
 import { workspaceFileHref, parseWorkspaceFileLink, type WorkspaceFileRequest } from "@/lib/workspace-file-link";
 import { QuestionForm } from "@/components/question-form";
 import { copyText } from "@/lib/copy-text";
@@ -1912,11 +1914,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     end: number;
   } | null>(null);
   const referenceSearchInputRef = useRef<HTMLInputElement>(null);
-  const referenceSearchQuery = referenceMenu?.search ?? referenceMenu?.query ?? "";
-  const referenceCategoriesVisible = Boolean(referenceMenu && !referenceMenu.kind && !referenceSearchQuery.trim());
+  const {kind: referenceSearchKind, query: referenceSearchQuery} = resolveReferenceQuery(referenceMenu?.search ?? referenceMenu?.query ?? "", referenceMenu?.kind);
+  const referenceCategoriesVisible = Boolean(referenceMenu && !referenceSearchKind && !referenceSearchQuery.trim());
   const { results: referenceResults, loading: referenceLoading, indexing: referenceIndexing, notice: referenceNotice, error: referenceError, retry: retryReferenceSearch } = useReferenceSearch<ReferenceItem>({
     enabled: Boolean(referenceMenu && !referenceCategoriesVisible),
-    chatId: activeChatId, kind: referenceMenu?.kind, query: referenceSearchQuery,
+    chatId: activeChatId, kind: referenceSearchKind, query: referenceSearchQuery,
   });
   const [referenceIndex, setReferenceIndex] = useState(0);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
@@ -8552,7 +8554,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     referenceAutocompleteDismissedRef.current = null;
     setReferenceMenu(current => {
       if (current?.start === mention.start && current.query === mention.query && current.end === mention.end) return current;
-      return { ...mention, kind: current?.start === mention.start ? current.kind : null };
+      return { ...mention, kind: current?.start === mention.start ? current.kind : null, search: undefined };
     });
     if (referenceMenu?.query !== mention.query) setReferenceIndex(0);
   }
@@ -8576,7 +8578,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
-  const researchActionVisible = showDeepResearchAction(referenceMenu ? { ...referenceMenu, query: referenceSearchQuery } : null) && modes.some(mode => mode.id === DEEP_RESEARCH_MODE_ID);
+  const researchActionVisible = showDeepResearchAction(referenceMenu ? { ...referenceMenu, kind: referenceSearchKind, query: referenceSearchQuery } : null) && modes.some(mode => mode.id === DEEP_RESEARCH_MODE_ID);
   const referenceActionOffset = researchActionVisible ? 1 : 0;
 
   function selectReferenceCategory(kind: ReferenceKind | null) {
@@ -8587,7 +8589,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   function handleReferenceKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (!referenceMenu || composerIsComposing(event.nativeEvent)) return false;
-    if (event.key === "Backspace" && referenceMenu.kind && !referenceSearchQuery && event.target === referenceSearchInputRef.current) {
+    if (event.key === "Backspace" && referenceSearchKind && !referenceSearchQuery && event.target === referenceSearchInputRef.current) {
       event.preventDefault(); selectReferenceCategory(null); return true;
     }
     const action = composerReferenceKeyAction({
@@ -9216,10 +9218,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         {referenceMenu ? (
           <div id="composer-reference-popover" className="absolute bottom-full left-2 right-2 z-40 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-popover p-1.5 text-sm shadow-xl animate-in fade-in-0 slide-in-from-bottom-2 duration-200">
             <ReferencePicker id="composer-reference-list" optionIdPrefix="composer-reference" inputRef={referenceSearchInputRef}
-              kind={referenceMenu.kind} query={referenceSearchQuery} results={referenceResults}
+              kind={referenceSearchKind} query={referenceSearchQuery} results={referenceResults}
               loading={referenceLoading} indexing={referenceIndexing} notice={referenceNotice} error={referenceError} retry={retryReferenceSearch}
               index={referenceIndex} onIndex={setReferenceIndex} onCategory={selectReferenceCategory}
-              onQuery={search=>{setReferenceIndex(0);setReferenceMenu(current=>current?{...current,search}:current);}}
+              onQuery={search=>{setReferenceIndex(0);setReferenceMenu(current=>current?{...current,kind:referenceSearchKind,search}:current);}}
               onSelect={reference=>void selectReference(reference)}
               onKeyDown={event=>{if(handleReferenceKeyDown(event))event.stopPropagation();else if(event.key==="Enter"&&!composerIsComposing(event.nativeEvent))event.preventDefault();}}
               prefixCount={referenceActionOffset}
@@ -9320,7 +9322,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             syncNonce={composerSyncNonce}
             mentionLabels={references.map((reference) => reference.label)}
             onChange={handleComposerInputChange}
-            onSelectionChange={(value, start, end) => updateComposerReferenceMenu(value, start, end)}
+            onSelectionChange={(value, start, end) => { if (value === draftInputRef.current) updateComposerReferenceMenu(value, start, end); }}
             aria-controls="composer-reference-list"
             aria-expanded={Boolean(referenceMenu)}
             aria-activedescendant={referenceMenu ? `composer-reference-option-${referenceIndex}` : undefined}
@@ -10683,18 +10685,15 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                         {m.references?.length ? (
                           <div className="flex max-w-[85%] flex-wrap justify-end gap-1">
                             {m.references.map((reference) => {
-                              const Icon = referenceIcon(reference.kind);
                               return (
-                                <span
+                                <ReferenceLink reference={reference}
                                   key={`${reference.kind}-${reference.id}`}
-                                  title={reference.detail || reference.label}
                                   className="inline-flex max-w-48 items-center gap-1 rounded-full border border-primary/20 bg-primary/[0.06] px-2 py-0.5 text-[11px] text-primary/80"
                                 >
-                                  <Icon className="size-3 shrink-0" />
                                   <span className="truncate">
                                     {reference.source === "pinned" ? "Pinned · " : ""}@{reference.label}
                                   </span>
-                                </span>
+                                </ReferenceLink>
                               );
                             })}
                           </div>
