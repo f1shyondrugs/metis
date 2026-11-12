@@ -87,12 +87,14 @@ test("voice recording keeps the parent waveform callback stable across recording
 test("login starts with an empty username and exposes an accessible password visibility toggle", () => {
   assert.match(clientConfigSource, /NEXT_PUBLIC_CHAT_USERNAME\?\.trim\(\) \|\| ""/);
   assert.doesNotMatch(clientConfigSource, /\|\| "admin"/);
-  assert.match(shellSource, /type=\{passwordVisible \? "text" : "password"\}/);
-  assert.match(shellSource, /aria-label=\{passwordVisible \? "Hide password" : "Show password"\}/);
-  assert.match(shellSource, /<EyeOff className="size-4" aria-hidden="true" \/> : <Eye className="size-4" aria-hidden="true" \/>/);
-  assert.match(shellSource, /setAuthError\(loginErrorMessage\(res\.status, body\.error\)\)/);
-  assert.match(shellSource, /setAuthError\(loginErrorMessage\(\)\)/);
-  assert.match(shellSource, /<p role="alert" aria-live="polite"/);
+  const loginSource=readFileSync(new URL("../components/sign-in-screen.tsx",import.meta.url),"utf8");
+  assert.match(shellSource, /<SignInScreen/);
+  assert.match(loginSource, /type=\{visible\?"text":"password"\}/);
+  assert.match(loginSource, /aria-label=\{visible\?"Hide password":"Show password"\}/);
+  assert.match(loginSource, /<EyeOff[^>]+aria-hidden/);
+  assert.match(loginSource, /loginErrorMessage\(response.status,body.error\)/);
+  assert.match(loginSource, /loginErrorMessage\(\)/);
+  assert.match(loginSource, /<p role="alert" aria-live="polite"/);
 });
 
 test("agent completion uses the bundled default sound unless a custom sound is set", () => {

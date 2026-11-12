@@ -46,6 +46,7 @@ html:has(.desktop-assistant),html:has(.desktop-assistant) body { background:tran
 .assistant-messages { padding-bottom:32px; }
 .assistant-size-options { display:grid; gap:12px; font-size:13px; }
 .assistant-size-options label { display:grid; gap:6px; }
+.assistant-size-options label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px}.assistant-size-options input[type=checkbox]{width:16px;min-height:16px;flex-shrink:0}
 .assistant-size-options input { width:100%; accent-color:var(--primary); min-height:28px; }
 .assistant-queue { padding:8px 10px; max-height:min(180px,24dvh); overflow:auto; overscroll-behavior:contain; border-bottom:1px solid var(--border); }
 .assistant-queue-title { font-size:11px; color:var(--muted-foreground); margin-bottom:6px; }
