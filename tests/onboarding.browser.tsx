@@ -84,7 +84,9 @@ async function run(){
  check(document.querySelectorAll(".onboarding-motion svg").length===1,"one wave controller is mounted");
  const motion=document.querySelector<SVGSVGElement>(".onboarding-motion svg")!;
  check(getComputedStyle(motion).color==="rgb(255, 255, 255)"&&getComputedStyle(motion).opacity==="1","onboarding dots use white at full opacity");
- check(motion.querySelector('[data-onboarding-geometry]')?.getAttribute("stroke")==="none"&&motion.querySelectorAll(":scope > g > rect").length===1&&motion.querySelector(":scope > g > rect")?.getAttribute("fill")?.startsWith("url("),"only dots are painted: no perimeter stroke or solid border band");
+ const glow=motion.querySelector<SVGGElement>("[data-onboarding-glow]")!;
+ check(!!glow&&getComputedStyle(glow).filter!=="none"&&Number(getComputedStyle(glow).opacity)>0&&motion.querySelector("feGaussianBlur")?.getAttribute("stdDeviation")==="8","soft white edge glow remains behind sharp dots");
+ check(motion.querySelector('[data-onboarding-geometry]')?.getAttribute("stroke")==="none"&&motion.querySelectorAll(":scope > g > rect").length===1&&motion.querySelector(":scope > g > rect")?.getAttribute("fill")?.startsWith("url("),"dot layer has no perimeter stroke or hard solid border band");
  await click("Continue");
  check(!!document.querySelector('[aria-label="Get the Metis app"]'),"web onboarding offers the desktop app");
  check(document.querySelectorAll(".onboarding-platforms option:not([disabled])").length===5,"Windows macOS Linux iOS Android can all be selected");
