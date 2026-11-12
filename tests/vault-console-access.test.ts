@@ -9,7 +9,7 @@ import {EventEmitter} from "node:events";
 
 test("manual SSH/local entries persist, reuse exact console bindings and expose only owner metadata",async t=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),"metis-vault-console-"));
- Object.assign(process.env,{AI_CHAT_ROOT:dir,CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"chat.sqlite"),AGENT_CWD:dir,METIS_PROTECTED_LOGIN_MODE:"trusted-root",METIS_NATIVE_ISOLATION:"0",MCP_BEARER_TOKEN:"TEST-VAULT-LEASE"});
+ Object.assign(process.env,{AI_CHAT_ROOT:dir,CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"chat.sqlite"),AGENT_CWD:dir,METIS_PROTECTED_LOGIN_MODE:"trusted-root",METIS_NATIVE_ISOLATION:"0",MCP_BEARER_TOKEN:"TEST-VAULT-LEASE",AI_CHAT_INTERNAL_ORIGIN:"http://127.0.0.1:1",AI_CHAT_MCP_STATE_DIR:path.join(dir,"mcp-state")});
  const [{SavedBrowserLogins},auth,route,jobs,store,agent]=await Promise.all([
   import("../services/browser-login/core"),import("../lib/auth"),import("../app/api/browser/saved-logins/route"),import("../lib/db-jobs"),import("../lib/db-store"),import("../app/api/internal/mcp-credentials/route"),
  ]);

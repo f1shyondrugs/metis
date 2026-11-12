@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 const root=fs.mkdtempSync(path.join(os.tmpdir(),"metis-inspect-image-"));
-Object.assign(process.env,{CHAT_DATA_DIR:root,CHAT_DB_PATH:path.join(root,"chat.sqlite"),AI_CHAT_ROOT:root,AGENT_CWD:root,MCP_BEARER_TOKEN:"fixture-image",AI_CHAT_TEST_BYPASS_LEASE:"0"});
+Object.assign(process.env,{CHAT_DATA_DIR:root,CHAT_DB_PATH:path.join(root,"chat.sqlite"),AI_CHAT_ROOT:root,AGENT_CWD:root,MCP_BEARER_TOKEN:"fixture-image",AI_CHAT_TEST_BYPASS_LEASE:"0",AI_CHAT_INTERNAL_ORIGIN:"http://127.0.0.1:1"});
 test.after(()=>fs.rmSync(root,{recursive:true,force:true}));
 test("image inspection is image content with exact crop geometry and lease/account/chat boundaries",async()=>{
  const {getDatabase}=await import("../lib/sqlite"),store=await import("../lib/db-store"),jobs=await import("../lib/db-jobs"),uploads=await import("../lib/uploads");
