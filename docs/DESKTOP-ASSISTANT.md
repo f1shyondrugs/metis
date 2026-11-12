@@ -46,6 +46,16 @@ until removal is confirmed. Its original registered attachments, references and
 device context remain with the draft. Reorder, failed deletion rollback and
 Send now preserve canonical queue identities and permission checks.
 
+## Screen-first responses and image transport
+
+The assistant's capture context describes the user's intent and the available passive overlay tools. It asks the model to decide whether a short explanation, an annotation or real interaction is appropriate from meaning and visible evidence. There is no phrase matcher, automatic annotation trigger, forced tool call, model switch or Thinking override. Existing screenshots are first evidence; a fresh Computer Use observation may activate a window and is reserved for missing detail, stale evidence or actual interaction. Device ownership, permission checks, authoritative monitor geometry and freshness still apply.
+
+Codex sends current-turn image attachments through the SDK's typed local-image input when the selected model's discovered/registry capability explicitly confirms vision. The native CLI reads private immutable snapshots in its already mounted account home; regular-file checks reject symlinks, account/chat access is checked, size limits apply and snapshots are removed after success, error or cancellation. Resume keeps native conversation ownership and receives only this turn's images. Unknown/non-vision models receive an explicit unavailable notice, not a claim that image pixels were supplied. Provider-native shell/view-image tools remain disabled.
+
+The canonical MCP read tool inspect_image returns actual image content for authorized current-chat attachment IDs, optionally cropped in original image pixels. Its internal API is run-lease/account/chat bound, rejects missing/foreign images, checks pixel/byte limits, and returns source/crop/preview geometry. It never accepts arbitrary file paths or URLs or creates a fresh desktop input observation.
+
+Monitor uploads enqueue together through the existing bounded upload pump. Results retain capture order regardless of completion order. Cancellation and failure drain all preparation tasks before returning; late tasks cannot start an upload or send an incomplete request. Queued submissions retain their original captures and normal canonical queue behavior.
+
 ## Regression coverage
 
 - `tests/desktop-assistant-session.test.ts`: authenticated persistence,

@@ -15,7 +15,8 @@ import { latestClientModelSelection, rememberClientModelSelection, MODEL_STORAGE
 import { modelForSelection } from "@/lib/model-selection";
 import { defaultParamsForModel, sanitizeModelParams, type ModelParamSelection } from "@/lib/model-params";
 import type { VoiceInputSettings } from "@/lib/store";
-import { startUpload, waitForUpload, cancelUpload, getUploadStatus } from "@/lib/background-uploads";
+import { cancelUpload } from "@/lib/background-uploads";
+import {uploadAssistantScreens} from "@/lib/assistant-screen-uploads";
 import {RichComposerInput} from "@/components/rich-composer-input";
 import {AssistantConversationPanel} from "@/components/assistant-conversation-panel";
 import {AssistantMessageQueue} from "@/components/assistant-message-queue";
@@ -282,18 +283,8 @@ export function DesktopAssistant() {
           id=result.chat.id;
           await saved.save({chatId:id});setChatId(id);
         }
-        const ids:string[]=[];
-        for(const [index,monitor] of (capture?.monitors||[]).entries()){
-          const blob=await (await fetch(monitor.image)).blob();
-          const task=startUpload(new File([blob],"Monitor-"+(index+1)+"-"+monitor.id+".png",{type:"image/png"}),{label:"Desktop Assistant"});
-          uploads.push(task);
-          const result=await new Promise<{id:string}>((resolve,reject)=>{
-            const timer=setInterval(()=>{if(getUploadStatus(task)==="error"){clearInterval(timer);cancelUpload(task);reject(new Error("Screen upload failed. Retry the message."));}},200);
-            void waitForUpload(task).then(value=>{clearInterval(timer);resolve(value);},cause=>{clearInterval(timer);reject(cause);});
-          });
-          if(invalid())throw new Error("Message cancelled before submission. Your draft is preserved.");
-          ids.push(result.id);
-        }
+        const screenUploads=await uploadAssistantScreens(capture?.monitors||[],invalid);
+        const ids=screenUploads.ids;uploads.push(...screenUploads.tasks);
         pendingSubmission.current={chatId:id!,messageId:createClientId(),message:text,referenceText:capture?desktopCaptureContext(capture):context.referenceText||"",uploadIds:ids,storedAttachments:context.attachments,references:context.references,queued:runActive.current||queue.length>0,...selection!};
       }
       if(invalid())throw new Error("Message cancelled before submission. Your draft is preserved.");

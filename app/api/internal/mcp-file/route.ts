@@ -1,3 +1,5 @@
+import { inspectAttachmentImage } from "@/lib/inspect-image";
+import { getJob } from "@/lib/db-jobs";
 import { unlink } from "node:fs/promises";
 import { internalRunLeaseAuthorized } from "@/lib/internal-run-lease";
 import path from "node:path";
@@ -70,6 +72,16 @@ export async function POST(req: Request) {
   if (!chat) return Response.json({ error: "Chat not found" }, { status: 404 });
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  if (body.action === "inspect_image") {
+    const job=getJob(jobId);
+    if(!userId||!job||job.userId!==userId||job.chatId!==chatId)return Response.json({error:"Unauthorized"},{status:401});
+    try {
+      const attachments=[...chat.messages.flatMap(message=>message.attachments||[]),...(job.attachments||[])];
+      const result=await inspectAttachmentImage(chatId,userId,attachments,body.attachment_id,body.crop);
+      if(req.signal.aborted||!internalRunLeaseAuthorized(req,jobId))return Response.json({error:"Image inspection cancelled."},{status:401});
+      return Response.json(result);
+    } catch(error){return Response.json({error:error instanceof Error?error.message:"Image inspection failed."},{status:400});}
+  }
   if (body.researchReport !== undefined) {
     const report = body.researchReport;
     if (!report || typeof report !== "object" || Array.isArray(report)) {
