@@ -210,7 +210,7 @@ export function SetupWizard({
   }
 
   return (
-    <OnboardingStage eyebrow="Metis · Server setup" title={step === "welcome" ? "Welcome to Metis" : step === "people" ? "People on this instance" : step === "provider" ? "Connect a provider" : "Metis is ready"} description={step === "welcome" ? "This is a fresh Metis installation. Create the first admin, then connect a provider. The same setup works inside the desktop app and in your browser." : step === "people" ? "The first account is an admin. Server access and a one-time operator token protect this step." : step === "provider" ? "Connect a provider now, or configure it later in Settings. Your client introduction follows after the server is ready." : "The instance is configured. Next, a personal introduction will guide you around this browser or desktop."} progress={<OnboardingProgress steps={steps} index={stepIndex}/>} footer={stepIndex>0?<Button type="button" variant="ghost" disabled={busy} onClick={()=>goToStep(steps[Math.max(0,stepIndex-1)].id)}>Back</Button>:null}>
+    <OnboardingStage eyebrow="Metis · Server setup" title={step === "welcome" ? "Welcome to Metis" : step === "people" ? "Create your account" : step === "provider" ? "Connect a provider" : "Metis is ready"} description={step === "welcome" ? "A fresh Metis installation. Let’s set it up." : step === "people" ? "Your first account manages this server." : step === "provider" ? "Choose a provider, or add one later." : "Your workspace is ready."} progress={<OnboardingProgress steps={steps} index={stepIndex}/>} footer={stepIndex>0?<Button type="button" variant="ghost" disabled={busy} onClick={()=>goToStep(steps[Math.max(0,stepIndex-1)].id)}>Back</Button>:null}>
 
       {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
 
@@ -241,11 +241,9 @@ export function SetupWizard({
                 Operator setup token
                 <Input type="password" value={setupToken} onChange={(event) => setSetupToken(event.target.value)}
                   autoComplete="off" spellCheck={false} required aria-describedby="setup-token-help" />
-                <span id="setup-token-help" className="text-xs font-normal text-muted-foreground">
-                  Ask the server operator for the one-time token from the installation’s data/setup-token
-                  file (or setup-token inside CHAT_DATA_DIR), or their configured AI_CHAT_SETUP_TOKEN.
-                  Server access is required. The token is consumed when the first account is created.
-                </span>
+                <div id="setup-token-help" className="text-xs font-normal text-muted-foreground">
+                  One-time token from your server operator. <details><summary className="cursor-pointer underline">Where to find it</summary>On the server: data/setup-token (or setup-token in CHAT_DATA_DIR), or AI_CHAT_SETUP_TOKEN. Creating the first account consumes it.</details>
+                </div>
               </label>
             ) : null}
             <label className="grid gap-1 text-sm">

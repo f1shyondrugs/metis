@@ -19,11 +19,13 @@ function custom(variables: Record<string, string> = {}, mode: "dark" | "light" =
   return { format: "metis-theme", version: 1, name: "My theme", mode, variables };
 }
 
-test("six complete presets include the existing IDs and both color modes", () => {
+test("seven complete presets include the new default, existing IDs and both color modes", () => {
   assert.deepEqual(THEME_PRESETS.map((theme) => theme.id), [
-    "midnight", "graphite", "nord", "forest", "sand", "paper",
+    "metis", "midnight", "graphite", "nord", "forest", "sand", "paper",
   ]);
-  assert.equal(DEFAULT_THEME_ID, "midnight");
+  assert.equal(DEFAULT_THEME_ID, "metis");
+  assert.equal(getThemePreset(DEFAULT_THEME_ID)!.variables["--background"], "#000000");
+  assert.equal(getThemePreset(DEFAULT_THEME_ID)!.variables["--foreground"], "#ffffff");
   assert.equal(getThemePreset("missing"), undefined);
   assert.equal(THEME_PRESETS.filter((theme) => theme.mode === "light").length, 2);
   for (const preset of THEME_PRESETS) {

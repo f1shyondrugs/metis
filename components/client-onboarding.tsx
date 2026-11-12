@@ -1,9 +1,10 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
-import {ArrowLeft,ArrowRight,Check,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Play} from "lucide-react";
+import {ArrowLeft,ArrowRight,Check,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Play,Palette,X} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from "@/components/ui/dialog";
 import {OnboardingStage,OnboardingMotion,OnboardingProgress} from "@/components/onboarding-stage";
+import {AppearanceSettings} from "@/components/appearance-settings";
 import {AppInstallOffer} from "@/components/app-install-offer";
 import {DesktopClientSettings} from "@/components/desktop-client-settings";
 import {desktopBridge} from "@/lib/desktop-bridge";
@@ -49,21 +50,22 @@ export function ClientOnboarding({userId,username,onNavigate,onConnectProvider,h
  const beginTour=()=>save({...state,phase:"tour",tourIndex:0});
  return <Dialog open onOpenChange={open=>{if(!open)setPaused(true);}}><DialogContent className="max-h-[100dvh] w-screen max-w-none gap-0 overflow-y-auto rounded-none border-0 p-0 sm:max-w-none data-open:animate-none data-closed:animate-none" showCloseButton={false}>
   <DialogTitle className="sr-only">Getting started with Metis</DialogTitle><DialogDescription className="sr-only">A guide for this account on this browser or desktop. You can continue later.</DialogDescription>
-  <OnboardingStage key={scope.key+state.phase} eyebrow={native?"Metis · This desktop":"Metis · This browser"} title={state.phase==="welcome"?"Welcome, "+username:state.phase==="device"?"Make this desktop yours":"Take Metis with you"} description={state.phase==="welcome"?"A few steps to get started, then a short look around your workspace. You can pause at any time.":state.phase==="device"?"You are signed in. Device pairing and system access are separate choices: configure them if you want Metis to work on this computer, or continue with chat only.":"Add local device access, notifications and the Desktop Assistant — or keep using the full workspace in your browser."}
+  <OnboardingStage key={scope.key+state.phase} eyebrow={native?"Metis · This desktop":"Metis · This browser"} title={state.phase==="welcome"?"Welcome, "+username:state.phase==="device"?"Set up this desktop":"Get the app"} description={state.phase==="welcome"?"Your workspace. Your way.":state.phase==="device"?"Device access is optional. Chat works without it.":"Desktop Assistant, notifications and device access."}
    progress={<OnboardingProgress steps={steps} index={index}/>} footer={<>
-    {index>0?<Button variant="ghost" onClick={()=>save({...state,phase:"welcome"})}><ArrowLeft className="size-4"/>Back</Button>:null}
-    <Button variant="ghost" onClick={()=>setPaused(true)}>Continue later</Button>
+    {index>0?<Button variant="ghost" size="icon" aria-label="Back" title="Back" onClick={()=>save({...state,phase:"welcome"})}><ArrowLeft aria-hidden="true" className="size-4"/></Button>:null}
+    <Button variant="ghost" size="icon" aria-label="Continue later" title="Continue later" onClick={()=>setPaused(true)}><X aria-hidden="true" className="size-4"/></Button>
     {state.phase==="welcome"?<Button onClick={next}>Continue<ArrowRight className="size-4"/></Button>:<><Button variant="outline" onClick={finish}>{native?"Use Metis":"Skip tour"}</Button><Button onClick={beginTour}><Play className="size-4"/>Show me around</Button></>}
    </>}>
     {storageUnavailable?<p role="status" className="mb-4 text-xs text-muted-foreground">Browser storage is unavailable. Progress is kept for this session only.</p>:null}
     {state.phase==="welcome"?<div>
      <ul className="onboarding-feature-list">
-      <li><MessageSquare/><div><strong>Start with a conversation</strong><p>Models, files, voice and tools in one place. You decide what Metis can do.</p></div></li>
-      <li><Folder/><div><strong>Keep context with your work</strong><p>Projects, memories and Notebooks keep related work together.</p></div></li>
-      <li><Check/><div><strong>Only configure what you need</strong><p>Chat does not require screen recording or computer-control permissions.</p></div></li>
+      <li><MessageSquare aria-hidden="true"/><div><strong>Chat</strong><p>Models, files and voice.</p></div></li>
+      <li><Folder aria-hidden="true"/><div><strong>Projects</strong><p>Your work and context, together.</p></div></li>
+      <li><Check aria-hidden="true"/><div><strong>Your choice</strong><p>Enable only what you need.</p></div></li>
      </ul>
-     {!hasProvider?<div className="mt-6 border-t border-border pt-4"><p className="mb-3 text-sm text-muted-foreground">No enabled provider is connected yet. Connect one to run your first conversation.</p><Button variant="outline" onClick={onConnectProvider}>Connect a model provider</Button></div>:<p className="mt-6 text-sm text-muted-foreground">A provider is configured. Available models appear in the chat model picker.</p>}
-    </div>:state.phase==="device"&&native?<><div className="mb-4 border-b border-border pb-4"><p className="mb-3 text-sm text-muted-foreground">Computer access is optional. Create a pairing code in Metis, choose the access level, then enter it in the local device settings. Resume this guide from Getting started in your account menu.</p>{onPairDevice?<Button variant="outline" onClick={()=>{setPaused(true);onPairDevice();}}>Create a pairing code</Button>:null}</div><DesktopClientSettings/></>:<AppInstallOffer/>}
+     {!hasProvider?<div className="mt-6 border-t border-border pt-4"><p className="mb-3 text-sm text-muted-foreground">Connect a provider to start chatting.</p><Button variant="outline" onClick={onConnectProvider}>Connect a model provider</Button></div>:null}
+     <details className="onboarding-appearance"><summary><Palette aria-hidden="true"/>Appearance</summary><AppearanceSettings/></details>
+    </div>:state.phase==="device"&&native?<><div className="mb-4 border-b border-border pb-4"><p className="mb-3 text-sm text-muted-foreground">Create a pairing code, then enter it in local device settings.</p>{onPairDevice?<Button variant="outline" onClick={()=>{setPaused(true);onPairDevice();}}>Create a pairing code</Button>:null}</div><DesktopClientSettings compact/></>:<AppInstallOffer/>}
   </OnboardingStage>
  </DialogContent></Dialog>;
 }
@@ -93,7 +95,7 @@ export function ProductTour({index,onIndex,onNavigate,onPause,onFinish}:{index:n
    <h2 aria-live="polite" tabIndex={-1}>{item.label}</h2><p>{item.description}</p>
    <Button className="mt-4" variant="outline" onClick={()=>onNavigate(item.id)}>{item.action}<ArrowRight className="size-4"/></Button>
    <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
-    <Button variant="ghost" onClick={onPause}>Continue later</Button><div className="flex gap-2">{index>0?<Button variant="ghost" onClick={()=>onIndex(index-1)} aria-label="Previous tour step"><ArrowLeft className="size-4"/></Button>:null}<Button onClick={()=>index===PRODUCT_TOUR.length-1?onFinish():onIndex(index+1)}>{index===PRODUCT_TOUR.length-1?"Finish":"Next"}<ArrowRight className="size-4"/></Button></div>
-   </div><p className="mt-3 text-xs">You can restart this guide from your account menu.</p>
+    <Button variant="ghost" size="icon" aria-label="Continue later" title="Continue later" onClick={onPause}><X aria-hidden="true" className="size-4"/></Button><div className="flex gap-2">{index>0?<Button variant="ghost" onClick={()=>onIndex(index-1)} aria-label="Previous tour step"><ArrowLeft className="size-4"/></Button>:null}<Button onClick={()=>index===PRODUCT_TOUR.length-1?onFinish():onIndex(index+1)}>{index===PRODUCT_TOUR.length-1?"Finish":"Next"}<ArrowRight className="size-4"/></Button></div>
+   </div>
   </section></>;
 }

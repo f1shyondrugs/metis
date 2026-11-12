@@ -1,6 +1,8 @@
 /** Synthetic account/IPC/HTTP fixture using actual onboarding components. No owner data or OS changes. */
 import React,{useState} from "react";
 import {createRoot} from "react-dom/client";
+import {AppearanceProvider} from "../components/appearance-provider";
+import {applyAppearanceTheme,getSelectedTheme,createDefaultAppearanceState,APPEARANCE_STORAGE_KEY} from "../lib/appearance-storage";
 import {ClientOnboarding} from "../components/client-onboarding";
 import {SetupWizard} from "../components/setup-wizard";
 import {ProviderSetupDialog} from "../components/provider-setup-dialog";
@@ -37,10 +39,10 @@ document.documentElement.classList.add("dark");
 const results:string[]=[];const check=(ok:unknown,label:string)=>{results.push((ok?"PASS ":"FAIL ")+label);if(!ok)failures++;report.textContent=results.join("\n");};
 function Harness({owner,hasProvider=true}:{owner:string;hasProvider?:boolean}){
  const [providerOpen,setProviderOpen]=useState(false);
- return <><main style={{padding:30}}><h1>Synthetic Metis workspace</h1><input data-onboarding-target="chat" aria-label="Existing draft" defaultValue="Keep this draft" style={{position:"fixed",bottom:24,left:30,width:Math.min(600,innerWidth-60),height:44}}/>
+ return <AppearanceProvider><main style={{padding:30}}><h1>Synthetic Metis workspace</h1><input data-onboarding-target="chat" aria-label="Existing draft" defaultValue="Keep this draft" style={{position:"fixed",bottom:24,left:30,width:Math.min(600,innerWidth-60),height:44}}/>
  {PRODUCT_TOUR.map(item=><button key={item.id} data-onboarding-target={item.id==="chat"?undefined:item.id} style={{margin:8,padding:16}}>{item.action}</button>)}
  </main><ClientOnboarding userId={owner} username={owner} hasProvider={hasProvider} onPairDevice={()=>{pairingNavigationCalls++;}} onNavigate={target=>{nav.push(target);}} onConnectProvider={()=>{providerCalls++;setProviderOpen(true);}}/>
- <ProviderSetupDialog open={providerOpen} onOpenChange={setProviderOpen} onConnected={()=>setProviderOpen(false)} onSkip={()=>setProviderOpen(false)}/></>;
+ <ProviderSetupDialog open={providerOpen} onOpenChange={setProviderOpen} onConnected={()=>setProviderOpen(false)} onSkip={()=>setProviderOpen(false)}/></AppearanceProvider>;
 }
 let nonce=0;
 async function mount(owner="alice",hasProvider=true){root.render(<Harness key={++nonce} owner={owner} hasProvider={hasProvider}/>);await pause(250);}
@@ -54,7 +56,24 @@ async function fill(label:string,value:string){
 }
 async function run(){
  for(const key of Object.keys(localStorage))if(key.startsWith("metis:onboarding:"))localStorage.removeItem(key);
- browser();await mount();
+ localStorage.removeItem(APPEARANCE_STORAGE_KEY);browser();await mount();
+ check(getComputedStyle(document.documentElement).getPropertyValue("--background").trim()==="#000000","fresh theme is pure black");
+ const appearance=document.querySelector<HTMLDetailsElement>(".onboarding-appearance")!;appearance.open=true;await pause();
+ const paper=document.querySelector<HTMLInputElement>('input[name="color-theme"][value="paper"]')!;paper.click();await pause();
+ check(document.documentElement.dataset.surface==="paper","appearance picker applies a light preset");
+ const customButton=Array.from(document.querySelectorAll("button")).find(el=>el.textContent?.includes("Create from current"))!;
+ check(!!customButton,"canonical custom theme editor remains available");
+ customButton.click();await pause();
+ const editor=document.querySelector<HTMLTextAreaElement>('textarea')!,custom=JSON.parse(editor.value);
+ custom.name="Fixture custom";custom.variables["--background"]="#123456";
+ Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(editor,JSON.stringify(custom));editor.dispatchEvent(new Event("input",{bubbles:true}));await pause();
+ await click("Save and apply");
+ check(getComputedStyle(document.documentElement).getPropertyValue("--background").trim()==="#123456","custom colors apply to the actual onboarding");
+ const savedCustom=document.documentElement.dataset.surface;await mount();
+ check(document.documentElement.dataset.surface===savedCustom,"custom theme survives remount without being reset");
+ document.querySelector<HTMLDetailsElement>(".onboarding-appearance")!.open=true;await pause();
+ const metis=document.querySelector<HTMLInputElement>('input[name="color-theme"][value="metis"]')!;metis.click();await pause();document.querySelector<HTMLDetailsElement>(".onboarding-appearance")!.open=false;
+ check(document.documentElement.dataset.surface==="metis","appearance picker restores black and white");
  check(document.body.textContent?.includes("Welcome, alice"),"fresh browser opens account-specific introduction");
  const wave=document.querySelector(".onboarding-motion mask path")!,before=wave.getAttribute("d");await pause(160);
  check(before!==wave.getAttribute("d"),"real dot/wave contour animates");
@@ -83,7 +102,7 @@ async function run(){
  await click("Next");check(read("bob")?.tourIndex===1,"tour position is saved for this account");
  dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await pause();
  check(!document.querySelector(".onboarding-tour"),"Escape pauses the tour without blocking the workspace");
- await mount("bob");check(document.querySelector(".onboarding-tour h2")?.textContent==="Keep work together","tour resumes at the saved step");
+ await mount("bob");check(document.querySelector(".onboarding-tour h2")?.textContent==="Projects","tour resumes at the saved step");
  for(let i=1;i<PRODUCT_TOUR.length;i++){check(document.querySelector(".onboarding-tour h2")?.textContent===PRODUCT_TOUR[i].label,"feature tour includes "+PRODUCT_TOUR[i].id);await click(i===PRODUCT_TOUR.length-1?"Finish":"Next");}
  check(read("bob")?.phase==="done"&&document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')?.value==="Keep this draft","finishing tour preserves the existing workspace draft");
  dispatchEvent(new Event("metis:onboarding-open"));await pause();check(!!document.querySelector(".onboarding-stage"),"account menu event can restart a completed guide");
@@ -129,6 +148,7 @@ async function run(){
  await click("Skip for now");await click("Enter Metis");check(setupCompleteRequests===1&&setupFinished===1,"server completion reuses the authenticated setup completion action");
  check(![...Object.keys(localStorage)].some(k=>(localStorage.getItem(k)||"").includes("synthetic-password")||(localStorage.getItem(k)||"").includes("synthetic-token")),"setup secrets never enter client onboarding storage");
  root.render(<div/>);await pause(100);check(!document.querySelector(".onboarding-motion svg"),"leaving onboarding disposes its animation controller");
+ applyAppearanceTheme(document.documentElement,getSelectedTheme(createDefaultAppearanceState()),"metis");
  const noOverflow=()=>document.documentElement.scrollWidth<=innerWidth+1;
  browser();await mount("visual-"+view);
  if(view==="install")await click("Continue");

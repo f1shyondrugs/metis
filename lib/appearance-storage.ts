@@ -149,7 +149,7 @@ export function readAppearanceStateForBootstrap(
   try { legacy = storage.getItem(config.legacyStorageKey); } catch { /* Storage can be disabled. */ }
   return {
     version: 1,
-    selected: legacy === "graphite" ? "graphite" : config.defaultThemeId,
+    selected: legacy === "graphite" || legacy === "midnight" ? legacy : config.defaultThemeId,
     customThemes: [],
   };
 }

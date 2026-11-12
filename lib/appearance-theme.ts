@@ -4,7 +4,7 @@
  */
 export const THEME_FORMAT = "metis-theme" as const;
 export const THEME_VERSION = 1 as const;
-export const DEFAULT_THEME_ID = "midnight";
+export const DEFAULT_THEME_ID = "metis";
 export const MAX_THEME_JSON_BYTES = 256 * 1024;
 
 export type ThemeMode = "dark" | "light";
@@ -377,6 +377,20 @@ function preset(
 
 /** Complete portable definitions; IDs preserve the existing Midnight/Graphite settings. */
 export const THEME_PRESETS: readonly ThemePreset[] = Object.freeze([
+  preset("metis", "Metis", "Pure black and white · default", "dark", {
+    "--background": "#000000", "--foreground": "#ffffff",
+    "--card": "#000000", "--card-foreground": "#ffffff",
+    "--popover": "#000000", "--popover-foreground": "#ffffff",
+    "--primary": "#ffffff", "--primary-foreground": "#000000",
+    "--secondary": "#000000", "--secondary-foreground": "#ffffff",
+    "--muted": "#000000", "--muted-foreground": "#bfbfbf",
+    "--accent": "#000000", "--accent-foreground": "#ffffff",
+    "--border": "#404040", "--input": "#595959", "--ring": "#ffffff",
+    "--sidebar": "#000000", "--sidebar-foreground": "#ffffff",
+    "--sidebar-primary": "#ffffff", "--sidebar-primary-foreground": "#000000",
+    "--sidebar-accent": "#000000", "--sidebar-accent-foreground": "#ffffff",
+    "--sidebar-border": "#404040", "--sidebar-ring": "#ffffff",
+  }),
   preset("midnight", "Midnight", "Deep neutral surfaces", "dark"),
   preset("graphite", "Graphite", "Softer charcoal surfaces", "dark", {
     "--background": "oklch(0.245 0 0)",
