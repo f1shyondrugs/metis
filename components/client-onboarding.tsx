@@ -3,7 +3,7 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import {ArrowLeft,ArrowRight,Check,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Shield} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from "@/components/ui/dialog";
-import {OnboardingStage,OnboardingMotion,OnboardingProgress,OnboardingTransition} from "@/components/onboarding-stage";
+import {OnboardingStage,OnboardingProgress,OnboardingTransition} from "@/components/onboarding-stage";
 import {AppInstallOffer} from "@/components/app-install-offer";
 import {desktopBridge} from "@/lib/desktop-bridge";
 import {onboardingStorageKey,parseOnboardingState,PRODUCT_TOUR,type ClientOnboardingState,type TourTarget} from "@/lib/client-onboarding";
@@ -71,11 +71,11 @@ export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish}:{
  const item=PRODUCT_TOUR[index]||PRODUCT_TOUR[0],Icon=tourIcons[index]||MessageSquare;
  const [rect,setRect]=useState<{left:number;top:number;width:number;height:number}|null>(null);
  const [topAligned,setTopAligned]=useState(false);
- const [ready,setReady]=useState(false),show=useCallback(()=>setReady(true),[]);
+ const [thanks,setThanks]=useState(false);
  useEffect(()=>{
   let frame=0,observer:ResizeObserver|undefined;
   const measure=()=>{
-   frame=0;const elements=Array.from(document.querySelectorAll<HTMLElement>('[data-onboarding-target="'+item.id+'"]'));
+   frame=0;if(thanks){setRect(null);setTopAligned(false);return;}const elements=Array.from(document.querySelectorAll<HTMLElement>('[data-onboarding-target="'+item.id+'"]'));
    const element=elements.find(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0;});
    if(!element){setRect(null);setTopAligned(false);return;}
    const r=element.getBoundingClientRect();setTopAligned(r.top+r.height/2>innerHeight/2);setRect({left:Math.max(2,r.left-4),top:Math.max(2,r.top-4),width:Math.min(innerWidth-4,r.width+8),height:Math.min(innerHeight-4,r.height+8)});
@@ -87,14 +87,14 @@ export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish}:{
   const escape=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();event.stopPropagation();onPause();}};
   addEventListener("keydown",escape,true);
   return ()=>{cancelAnimationFrame(frame);observer?.disconnect();mutations.disconnect();removeEventListener("resize",schedule);removeEventListener("scroll",schedule,true);removeEventListener("keydown",escape,true);};
- },[item.id,onPause]);
- return <><div className="onboarding-tour-highlight" aria-hidden="true" style={rect?rect:{display:"none"}}/>
-  <section className="onboarding-tour" style={topAligned?{top:16,bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingMotion onReady={show}/><OnboardingTransition step={item.id} ready={ready}>
-   <p className="onboarding-eyebrow">Getting started · {index+1} of {PRODUCT_TOUR.length}</p><Icon className="mb-3 size-5 text-primary"/>
-   <h2 aria-live="polite" tabIndex={-1} data-onboarding-heading>{item.label}</h2><p>{item.description}</p>
+ },[item.id,onPause,thanks]);
+ return <><div className="onboarding-tour-highlight" aria-hidden="true" style={!thanks&&rect?rect:{display:"none"}}/>
+  <section className="onboarding-tour" style={topAligned?{top:16,bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingTransition step={thanks?"thanks":item.id}>
+   <p className="onboarding-eyebrow">{thanks?"Getting started":`Getting started · ${index+1} of ${PRODUCT_TOUR.length}`}</p>{thanks?<Check aria-hidden="true" className="mb-3 size-5 text-primary"/>:<Icon aria-hidden="true" className="mb-3 size-5 text-primary"/>}
+   <h2 aria-live="polite" tabIndex={-1} data-onboarding-heading>{thanks?"Thanks for using Metis!":item.label}</h2>{!thanks?<p>{item.description}</p>:null}
    <div className="mt-5 flex items-center justify-between gap-3">
-    <Button variant="ghost" onClick={()=>{if(index===0)onBack();else{onNavigate(PRODUCT_TOUR[index-1].id);onIndex(index-1);}}}><ArrowLeft className="size-4" aria-hidden="true"/>Back</Button>
-    <Button onClick={()=>{if(index===PRODUCT_TOUR.length-1)onFinish();else{onNavigate(PRODUCT_TOUR[index+1].id);onIndex(index+1);}}}>Continue<ArrowRight className="size-4" aria-hidden="true"/></Button>
+    <Button variant="ghost" onClick={()=>{if(thanks)setThanks(false);else if(index===0)onBack();else{onNavigate(PRODUCT_TOUR[index-1].id);onIndex(index-1);}}}><ArrowLeft className="size-4" aria-hidden="true"/>Back</Button>
+    <Button onClick={()=>{if(thanks)onFinish();else if(index===PRODUCT_TOUR.length-1)setThanks(true);else{onNavigate(PRODUCT_TOUR[index+1].id);onIndex(index+1);}}}>Continue<ArrowRight className="size-4" aria-hidden="true"/></Button>
    </div>
   </OnboardingTransition></section></>;
 }

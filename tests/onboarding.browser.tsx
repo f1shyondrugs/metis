@@ -115,11 +115,20 @@ async function run(){
  await click("Retry");await pause(100);check(!!document.querySelector(".onboarding-downloads a"),"download lookup can retry successfully");
  check(linearNavigation(),"app offer has only Back and Continue navigation");await click("Continue");
  for(let i=0;i<PRODUCT_TOUR.length;i++){check(linearNavigation(),"tour navigation stays linear at "+i);await click("Continue");}
+ check(document.querySelector(".onboarding-tour h2")?.textContent==="Thanks for using Metis!"&&read("alice")?.phase==="tour","tour ends with thanks before committing completion");
+ check(linearNavigation(),"thanks keeps only Back and Continue");
+ check(getComputedStyle(document.querySelector(".onboarding-tour-highlight")!).display==="none","thanks removes the feature highlight");
+ const navigationBeforeThanks=nav.length;await click("Back");
+ check(document.querySelector(".onboarding-tour h2")?.textContent==="Settings"&&nav.length===navigationBeforeThanks,"thanks Back returns to the last step without extra navigation");
+ await click("Continue");await click("Continue");
  check(read("alice")?.phase==="done","Continue completes only this client/account");
  await mount();check(!document.querySelector(".onboarding-stage"),"completed introduction stays closed after remount");
  await mount("bob");check(document.body.textContent?.includes("Welcome, bob"),"another account on same browser receives its own onboarding");
  await click("Continue");await click("Continue");
  check(!!document.querySelector('[aria-label="Metis product tour"]'),"product tour opens on the real workspace");
+ const smallTour=document.querySelector<HTMLElement>(".onboarding-tour")!;
+ check(!smallTour.querySelector(".onboarding-motion")&&getComputedStyle(smallTour).borderTopWidth==="0px"&&getComputedStyle(smallTour).outlineStyle==="none","small tour widget has no white border dots or glow");
+ check(getComputedStyle(smallTour.querySelector(".onboarding-transition")!).animationName==="onboarding-enter","borderless widget retains the actual step fade animation");
  check(nav.at(-1)==="chat","explicit Continue opens the ordinary chat view");
  const draft=document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')!,draftRect=draft.getBoundingClientRect(),tourRect=document.querySelector(".onboarding-tour")!.getBoundingClientRect();
  check(tourRect.bottom<draftRect.top&&document.elementFromPoint(draftRect.left+10,draftRect.top+10)===draft,"tour card leaves the real chat input reachable");
@@ -129,6 +138,7 @@ async function run(){
  check(!document.querySelector(".onboarding-tour"),"Escape pauses the tour without blocking the workspace");
  await mount("bob");check(document.querySelector(".onboarding-tour h2")?.textContent==="Projects","tour resumes at the saved step");
  for(let i=1;i<PRODUCT_TOUR.length;i++){check(document.querySelector(".onboarding-tour h2")?.textContent===PRODUCT_TOUR[i].label,"feature tour includes "+PRODUCT_TOUR[i].id);await click("Continue");}
+ await click("Continue");
  check(read("bob")?.phase==="done"&&document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')?.value==="Keep this draft","finishing tour preserves the existing workspace draft");
  dispatchEvent(new Event("metis:onboarding-open"));await pause();check(!!document.querySelector(".onboarding-stage"),"account menu event can restart a completed guide");
  native("one");await mount("alice");
@@ -138,7 +148,7 @@ async function run(){
  check(linearNavigation(),"native device step has only Back and Continue buttons");
  check(permissionCalls===0,"OS permission prompts are never automatic");
  document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();await pause();await click("Continue");check(pairingNavigationCalls===1&&!document.querySelector(".onboarding-stage")&&read("alice","desktop:one")?.phase==="device","opt-in Continue opens real pairing settings without completing or losing the device step");dispatchEvent(new Event("metis:onboarding-open"));await pause();
- await click("Continue");for(let i=0;i<PRODUCT_TOUR.length;i++)await click("Continue");check(read("alice","desktop:one")?.phase==="done","native completion is stored for this user/installation");
+ await click("Continue");for(let i=0;i<PRODUCT_TOUR.length;i++)await click("Continue");check(document.querySelector(".onboarding-tour h2")?.textContent==="Thanks for using Metis!","desktop webview receives the same thanks ending");await click("Continue");check(read("alice","desktop:one")?.phase==="done","native completion is stored for this user/installation");
  check(permissionCalls===0&&deviceCalls===0&&serverCalls===0,"Continue never prompts or changes system access");
  native("two");await mount("alice");check(!!document.querySelector(".onboarding-stage"),"another desktop gets an independent guide");
  await mount("bob");check(document.body.textContent?.includes("Welcome, bob"),"another user on this desktop gets their own guide");
@@ -194,7 +204,7 @@ async function run(){
  if(view==="install")await click("Continue");
  else if(view==="server"){sessionStorage.removeItem("metis-setup-step");root.render(<SetupWizard open hasUsers={false} onFinished={()=>{}}/>);await pause(200);}
  else if(view==="native"){native("visual");await mount("Demo");await click("Continue");}
- else if(view==="tour"){await click("Continue");await click("Continue");}
+ else if(view==="tour"||view==="thanks"){await click("Continue");await click("Continue");if(view==="thanks")for(let i=0;i<PRODUCT_TOUR.length;i++)await click("Continue");}
  check(noOverflow(),"layout has no horizontal page overflow at "+innerWidth);
  document.body.dataset.complete="true";report.textContent=failures?results.filter(x=>x.startsWith("FAIL")).join("\n"):"PASS "+results.length+" onboarding assertions · "+innerWidth+"px";
  await originalFetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,height:innerHeight,view,results,nativeId,permissionCalls,deviceCalls,serverCalls})});
