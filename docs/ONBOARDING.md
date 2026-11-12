@@ -48,6 +48,12 @@ Native fresh-profile setup uses a frameless, menu-free host with a draggable hea
 
 Native and web welcome, account setup, client guide and tour use one bottom navigation row: progress dots on the left and Continue at the far right, with Back immediately before it. Forms use their original submit handlers through associated footer buttons. Provider connection now lives solely in the ordinary UI, not in first-instance setup; its standalone dialog and existing settings controls remain available. The footer stays on one row on small viewports. Full-screen dots/glow and the thin white tour outline retain their existing motion behavior.
 
+## Reactive tour targets
+
+The six-step product tour marks the actual visible target with a white border and a gentle outward beacon. Hover or keyboard focus settles the beacon into a steady acknowledgment ring; the overlay never intercepts input or invokes the target itself. Reduced Motion uses the same static border, including when the preference changes during the tour. Resize, scroll, visibility and DOM replacement update the measured target, while hidden/inert/off-screen duplicates are ignored. Thanks, pause and unmount remove the cue.
+
+Before a provider exists, Chat targets the ordinary “First add your provider” button rather than an absent composer. The step explains this prerequisite; connecting still requires the user's normal explicit action. After a provider is available, the same step marks the real composer. No automatic connection, provider credentials, permissions or onboarding progress schema changes.
+
 ## Verification
 
 - `tests/client-onboarding.test.ts`: platform detection and per-account/client state parsing.

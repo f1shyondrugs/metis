@@ -7,6 +7,7 @@ import {applyAppearanceTheme,getSelectedTheme,createDefaultAppearanceState,APPEA
 import {ClientOnboarding} from "../components/client-onboarding";
 import {SetupWizard} from "../components/setup-wizard";
 import {ProviderSetupDialog} from "../components/provider-setup-dialog";
+import {ProviderSetupPrompt} from "../components/provider-setup-prompt";
 import {onboardingStorageKey,PRODUCT_TOUR,suggestedAppPlatform,type TourTarget} from "../lib/client-onboarding";
 const params=new URLSearchParams(location.search),view=params.get("view")||"install";
 const originalFetch=window.fetch.bind(window);
@@ -44,7 +45,7 @@ document.documentElement.classList.add("dark");
 const results:string[]=[];const check=(ok:unknown,label:string)=>{results.push((ok?"PASS ":"FAIL ")+label);if(!ok)failures++;report.textContent=results.join("\n");};
 function Harness({owner,hasProvider=true}:{owner:string;hasProvider?:boolean}){
  const [providerOpen,setProviderOpen]=useState(false);
- return <AppearanceProvider><main style={{padding:30}}><h1>Synthetic Metis workspace</h1><input data-onboarding-target="chat" aria-label="Existing draft" defaultValue="Keep this draft" style={{position:"fixed",bottom:24,left:30,width:Math.min(600,innerWidth-60),height:44}}/>
+ return <AppearanceProvider><main style={{padding:30}}><h1>Synthetic Metis workspace</h1><div style={{position:"fixed",bottom:24,left:30,width:Math.min(600,innerWidth-60)}}>{hasProvider?<input data-onboarding-target="chat" aria-label="Existing draft" defaultValue="Keep this draft" style={{width:"100%",height:44}}/>:<ProviderSetupPrompt onClick={()=>{providerCalls++;setProviderOpen(true);}}/>}</div>
  {PRODUCT_TOUR.map(item=><button key={item.id} data-onboarding-target={item.id==="chat"?undefined:item.id} style={{margin:8,padding:16}}>{item.action}</button>)}
  </main><ClientOnboarding userId={owner} username={owner} hasProvider={hasProvider} onPairDevice={()=>{pairingNavigationCalls++;}} onNavigate={target=>{nav.push(target);}} onConnectProvider={()=>{providerCalls++;setProviderOpen(true);}}/>
  <ProviderSetupDialog open={providerOpen} onOpenChange={setProviderOpen} onConnected={()=>setProviderOpen(false)} onSkip={()=>setProviderOpen(false)}/></AppearanceProvider>;
@@ -116,7 +117,7 @@ async function run(){
  check(document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic download error"),"download lookup failure is visible");
  await click("Retry");await pause(100);check(!!document.querySelector(".onboarding-downloads a"),"download lookup can retry successfully");
  check(linearNavigation(),"app offer has only Back and Continue navigation");await click("Continue");
- for(let i=0;i<PRODUCT_TOUR.length;i++){check(linearNavigation(),"tour navigation stays linear at "+i);await click("Continue");}
+ for(let i=0;i<PRODUCT_TOUR.length;i++){check(linearNavigation(),"tour navigation stays linear at "+i);check(document.querySelector<HTMLElement>(".onboarding-tour-highlight")?.dataset.target===PRODUCT_TOUR[i].id&&getComputedStyle(document.querySelector(".onboarding-tour-highlight")!).display!=="none","each feature receives its own visible target ring: "+PRODUCT_TOUR[i].id);await click("Continue");}
  check(document.querySelector(".onboarding-tour h2")?.textContent==="Thanks for using Metis!"&&read("alice")?.phase==="tour","tour ends with thanks before committing completion");
  check(linearNavigation(),"thanks keeps only Back and Continue");
  check(getComputedStyle(document.querySelector(".onboarding-tour-highlight")!).display==="none","thanks removes the feature highlight");
@@ -158,6 +159,32 @@ async function run(){
  check(document.body.textContent?.includes("Welcome, other-owner")&&!document.body.textContent?.includes("Welcome, late-owner"),"late native-context reply cannot switch another user's onboarding");
  localStorage.setItem(onboardingStorageKey("broken"),"{bad");await mount("broken");check(!!document.querySelector(".onboarding-stage"),"corrupt client progress recovers to welcome");
  await mount("provider-owner",false);check(providerCalls===0&&linearNavigation(),"missing provider does not add another welcome action");
+ await click("Continue");await click("Continue");
+ const providerTarget=document.querySelector<HTMLButtonElement>('[data-onboarding-target="chat"]')!;
+ const ring=()=>document.querySelector<HTMLElement>(".onboarding-tour-highlight")!;
+ check(!!providerTarget&&providerTarget.textContent?.includes("First add your provider")&&getComputedStyle(ring()).display!=="none","without a provider the actual connect prompt is visibly highlighted");
+ check(document.querySelector(".onboarding-tour")?.textContent?.includes("Add your provider here")&&providerCalls===0,"Chat copy explains the prerequisite without connecting automatically");
+ const targetBounds=providerTarget.getBoundingClientRect(),ringBounds=ring().getBoundingClientRect();
+ check(Math.abs(ringBounds.left-targetBounds.left+4)<1&&Math.abs(ringBounds.width-targetBounds.width-8)<1&&ringBounds.bottom<=innerHeight,"ring fits the actual provider button inside the viewport");
+ check(getComputedStyle(ring()).borderColor==="rgb(255, 255, 255)"&&getComputedStyle(ring(),"::after").animationName==="onboarding-target-beacon"&&ring().getAnimations({subtree:true}).some(a=>a.playState==="running"),"white target ring has a real gentle beacon animation");
+ providerTarget.dispatchEvent(new PointerEvent("pointerenter"));await pause();
+ check(ring().dataset.engaged==="true"&&getComputedStyle(ring(),"::after").animationName==="none","hover acknowledges the intended target and settles the pulse");
+ providerTarget.dispatchEvent(new PointerEvent("pointerleave"));providerTarget.focus();await pause();
+ check(ring().dataset.engaged==="true"&&document.activeElement===providerTarget,"keyboard focus also acknowledges the target without focus theft");
+ providerTarget.blur();await pause();check(ring().dataset.engaged==="false","leaving the target restores its attention cue");
+ await reduceMotion(true);check(ring().dataset.reducedMotion==="true"&&getComputedStyle(ring(),"::after").animationName==="none"&&getComputedStyle(ring()).borderWidth==="2px","live Reduce Motion keeps the static visible ring and removes animation");await reduceMotion(false);
+ const originalStyle=providerTarget.getAttribute("style");providerTarget.style.visibility="hidden";await pause();
+ check(getComputedStyle(ring()).display==="none","hidden targets cannot leave a stale floating ring");
+ providerTarget.setAttribute("style",originalStyle||"");await pause();
+ check(getComputedStyle(ring()).display!=="none","target visibility changes restore the ring without navigating");
+ const duplicate=providerTarget.cloneNode(true) as HTMLElement;duplicate.hidden=true;providerTarget.before(duplicate);await pause();
+ check(Math.abs(ring().getBoundingClientRect().top-providerTarget.getBoundingClientRect().top+4)<1,"hidden duplicate targets are ignored");duplicate.remove();
+ const oldLeft=ring().getBoundingClientRect().left;providerTarget.parentElement!.style.left="40px";await pause();
+ check(Math.abs(ring().getBoundingClientRect().left-oldLeft-10)<1,"layout movement repositions the ring reactively without a stale rectangle");
+ providerTarget.click();await pause();check(providerCalls===1&&!!document.querySelector('[role="dialog"]'),"ring is pointer-transparent and the real provider action still opens its ordinary dialog");
+ await mount("provider-owner",true);await pause();
+ check(!!document.querySelector('[aria-label="Existing draft"]')&&getComputedStyle(ring()).display!=="none"&&!document.querySelector(".onboarding-tour")?.textContent?.includes("Add your provider here"),"connecting state swaps the same Chat step to the real composer target");
+ root.render(<div/>);await pause();check(!document.querySelector(".onboarding-tour-highlight"),"unmount removes the ring and its listeners");
  const originalGet=Storage.prototype.getItem,originalSet=Storage.prototype.setItem;
  try{
   Storage.prototype.getItem=function(key){if(key.startsWith("metis:onboarding:"))throw new DOMException("Blocked","SecurityError");return originalGet.call(this,key);};
@@ -225,7 +252,7 @@ async function run(){
  if(view==="install")await click("Continue");
  else if(view==="server"){sessionStorage.removeItem("metis-setup-step");root.render(<SetupWizard open hasUsers={false} onFinished={()=>{}}/>);await pause(200);}
  else if(view==="native"){native("visual");await mount("Demo");await click("Continue");}
- else if(view==="tour"||view==="thanks"){await click("Continue");await click("Continue");if(view==="thanks")for(let i=0;i<PRODUCT_TOUR.length;i++)await click("Continue");}
+ else if(view==="tour"||view==="thanks"||view==="tour-empty"){if(view==="tour-empty")await mount("Demo-empty",false);await click("Continue");await click("Continue");if(view==="thanks")for(let i=0;i<PRODUCT_TOUR.length;i++)await click("Continue");}
  check(noOverflow(),"layout has no horizontal page overflow at "+innerWidth);
  document.body.dataset.complete="true";report.textContent=failures?results.filter(x=>x.startsWith("FAIL")).join("\n"):"PASS "+results.length+" onboarding assertions · "+innerWidth+"px";
  await originalFetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,height:innerHeight,view,results,nativeId,permissionCalls,deviceCalls,serverCalls})});

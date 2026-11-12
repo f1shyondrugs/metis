@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from "react";
 import {ArrowLeft,ArrowRight,Check,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Shield} from "lucide-react";
 import {Button} from "@/components/ui/button";
+import {OnboardingTarget} from "@/components/onboarding-target";
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from "@/components/ui/dialog";
 import {OnboardingStage,OnboardingProgress,OnboardingTransition} from "@/components/onboarding-stage";
 import {AppInstallOffer} from "@/components/app-install-offer";
@@ -41,7 +42,7 @@ export function ClientOnboarding({userId,username,onNavigate,hasProvider,onPairD
  },[scope,save]);
  const finish=()=>save({version:1,phase:"done",tourIndex:0});
  if(!scope||scope.userId!==userId||!state||state.phase==="done"||paused)return null;
- if(state.phase==="tour")return <ProductTour index={state.tourIndex} onNavigate={onNavigate} onPause={()=>setPaused(true)} onIndex={index=>save({...state,tourIndex:index})} onBack={()=>save({...state,phase:scope.native?"device":"app",tourIndex:0})} onFinish={finish}/>;
+ if(state.phase==="tour")return <ProductTour hasProvider={hasProvider} index={state.tourIndex} onNavigate={onNavigate} onPause={()=>setPaused(true)} onIndex={index=>save({...state,tourIndex:index})} onBack={()=>save({...state,phase:scope.native?"device":"app",tourIndex:0})} onFinish={finish}/>;
  const native=scope.native;
  const steps=native?[{id:"welcome",label:"Welcome"},{id:"device",label:"This device"}]:[{id:"welcome",label:"Welcome"},{id:"app",label:"Get the app"}];
  const index=state.phase==="welcome"?0:1;
@@ -62,31 +63,19 @@ export function ClientOnboarding({userId,username,onNavigate,hasProvider,onPairD
   </OnboardingStage>
  </DialogContent></Dialog>;
 }
-export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish}:{index:number;onIndex:(index:number)=>void;onNavigate:(target:TourTarget)=>void;onPause:()=>void;onBack:()=>void;onFinish:()=>void}){
+export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish,hasProvider=true}:{hasProvider?:boolean;index:number;onIndex:(index:number)=>void;onNavigate:(target:TourTarget)=>void;onPause:()=>void;onBack:()=>void;onFinish:()=>void}){
  const item=PRODUCT_TOUR[index]||PRODUCT_TOUR[0],Icon=tourIcons[index]||MessageSquare;
- const [rect,setRect]=useState<{left:number;top:number;width:number;height:number}|null>(null);
  const [topAligned,setTopAligned]=useState(false);
  const [thanks,setThanks]=useState(false);
  useEffect(()=>{
-  let frame=0,observer:ResizeObserver|undefined;
-  const measure=()=>{
-   frame=0;if(thanks){setRect(null);setTopAligned(false);return;}const elements=Array.from(document.querySelectorAll<HTMLElement>('[data-onboarding-target="'+item.id+'"]'));
-   const element=elements.find(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0;});
-   if(!element){setRect(null);setTopAligned(false);return;}
-   const r=element.getBoundingClientRect();setTopAligned(r.top+r.height/2>innerHeight/2);setRect({left:Math.max(2,r.left-4),top:Math.max(2,r.top-4),width:Math.min(innerWidth-4,r.width+8),height:Math.min(innerHeight-4,r.height+8)});
-  };
-  const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
-  const observe=()=>{observer?.disconnect();observer=new ResizeObserver(schedule);document.querySelectorAll('[data-onboarding-target="'+item.id+'"]').forEach(el=>observer!.observe(el));schedule();};
-  const mutations=new MutationObserver(observe);mutations.observe(document.body,{childList:true,subtree:true});
-  observe();addEventListener("resize",schedule);addEventListener("scroll",schedule,true);
   const escape=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();event.stopPropagation();onPause();}};
   addEventListener("keydown",escape,true);
-  return ()=>{cancelAnimationFrame(frame);observer?.disconnect();mutations.disconnect();removeEventListener("resize",schedule);removeEventListener("scroll",schedule,true);removeEventListener("keydown",escape,true);};
+  return ()=>removeEventListener("keydown",escape,true);
  },[item.id,onPause,thanks]);
- return <><div className="onboarding-tour-highlight" aria-hidden="true" style={!thanks&&rect?rect:{display:"none"}}/>
+ return <><OnboardingTarget target={item.id} enabled={!thanks} onPlacement={setTopAligned}/>
   <section className="onboarding-tour" style={topAligned?{top:16,bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingTransition step={thanks?"thanks":item.id}>
    <p className="onboarding-eyebrow">{thanks?"Getting started":`Getting started · ${index+1} of ${PRODUCT_TOUR.length}`}</p>{thanks?<Check aria-hidden="true" className="mb-3 size-5 text-primary"/>:<Icon aria-hidden="true" className="mb-3 size-5 text-primary"/>}
-   <h2 aria-live="polite" tabIndex={-1} data-onboarding-heading>{thanks?"Thanks for using Metis!":item.label}</h2>{!thanks?<p>{item.description}</p>:null}
+   <h2 aria-live="polite" tabIndex={-1} data-onboarding-heading>{thanks?"Thanks for using Metis!":item.label}</h2>{!thanks?<p>{item.id==="chat"&&!hasProvider?"Add your provider here to start chatting.":item.description}</p>:null}
    <footer className="onboarding-footer"><OnboardingProgress steps={[...PRODUCT_TOUR,{id:"thanks",label:"Thanks"}]} index={thanks?PRODUCT_TOUR.length:index}/><div className="onboarding-actions">
     <Button variant="ghost" onClick={()=>{if(thanks)setThanks(false);else if(index===0)onBack();else{onNavigate(PRODUCT_TOUR[index-1].id);onIndex(index-1);}}}><ArrowLeft className="size-4" aria-hidden="true"/>Back</Button>
     <Button onClick={()=>{if(thanks)onFinish();else if(index===PRODUCT_TOUR.length-1)setThanks(true);else{onNavigate(PRODUCT_TOUR[index+1].id);onIndex(index+1);}}}>Continue<ArrowRight className="size-4" aria-hidden="true"/></Button>

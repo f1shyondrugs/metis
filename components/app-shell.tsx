@@ -195,6 +195,7 @@ import { WorkspaceMemoryPanel } from "@/components/workspace-memory-panel";
 import type { ChatLogEntry, ChatLogCategory } from "@/lib/chat-logs";
 import { ApprovalPanel, type ApprovalDecisionValue, type PendingApprovalView } from "@/components/approval-panel";
 import { ProviderLogo } from "@/components/provider-logo";
+import { ProviderSetupPrompt } from "@/components/provider-setup-prompt";
 import { ProjectModelLock } from "@/components/project-model-select";
 import { projectDefaultModel, projectModelLockMessage } from "@/lib/project-model";
 import { createChatModelSettingsQueue, type ChatModelSettingsSelection } from "@/lib/chat-model-settings";
@@ -9125,19 +9126,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }
 
   const composer = providerSetupRequired ? (
-    <button
-      type="button"
-      className="flex w-full items-center justify-between gap-4 rounded-xl border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:bg-muted/35"
-      onClick={() => setProviderSetupOpen(true)}
-    >
-      <span className="min-w-0">
-        <span className="block text-sm font-medium">First add your provider</span>
-        <span className="mt-1 block text-xs text-muted-foreground">
-          Choose a provider and connect an API key or OAuth account to start chatting.
-        </span>
-      </span>
-      <KeyRound className="size-5 shrink-0 text-muted-foreground" />
-    </button>
+    <ProviderSetupPrompt onClick={() => setProviderSetupOpen(true)} />
   ) : (
     <div className="w-full space-y-2">
       {queuedList}
