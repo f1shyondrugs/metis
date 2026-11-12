@@ -14,6 +14,7 @@ import {
   deleteCustomTheme,
   getSelectedTheme,
   persistAppearanceState,
+  normalizeAppearanceState,
   readAppearanceState,
   readAppearanceStateForBootstrap,
   selectAppearanceTheme,
@@ -69,11 +70,23 @@ test("empty and disabled browser storage fall back to Midnight without writes", 
   assert.deepEqual(readAppearanceState({ getItem() { throw new Error("Storage disabled"); } }), createDefaultAppearanceState());
 });
 
+test("retired Metis browser and account selections preserve custom themes without writes", () => {
+  const customThemes = [{id:"custom-kept", theme:theme("Keep my colors")}];
+  const input = {version:1 as const, selected:"metis", customThemes};
+  const storage = stored(customThemes, "metis");
+  assert.deepEqual(readAppearanceState(storage), {...input,selected:"midnight"});
+  assert.deepEqual(normalizeAppearanceState(input), {...input,selected:"midnight"});
+  assert.deepEqual(storage.writes, []);
+  assert.equal(input.selected,"metis");
+  assert.deepEqual(normalizeAppearanceState({...input,selected:"custom-kept"}),{...input,selected:"custom-kept"});
+  assert.throws(()=>normalizeAppearanceState({...input,selected:"unknown"}),/does not exist/);
+});
+
 test("legacy Midnight and Graphite choices migrate on the next successful save", () => {
   for (const id of ["metis", "midnight", "graphite"]) {
     const storage = memoryStorage({ [LEGACY_APPEARANCE_STORAGE_KEY]: id });
     const state = readAppearanceState(storage);
-    assert.equal(state.selected, id);
+    assert.equal(state.selected, id === "metis" ? "midnight" : id);
     assert.deepEqual(storage.writes, []);
     persistAppearanceState(storage, state);
     assert.deepEqual(storage.writes, [APPEARANCE_STORAGE_KEY]);
@@ -108,7 +121,7 @@ test("corrupt canonical records recover a legacy choice; canonical valid records
   }
   const storage = stored([], "unknown");
   storage.values.set(LEGACY_APPEARANCE_STORAGE_KEY, "graphite");
-  assert.equal(readAppearanceState(storage).selected, "metis");
+  assert.equal(readAppearanceState(storage).selected, "midnight");
 });
 
 test("recovery retains valid themes while rejecting bad entries, duplicate IDs, and pollution", () => {
@@ -140,16 +153,16 @@ test("missing or rejected selected custom themes fall back without deleting surv
     { id: "custom-valid", theme: theme() },
     { id: "custom-broken", theme: {} },
   ], "custom-broken"));
-  assert.equal(restored.selected, "metis");
+  assert.equal(restored.selected, "midnight");
   assert.equal(restored.customThemes.length, 1);
-  assert.equal(getSelectedTheme({ ...restored, selected: "missing" }).name, "Metis");
+  assert.equal(getSelectedTheme({ ...restored, selected: "missing" }).name, "Midnight");
 });
 
 test("bounded recovery and save reject oversized files, individual themes, and theme counts", () => {
   const entries = Array.from({ length: MAX_CUSTOM_THEMES + 3 }, (_, i) => ({ id: "custom-" + i, theme: theme() }));
   const restored = readAppearanceState(stored(entries, "custom-22"));
   assert.equal(restored.customThemes.length, MAX_CUSTOM_THEMES);
-  assert.equal(restored.selected, "metis");
+  assert.equal(restored.selected, "midnight");
   assert.throws(() => createCustomTheme(restored, theme()), /up to 20/);
   const oversized = memoryStorage({
     [APPEARANCE_STORAGE_KEY]: " ".repeat(MAX_APPEARANCE_STATE_BYTES + 1),
@@ -157,7 +170,7 @@ test("bounded recovery and save reject oversized files, individual themes, and t
   });
   assert.equal(readAppearanceState(oversized).selected, "graphite");
   const unicode = stored([], "graphite", { padding: "é".repeat(MAX_APPEARANCE_STATE_BYTES / 2) });
-  assert.equal(readAppearanceState(unicode).selected, "metis");
+  assert.equal(readAppearanceState(unicode).selected, "midnight");
   const variables = Object.fromEntries(Array.from({ length: 80 }, (_, i) => ["--large-" + i, "x".repeat(3500)]));
   assert.throws(() => createCustomTheme(createDefaultAppearanceState(), theme("Too large", variables)), /256 KiB/);
 });
@@ -216,7 +229,7 @@ test("selection and deletion are immutable and idempotent, with a safe active de
   const removedInactive = deleteCustomTheme(second, "custom-one");
   assert.equal(removedInactive.selected, "custom-two");
   const removedActive = deleteCustomTheme(second, "custom-two");
-  assert.equal(removedActive.selected, "metis");
+  assert.equal(removedActive.selected, "midnight");
   assert.deepEqual(removedActive.customThemes.map((item) => item.id), ["custom-one"]);
   assert.equal(second.customThemes.length, 2);
   const generated = createCustomTheme(createDefaultAppearanceState(), theme());

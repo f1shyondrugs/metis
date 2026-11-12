@@ -100,6 +100,14 @@ test("pre-paint script restores every preset, including dark and light roots", (
   );
 });
 
+test("removed Metis selection resolves to Midnight before paint for browser and account state", () => {
+  const state = {version:1,selected:"metis",customThemes:[{id:"custom-kept",theme:custom({"--background":"#123456"})}]};
+  const saved = storage({[APPEARANCE_STORAGE_KEY]:JSON.stringify(state)});
+  assertTheme(boot(saved),getThemePreset("midnight")!,"midnight");
+  assertTheme(boot(storage(),createAppearanceBootstrapScript({state,allowLocalStorage:false})),getThemePreset("midnight")!,"midnight");
+  assert.equal(JSON.parse(saved.getItem(APPEARANCE_STORAGE_KEY)!).selected,"metis");
+});
+
 test("import, export, persistence and bootstrap retain full custom variables", () => {
   const imported = parseThemeJson(serializeTheme({
     ...custom({

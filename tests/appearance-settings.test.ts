@@ -104,6 +104,21 @@ test("GET and PATCH require a live authenticated session and never cache respons
   }
 });
 
+test("stored Metis account selection migrates on read without losing custom themes or revision", async () => {
+  const [{getDatabase},store,api] = await modules;
+  const owner = await account(),state = {...custom(),selected:"metis"};
+  const raw = JSON.stringify({version:1,revision:4,state});
+  getDatabase().prepare("INSERT INTO settings (key,owner_id,data) VALUES (?,?,?)").run("appearance:"+owner.id,owner.id,raw);
+  const response = await api.GET(request(owner));
+  assert.equal(response.status,200);
+  const migrated = {...state,selected:"midnight"};
+  assert.deepEqual(await response.json(),{ownerId:owner.id,state:migrated,revision:4});
+  assert.equal((getDatabase().prepare("SELECT data FROM settings WHERE key=?").get("appearance:"+owner.id) as {data:string}).data,raw);
+  const saved = await api.PATCH(change(owner,migrated,4));
+  assert.equal(saved.status,200);
+  assert.deepEqual(store.getAppearanceSettings(owner.id),{ownerId:owner.id,state:migrated,revision:5});
+});
+
 test("absent settings permit one migration; canonical state persists independently per account", async () => {
   const [, store, api] = await modules;
   const owner = await account(), other = await account();

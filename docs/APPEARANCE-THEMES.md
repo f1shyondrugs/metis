@@ -1,6 +1,6 @@
 # Appearance themes
 
-Metis includes Midnight, Graphite, Nord, Forest, Sand, and Paper. Custom themes use a portable JSON file. Start with **Export JSON** in Appearance settings to get the current design variables, edit the file, then import it or paste its contents into the JSON editor.
+Metis includes Midnight (default), Graphite, Nord, Forest, Sand, and Paper. The retired pure-black-and-white Metis preset is no longer offered; existing selections resolve to Midnight without deleting custom themes or overwriting other saved choices. Custom themes use a portable JSON file. Start with **Export JSON** in Appearance settings to get the current design variables, edit the file, then import it or paste its contents into the JSON editor.
 
 Theme selection and custom themes are saved to the signed-in account, shared across devices, and loaded before the first paint. The browser refreshes them on focus and every 30 seconds while visible. Changes become active after the server confirms the save; failed saves preserve the previous theme and the open editor draft. Revision checks reject stale changes from another tab/device and requests made after switching accounts.
 

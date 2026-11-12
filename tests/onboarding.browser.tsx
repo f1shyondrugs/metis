@@ -8,6 +8,7 @@ import {ClientOnboarding} from "../components/client-onboarding";
 import {SetupWizard} from "../components/setup-wizard";
 import {ProviderSetupDialog} from "../components/provider-setup-dialog";
 import {ProviderSetupPrompt} from "../components/provider-setup-prompt";
+import {getThemePreset} from "../lib/appearance-theme";
 import {onboardingStorageKey,PRODUCT_TOUR,suggestedAppPlatform,type TourTarget} from "../lib/client-onboarding";
 const params=new URLSearchParams(location.search),view=params.get("view")||"install";
 const originalFetch=window.fetch.bind(window);
@@ -67,7 +68,7 @@ async function fill(label:string,value:string){
 async function run(){
  for(const key of Object.keys(localStorage))if(key.startsWith("metis:onboarding:"))localStorage.removeItem(key);
  localStorage.removeItem(APPEARANCE_STORAGE_KEY);browser();await mount();
- check(getComputedStyle(document.documentElement).getPropertyValue("--background").trim()==="#000000","fresh theme is pure black");
+ check(document.documentElement.dataset.surface==="midnight"&&getComputedStyle(document.documentElement).getPropertyValue("--background").trim()===getThemePreset("midnight")!.variables["--background"],"fresh theme is Midnight");
  const intro=document.querySelector<HTMLElement>(".onboarding-motion")!,introSvg=intro.querySelector("svg")!;
  check(intro.dataset.onboardingReady==="true"&&intro.dataset.onboardingEntrance==="running"&&Number(getComputedStyle(introSvg).opacity)<1,"loaded page starts a real coordinated edge fade instead of popping in");
  root.render(<AppearanceProvider><AppearanceSettings/></AppearanceProvider>);await pause(180);
@@ -84,8 +85,9 @@ async function run(){
  const savedCustom=document.documentElement.dataset.surface;await mount();
  check(document.documentElement.dataset.surface===savedCustom,"custom theme survives remount without being reset");
  root.render(<AppearanceProvider><AppearanceSettings/></AppearanceProvider>);await pause(180);
- const metis=document.querySelector<HTMLInputElement>('input[name="color-theme"][value="metis"]')!;metis.click();await pause();await mount();
- check(document.documentElement.dataset.surface==="metis","appearance picker restores black and white");
+ check(!document.querySelector('input[name="color-theme"][value="metis"]')&&document.querySelectorAll('input[name="color-theme"]').length===7,"retired Metis preset is absent while all six presets and custom theme remain");
+ const midnight=document.querySelector<HTMLInputElement>('input[name="color-theme"][value="midnight"]')!;midnight.click();await pause();await mount();
+ check(document.documentElement.dataset.surface==="midnight","appearance picker restores Midnight");
  check(linearNavigation(),"welcome has one Continue action and no appearance or dismissal controls");
  check(document.body.textContent?.includes("Welcome, alice"),"fresh browser opens account-specific introduction");
  const wave=document.querySelector(".onboarding-motion mask path")!,before=wave.getAttribute("d");await pause(160);
@@ -130,7 +132,7 @@ async function run(){
  await click("Continue");await click("Continue");
  check(!!document.querySelector('[aria-label="Metis product tour"]'),"product tour opens on the real workspace");
  const smallTour=document.querySelector<HTMLElement>(".onboarding-tour")!;
- check(!smallTour.querySelector(".onboarding-motion")&&getComputedStyle(smallTour).borderTopWidth==="1px"&&getComputedStyle(smallTour).borderTopStyle==="solid"&&getComputedStyle(smallTour).borderTopColor==="rgb(255, 255, 255)"&&getComputedStyle(smallTour).outlineStyle==="none","small tour widget has a thin solid white border without dots or glow");
+ check(!smallTour.querySelector(".onboarding-motion")&&getComputedStyle(smallTour).borderTopWidth==="1px"&&getComputedStyle(smallTour).borderTopStyle==="solid"&&getComputedStyle(smallTour).borderTopColor===getComputedStyle(smallTour).color&&getComputedStyle(smallTour).outlineStyle==="none","small tour widget has a thin solid white border without dots or glow");
  check(getComputedStyle(smallTour.querySelector(".onboarding-transition")!).animationName==="onboarding-enter","white-border widget retains the actual step fade animation");
  check(nav.at(-1)==="chat","explicit Continue opens the ordinary chat view");
  const draft=document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')!,draftRect=draft.getBoundingClientRect(),tourRect=document.querySelector(".onboarding-tour")!.getBoundingClientRect();
@@ -249,7 +251,8 @@ async function run(){
  applyAppearanceTheme(document.documentElement,getSelectedTheme(createDefaultAppearanceState()),"metis");
  const noOverflow=()=>document.documentElement.scrollWidth<=innerWidth+1;
  browser();await mount("Demo");
- if(view==="install")await click("Continue");
+ if(view==="appearance"){root.render(<AppearanceProvider><AppearanceSettings/></AppearanceProvider>);await pause(200);}
+ else if(view==="install")await click("Continue");
  else if(view==="server"){sessionStorage.removeItem("metis-setup-step");root.render(<SetupWizard open hasUsers={false} onFinished={()=>{}}/>);await pause(200);}
  else if(view==="native"){native("visual");await mount("Demo");await click("Continue");}
  else if(view==="tour"||view==="thanks"||view==="tour-empty"){if(view==="tour-empty")await mount("Demo-empty",false);await click("Continue");await click("Continue");if(view==="thanks")for(let i=0;i<PRODUCT_TOUR.length;i++)await click("Continue");}

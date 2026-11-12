@@ -24,7 +24,7 @@ Full device controls remain in the existing DesktopClientSettings and local pair
 
 ## Appearance and concise presentation
 
-New accounts and empty profiles default to the Metis preset: pure black surfaces, white text/accent, neutral borders and legible secondary text. Midnight, Graphite, other presets and custom themes retain their IDs and definitions; existing persisted choices are never rewritten. Legacy explicit Midnight is preserved independently of the new default, including pre-paint bootstrap.
+New accounts and empty profiles default to Midnight with its existing neutral dark surfaces. The pure-black-and-white Metis preset has been removed. Saved selections of that retired preset resolve to Midnight on read, including account records and pre-paint bootstrap, without discarding custom themes or changing account revisions. Every other explicit preset/custom selection is preserved.
 
 AppearanceSettings remains in normal Settings; the welcome screen contains no separate Appearance, provider, skip or dismissal action. Preset selection, custom JSON editing/import/export and account persistence use the canonical appearance provider, not separate onboarding state. The native offline domain launcher starts black/white; after connecting, the web view uses the account theme. Native launcher colors are not a separate editable theme store. Core onboarding copy is one short sentence per purpose, with decorative icons and accessible labels on compact controls. Detailed operator-token instructions remain available on demand. Device onboarding presents only the optional access choice; ordinary settings retain all device details. The native footer contains progress dots only, with no explanatory text or visible step-label row.
 
