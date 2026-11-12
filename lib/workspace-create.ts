@@ -9,6 +9,14 @@ import type { WorkspaceItem } from "@/lib/store";
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 const result = (workspace: WorkspaceItem) => json({ workspace, workspaceLink: `workspace://${workspace.type}/${workspace.id}` });
 
+export function availableWorkspaceName(items:readonly WorkspaceItem[],requestedName:string) {
+  const names=new Set(items.map(item=>item.name.trim().toLowerCase()));
+  const base=requestedName.slice(0,200);
+  let name=base,suffix=2;
+  while(names.has(name.toLowerCase())){const tail=" ("+(suffix++)+")";name=base.slice(0,200-tail.length)+tail;}
+  return name;
+}
+
 export async function createChatWorkspace(input: unknown, userId?: string) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return json({ error: "Invalid request" }, 400);
   const body = input as Record<string, unknown>;
@@ -71,10 +79,7 @@ export async function createChatWorkspace(input: unknown, userId?: string) {
   const existing = chat.workspaces?.find(item => item.idempotencyKey === key);
   if (existing) return result(existing);
   if ((chat.workspaces?.length || 0) >= 20) return json({ error: "This chat already has 20 workspaces. Delete one before creating another." }, 409);
-  const names = new Set((chat.workspaces || []).map(item => item.name.trim().toLowerCase()));
-  const base = requestedName.slice(0, 190);
-  let name = base, suffix = 2;
-  while (names.has(name.toLowerCase())) name = base + " (" + suffix++ + ")";
+  const name=availableWorkspaceName(chat.workspaces||[],requestedName);
   const now = new Date().toISOString();
   const workspace: WorkspaceItem = { id: randomUUID(), type, name, content, version: 1, scope: "chat", createdAt: now, updatedAt: now, idempotencyKey: key };
   const saved = updateChat(chatId, { workspaces: [...(chat.workspaces || []), workspace] }, userId);

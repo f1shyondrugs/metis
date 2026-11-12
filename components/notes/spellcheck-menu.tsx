@@ -9,11 +9,13 @@ export function useNotesSpellcheck(ownerId?: string | null) {
   useEffect(() => {
     const read = () => { try {setState({key,value:notesSpellcheckChoice(localStorage.getItem(key))});} catch {setState({key,value:"auto"});} };
     if(!key)return; read();
-    const listener = (event:StorageEvent) => {if(event.key===key)read();};
-    window.addEventListener("storage",listener);return()=>window.removeEventListener("storage",listener);
+    const listener = (event:StorageEvent) => {if(event.key===key||event.key===null)read();};
+    const changed=(event:Event)=>{const detail=(event as CustomEvent<{key:string;value:unknown}>).detail;if(detail?.key===key)setState({key,value:notesSpellcheckChoice(detail.value)});};
+    window.addEventListener("storage",listener);window.addEventListener("metis:spellcheck-changed",changed);
+    return()=>{window.removeEventListener("storage",listener);window.removeEventListener("metis:spellcheck-changed",changed);};
   },[key]);
   const value = state.key === key ? state.value : "auto";
-  return [value,(next:NotesSpellcheckChoice)=>{setState({key,value:next});try{if(key)localStorage.setItem(key,next);}catch{/* Session selection remains usable. */}}] as const;
+  return [value,(next:NotesSpellcheckChoice)=>{setState({key,value:next});try{if(key)localStorage.setItem(key,next);}catch{/* Session selection remains usable. */}if(key)window.dispatchEvent(new CustomEvent("metis:spellcheck-changed",{detail:{key,value:next}}));}] as const;
 }
 export function NotesSpellcheckMenu({value,onChange}:{value:NotesSpellcheckChoice;onChange:(value:NotesSpellcheckChoice)=>void}) {
   return <DropdownMenuSub><DropdownMenuSubTrigger className="min-h-11 sm:min-h-8"><SpellCheck className="size-4"/>Spellcheck</DropdownMenuSubTrigger>

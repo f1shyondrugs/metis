@@ -15,6 +15,9 @@ import { consumeModeMention, showDeepResearchAction } from "@/lib/composer-mode-
 import { DEEP_RESEARCH_MODE_ID } from "@/lib/deep-research";
 import { WorkspaceDesktopsPanel } from "@/components/workspace-desktops-panel";
 import { WorkspaceExportMenu } from "@/components/workspace-export-menu";
+import {DocumentConvertItems,DocumentConversionDialog,openConvertedDocument} from "@/components/document-conversion";
+import {NotesSpellcheckMenu,useNotesSpellcheck} from "@/components/notes/spellcheck-menu";
+import type {ConversionSource,DocumentKind} from "@/lib/document-conversion-types";
 import { workspaceContentMaxLength } from "@/lib/workspace-limits";
 import { createClientId } from "@/lib/client-id";
 import { modelAccountGroups, modelAccountKey, modelAccountLabel, modelMatchesAccount, type ModelAccountGroup } from "@/lib/model-account-groups";
@@ -295,6 +298,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuSeparator,
   DropdownMenuLabel,
   DropdownMenuItem,
   DropdownMenuSub,
@@ -2218,6 +2222,12 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const chatListInitializedRef = useRef(false);
   const workspaceSaveTimersRef = useRef<Map<string, number>>(new Map());
   const workspaceDraftChangesRef = useRef<Map<string, WorkspaceDraftPatch>>(new Map());
+  const [workspaceSpellcheck,setWorkspaceSpellcheck]=useNotesSpellcheck(status?.userId);
+  const [documentConversion,setDocumentConversion]=useState<{source:ConversionSource;target:DocumentKind}|null>(null);
+  function chooseWorkspaceConversion(workspace:WorkspaceItem,target:DocumentKind){
+    if(!activeChatId)return;
+    setDocumentConversion({source:{kind:workspace.type,id:workspace.id,chatId:activeChatId,version:workspace.version||1,title:workspace.name,content:workspace.content},target});
+  }
   const workspaceListSaveTimerRef = useRef<number | null>(null);
   const stateRef = useRef({
     chatId: activeChatId,
@@ -10158,6 +10168,20 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       onTouchEnd={handleTouchEnd}
     >
       <DesktopFileDrop />
+      {documentConversion?<DocumentConversionDialog key={documentConversion.source.id+":"+documentConversion.target} {...documentConversion}
+        onClose={()=>setDocumentConversion(null)}
+        prepare={async()=>{
+          const source=documentConversion.source;
+          if(activeChatIdRef.current!==source.chatId)return source;
+          const latest=stateRef.current.workspaces.find(w=>w.id===source.id);
+          if(!latest)throw new Error("Source workspace is no longer available.");
+          return {...source,version:latest.version||1,title:latest.name,content:latest.content};
+        }}
+        onConverted={result=>{
+          chatCacheRef.current.delete(documentConversion.source.chatId!);
+          if(activeChatIdRef.current===documentConversion.source.chatId)openConvertedDocument(result);
+          toast.success("Converted copy created");
+        }}/> : null}
       {status?.userId ? <ClientOnboarding key={status.userId} userId={status.userId} username={status.username || username}
         hasProvider={Boolean(status.providers?.some(provider=>provider.enabled&&provider.hasSecret))}
         onConnectProvider={()=>setProviderSetupOpen(true)}
@@ -11801,6 +11825,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                         const name = event.target.value.slice(0, 200);
                         updateWorkspaceDraft(activeWorkspace.id, { name });
                       }}
+                      spellCheck={workspaceSpellcheck!=="off"} lang={workspaceSpellcheck!=="auto"&&workspaceSpellcheck!=="off"?workspaceSpellcheck:undefined}
                       aria-label="Plan title"
                       placeholder="Plan title"
                       className="h-9 min-w-0 flex-1 border-transparent bg-transparent px-1 text-base font-semibold tracking-tight shadow-none hover:bg-muted/25 focus-visible:border-border/40 focus-visible:bg-muted/20"
@@ -11853,6 +11878,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <NotesSpellcheckMenu value={workspaceSpellcheck} onChange={setWorkspaceSpellcheck}/>
+                        <DocumentConvertItems kind={activeWorkspace.type} onChoose={target=>chooseWorkspaceConversion(activeWorkspace,target)}/>
+                        <DropdownMenuSeparator/>
                         <DropdownMenuItem onClick={() => focusWorkspaceTitle(activeWorkspace)}>Rename</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => duplicateWorkspace(activeWorkspace)}>Duplicate</DropdownMenuItem>
                         <DropdownMenuItem variant="destructive" onClick={() => deleteWorkspace(activeWorkspace)}>Delete</DropdownMenuItem>
@@ -11861,6 +11889,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   </div>
                   <EditableMarkdown
                     key={activeWorkspace.id}
+                    spellcheckChoice={workspaceSpellcheck}
                     workspace={{ id: activeWorkspace.id, chatId: activeChatId!, type: activeWorkspace.type, idempotencyKey: activeWorkspace.idempotencyKey }}
                     value={activeWorkspace.content}
                     interactiveTasks
@@ -11882,6 +11911,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                         const name = event.target.value.slice(0, 200);
                         updateWorkspaceDraft(activeWorkspace.id, { name });
                       }}
+                      spellCheck={workspaceSpellcheck!=="off"} lang={workspaceSpellcheck!=="auto"&&workspaceSpellcheck!=="off"?workspaceSpellcheck:undefined}
                       aria-label="Canvas title"
                       placeholder="Canvas title"
                       className="h-9 min-w-0 flex-1 border-transparent bg-transparent px-1 text-base font-semibold tracking-tight shadow-none hover:bg-muted/25 focus-visible:border-border/40 focus-visible:bg-muted/20"
@@ -11934,6 +11964,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <NotesSpellcheckMenu value={workspaceSpellcheck} onChange={setWorkspaceSpellcheck}/>
+                        <DocumentConvertItems kind={activeWorkspace.type} onChoose={target=>chooseWorkspaceConversion(activeWorkspace,target)}/>
+                        <DropdownMenuSeparator/>
                         <DropdownMenuItem onClick={() => focusWorkspaceTitle(activeWorkspace)}>Rename</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => duplicateWorkspace(activeWorkspace)}>Duplicate</DropdownMenuItem>
                         <DropdownMenuItem variant="destructive" onClick={() => deleteWorkspace(activeWorkspace)}>Delete</DropdownMenuItem>
@@ -11942,6 +11975,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   </div>
                   <EditableMarkdown
                     key={activeWorkspace.id}
+                    spellcheckChoice={workspaceSpellcheck}
                     workspace={{ id: activeWorkspace.id, chatId: activeChatId!, type: activeWorkspace.type, idempotencyKey: activeWorkspace.idempotencyKey }}
                     value={activeWorkspace.content}
                     interactiveTasks

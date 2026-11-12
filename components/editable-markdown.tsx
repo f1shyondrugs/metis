@@ -5,6 +5,7 @@ import type { PointerEventHandler } from "react";
 import { cn } from "@/lib/utils";
 import type { NotesBlockEditorProps } from "@/components/notes/block-editor";
 import type { WorkspaceFileLocation } from "@/lib/workspace-file-link";
+import type { NotesSpellcheckChoice } from "@/lib/notes-spellcheck";
 
 // Every Markdown editing surface shares the actual Shared Notes implementation.
 // Keep this boundary lazy so read-only chat and workspace previews stay lightweight.
@@ -14,6 +15,7 @@ const SharedMarkdownEditor = dynamic<NotesBlockEditorProps>(
 );
 
 export type EditableMarkdownProps = {
+  spellcheckChoice?: NotesSpellcheckChoice;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;

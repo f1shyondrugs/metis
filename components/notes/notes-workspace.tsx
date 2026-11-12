@@ -17,6 +17,8 @@ import { ProjectIconGlyph } from "@/components/project-avatar";
 import { projectLogoSrc } from "@/lib/project-constants";
 import type { Project } from "@/lib/store";
 import { NotesSpellcheckMenu, useNotesSpellcheck } from "./spellcheck-menu";
+import {DocumentConvertItems,DocumentConversionDialog,openConvertedDocument} from "@/components/document-conversion";
+import type {ConversionSource,DocumentKind} from "@/lib/document-conversion-types";
 import { findNotesSection, scrollNotesSection } from "@/lib/notes-section-navigation";
 import { NoteDocument, type NoteDocumentHandle } from "./note-document";
 import { NoteBannerUpload, NoteIconPicker } from "./note-appearance-controls";
@@ -68,6 +70,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
   const [dropTarget, setDropTarget] = useState<{ id: string; position: "before" | "inside" | "after" } | null>(null);
   const doc = useRef<NoteDocumentHandle>(null);
   const [spellcheckChoice,setSpellcheckChoice] = useNotesSpellcheck(ownerId);
+  const [conversion,setConversion]=useState<{source:ConversionSource;target:DocumentKind}|null>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const loadSerial = useRef(0);
@@ -478,11 +481,19 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
         {selected && !selected.archived && <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs" aria-label="Share note tree" onClick={()=>{void flush().then(ok=>{if(ok)setShareNote(selected);});}}><Share2 className="size-3.5"/><span className="hidden sm:inline">Share</span></Button>}
         {selected && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="File options"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="min-w-56">
           <NotesSpellcheckMenu value={spellcheckChoice} onChange={setSpellcheckChoice}/>
+          {!selected.archived&&!selected.issueId&&!selected.asset&&(selected.kind==="note"||!selected.kind)?<DocumentConvertItems kind="note" onChoose={target=>setConversion({source:{kind:"note",id:selected.id,version:selected.version,title:selected.title,content:selected.content},target})}/>:null}
           <DropdownMenuItem onClick={() => { setIcon(selected.icon || ""); setCover(selected.cover || ""); setFullWidth(Boolean(selected.fullWidth)); setAppearance(true); }}><Settings2 className="size-4" />Page appearance…</DropdownMenuItem>
           <DropdownMenuItem onClick={() => setPinNote(selected)}><Pin className="size-4" />Pin in chats…</DropdownMenuItem>
           <DropdownMenuItem onClick={() => { void navigator.clipboard.writeText(window.location.origin + "/?c=notes#note-" + selected.id).catch(() => setError("Could not copy link.")); }}><Copy className="size-4" />Copy file link</DropdownMenuItem>
           <DropdownMenuItem asChild><a href={"/api/notes/" + selected.id + "/export"} download><Download className="size-4" />Download Markdown</a></DropdownMenuItem>
         </DropdownMenuContent></DropdownMenu>}
+        {conversion?<DocumentConversionDialog key={conversion.source.id+":"+conversion.target} {...conversion} onClose={()=>setConversion(null)}
+          prepare={async()=>{
+            if(selectedNoteRef.current===conversion.source.id&&!(await flush()))throw new Error("Save this note successfully before converting.");
+            const {note}=await json<{note:TreeNote}>("/api/notes/"+encodeURIComponent(conversion.source.id));
+            return {kind:"note",id:note.id,version:note.version,title:note.title,content:note.content};
+          }}
+          onConverted={result=>{if(selectedNoteRef.current===conversion.source.id)openConvertedDocument(result);}}/>:null}
       </header>
       <NotebookPresenceBar peers={presence.peers} self={presence.self} connected={presence.connected} status={editorStatus?.noteId===selectedId?editorStatus.label:undefined} notice={presence.notice} following={presence.following} onFollow={presence.follow} onStop={stopFollowing} onReconnect={presence.reconnect}/>
       {error && <div role="alert" className="flex shrink-0 items-center gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"><span className="min-w-0 flex-1">{error}</span><Button variant="outline" size="sm" onClick={() => void load(projectId)}>Retry</Button><Button variant="ghost" size="icon" className="size-7" aria-label="Dismiss error" onClick={() => setError("")}><X className="size-3.5" /></Button></div>}
