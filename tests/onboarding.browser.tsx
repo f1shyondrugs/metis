@@ -37,8 +37,8 @@ document.documentElement.classList.add("dark");
 const results:string[]=[];const check=(ok:unknown,label:string)=>{results.push((ok?"PASS ":"FAIL ")+label);if(!ok)failures++;report.textContent=results.join("\n");};
 function Harness({owner,hasProvider=true}:{owner:string;hasProvider?:boolean}){
  const [providerOpen,setProviderOpen]=useState(false);
- return <><main style={{padding:30}}><h1>Synthetic Metis workspace</h1><input aria-label="Existing draft" defaultValue="Keep this draft"/>
- {PRODUCT_TOUR.map(item=><button key={item.id} data-onboarding-target={item.id} style={{margin:8,padding:16}}>{item.action}</button>)}
+ return <><main style={{padding:30}}><h1>Synthetic Metis workspace</h1><input data-onboarding-target="chat" aria-label="Existing draft" defaultValue="Keep this draft" style={{position:"fixed",bottom:24,left:30,width:Math.min(600,innerWidth-60),height:44}}/>
+ {PRODUCT_TOUR.map(item=><button key={item.id} data-onboarding-target={item.id==="chat"?undefined:item.id} style={{margin:8,padding:16}}>{item.action}</button>)}
  </main><ClientOnboarding userId={owner} username={owner} hasProvider={hasProvider} onPairDevice={()=>{pairingNavigationCalls++;}} onNavigate={target=>{nav.push(target);}} onConnectProvider={()=>{providerCalls++;setProviderOpen(true);}}/>
  <ProviderSetupDialog open={providerOpen} onOpenChange={setProviderOpen} onConnected={()=>setProviderOpen(false)} onSkip={()=>setProviderOpen(false)}/></>;
 }
@@ -77,6 +77,8 @@ async function run(){
  await click("Continue");await click("Show me around");
  check(!!document.querySelector('[aria-label="Metis product tour"]'),"product tour opens on the real workspace");
  check(nav.length===0,"tour steps never navigate or create content automatically");
+ const draft=document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')!,draftRect=draft.getBoundingClientRect(),tourRect=document.querySelector(".onboarding-tour")!.getBoundingClientRect();
+ check(tourRect.bottom<draftRect.top&&document.elementFromPoint(draftRect.left+10,draftRect.top+10)===draft,"tour card leaves the real chat input reachable");
  await click("Open chat");check(nav.at(-1)==="chat","show action calls the normal app navigation");
  await click("Next");check(read("bob")?.tourIndex===1,"tour position is saved for this account");
  dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await pause();

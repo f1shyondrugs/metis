@@ -70,13 +70,14 @@ export function ClientOnboarding({userId,username,onNavigate,onConnectProvider,h
 export function ProductTour({index,onIndex,onNavigate,onPause,onFinish}:{index:number;onIndex:(index:number)=>void;onNavigate:(target:TourTarget)=>void;onPause:()=>void;onFinish:()=>void}){
  const item=PRODUCT_TOUR[index]||PRODUCT_TOUR[0],Icon=tourIcons[index]||MessageSquare;
  const [rect,setRect]=useState<{left:number;top:number;width:number;height:number}|null>(null);
+ const [topAligned,setTopAligned]=useState(false);
  useEffect(()=>{
   let frame=0,observer:ResizeObserver|undefined;
   const measure=()=>{
    frame=0;const elements=Array.from(document.querySelectorAll<HTMLElement>('[data-onboarding-target="'+item.id+'"]'));
    const element=elements.find(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0;});
-   if(!element){setRect(null);return;}
-   const r=element.getBoundingClientRect();setRect({left:Math.max(2,r.left-4),top:Math.max(2,r.top-4),width:Math.min(innerWidth-4,r.width+8),height:Math.min(innerHeight-4,r.height+8)});
+   if(!element){setRect(null);setTopAligned(false);return;}
+   const r=element.getBoundingClientRect();setTopAligned(r.top+r.height/2>innerHeight/2);setRect({left:Math.max(2,r.left-4),top:Math.max(2,r.top-4),width:Math.min(innerWidth-4,r.width+8),height:Math.min(innerHeight-4,r.height+8)});
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
   const observe=()=>{observer?.disconnect();observer=new ResizeObserver(schedule);document.querySelectorAll('[data-onboarding-target="'+item.id+'"]').forEach(el=>observer!.observe(el));schedule();};
@@ -87,7 +88,7 @@ export function ProductTour({index,onIndex,onNavigate,onPause,onFinish}:{index:n
   return ()=>{cancelAnimationFrame(frame);observer?.disconnect();mutations.disconnect();removeEventListener("resize",schedule);removeEventListener("scroll",schedule,true);removeEventListener("keydown",escape,true);};
  },[item.id,onPause]);
  return <><div className="onboarding-tour-highlight" aria-hidden="true" style={rect?rect:{display:"none"}}/>
-  <section className="onboarding-tour" role="region" aria-label="Metis product tour"><OnboardingMotion/>
+  <section className="onboarding-tour" style={topAligned?{top:16,bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingMotion/>
    <p className="onboarding-eyebrow">Getting started · {index+1} of {PRODUCT_TOUR.length}</p><Icon className="mb-3 size-5 text-primary"/>
    <h2 aria-live="polite" tabIndex={-1}>{item.label}</h2><p>{item.description}</p>
    <Button className="mt-4" variant="outline" onClick={()=>onNavigate(item.id)}>{item.action}<ArrowRight className="size-4"/></Button>
