@@ -10,7 +10,7 @@ import {desktopBridge} from "@/lib/desktop-bridge";
 import {onboardingStorageKey,parseOnboardingState,PRODUCT_TOUR,type ClientOnboardingState,type TourTarget} from "@/lib/client-onboarding";
 const sessionProgress=new Map<string,ClientOnboardingState>();
 const tourIcons=[MessageSquare,Folder,NotebookPen,Monitor,Puzzle,Settings];
-export function ClientOnboarding({userId,username,onNavigate,onConnectProvider,hasProvider}:{userId:string;username:string;onNavigate:(target:TourTarget)=>void;onConnectProvider:()=>void;hasProvider:boolean}){
+export function ClientOnboarding({userId,username,onNavigate,onConnectProvider,hasProvider,onPairDevice}:{userId:string;username:string;onNavigate:(target:TourTarget)=>void;onConnectProvider:()=>void;hasProvider:boolean;onPairDevice?:()=>void}){
  const [scope,setScope]=useState<{key:string;native:boolean;userId:string}|null>(null),[state,setState]=useState<ClientOnboardingState|null>(null);
  const [paused,setPaused]=useState(false),[storageUnavailable,setStorageUnavailable]=useState(false);
  const scene=useRef(state);scene.current=state;
@@ -63,7 +63,7 @@ export function ClientOnboarding({userId,username,onNavigate,onConnectProvider,h
       <li><Check/><div><strong>Only configure what you need</strong><p>Chat does not require screen recording or computer-control permissions.</p></div></li>
      </ul>
      {!hasProvider?<div className="mt-6 border-t border-border pt-4"><p className="mb-3 text-sm text-muted-foreground">No enabled provider is connected yet. Connect one to run your first conversation.</p><Button variant="outline" onClick={onConnectProvider}>Connect a model provider</Button></div>:<p className="mt-6 text-sm text-muted-foreground">A provider is configured. Available models appear in the chat model picker.</p>}
-    </div>:state.phase==="device"&&native?<DesktopClientSettings/>:<AppInstallOffer/>}
+    </div>:state.phase==="device"&&native?<><div className="mb-4 border-b border-border pb-4"><p className="mb-3 text-sm text-muted-foreground">Computer access is optional. Create a pairing code in Metis, choose the access level, then enter it in the local device settings. Resume this guide from Getting started in your account menu.</p>{onPairDevice?<Button variant="outline" onClick={()=>{setPaused(true);onPairDevice();}}>Create a pairing code</Button>:null}</div><DesktopClientSettings/></>:<AppInstallOffer/>}
   </OnboardingStage>
  </DialogContent></Dialog>;
 }

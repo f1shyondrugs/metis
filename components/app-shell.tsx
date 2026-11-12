@@ -10241,6 +10241,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       {status?.userId ? <ClientOnboarding key={status.userId} userId={status.userId} username={status.username || username}
         hasProvider={Boolean(status.providers?.some(provider=>provider.enabled&&provider.hasSecret))}
         onConnectProvider={()=>setProviderSetupOpen(true)}
+        onPairDevice={()=>{setSettingsTab("devices");setSettingsSectionRequest("settings-remote-clients");openAccountPage("settings");}}
         onNavigate={target=>{
           if(target==="chat"){setAccountView(null);openDraft();}
           else if(target==="projects"){setDesktopSidebarOpen(true);setMobileNavOpen(true);setSidebarAllProjects(true);}

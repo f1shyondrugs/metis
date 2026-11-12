@@ -7,7 +7,7 @@ import {ProviderSetupDialog} from "../components/provider-setup-dialog";
 import {onboardingStorageKey,PRODUCT_TOUR,suggestedAppPlatform,type TourTarget} from "../lib/client-onboarding";
 const params=new URLSearchParams(location.search),view=params.get("view")||"install";
 const originalFetch=window.fetch.bind(window);
-let failures=0,permissionCalls=0,deviceCalls=0,serverCalls=0,providerCalls=0,setupFinished=0,setupCompleteRequests=0;
+let failures=0,permissionCalls=0,deviceCalls=0,serverCalls=0,providerCalls=0,pairingNavigationCalls=0,setupFinished=0,setupCompleteRequests=0;
 let nativeId="",downloadFail=false,bootstrapCalls=0;
 const nav:TourTarget[]=[];
 const pause=(ms=80)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -39,7 +39,7 @@ function Harness({owner,hasProvider=true}:{owner:string;hasProvider?:boolean}){
  const [providerOpen,setProviderOpen]=useState(false);
  return <><main style={{padding:30}}><h1>Synthetic Metis workspace</h1><input aria-label="Existing draft" defaultValue="Keep this draft"/>
  {PRODUCT_TOUR.map(item=><button key={item.id} data-onboarding-target={item.id} style={{margin:8,padding:16}}>{item.action}</button>)}
- </main><ClientOnboarding userId={owner} username={owner} hasProvider={hasProvider} onNavigate={target=>{nav.push(target);}} onConnectProvider={()=>{providerCalls++;setProviderOpen(true);}}/>
+ </main><ClientOnboarding userId={owner} username={owner} hasProvider={hasProvider} onPairDevice={()=>{pairingNavigationCalls++;}} onNavigate={target=>{nav.push(target);}} onConnectProvider={()=>{providerCalls++;setProviderOpen(true);}}/>
  <ProviderSetupDialog open={providerOpen} onOpenChange={setProviderOpen} onConnected={()=>setProviderOpen(false)} onSkip={()=>setProviderOpen(false)}/></>;
 }
 let nonce=0;
@@ -90,6 +90,7 @@ async function run(){
  await click("Continue");
  check(!document.querySelector('[aria-label="Get the Metis app"]')&&!!document.querySelector('[aria-label="Client settings"]'),"native onboarding configures the device instead of offering an installer");
  check(permissionCalls===0,"OS permission prompts are never automatic");
+ await click("Create a pairing code");check(pairingNavigationCalls===1&&!document.querySelector(".onboarding-stage")&&read("alice","desktop:one")?.phase==="device","pairing navigation pauses without completing or losing the device step");dispatchEvent(new Event("metis:onboarding-open"));await pause();
  await click("Review system permissions");check(permissionCalls===1,"permission review uses only the explicit native action");
  await click("Open Remote Client Device Settings");check(deviceCalls===1,"pairing reuses the existing native device settings");
  await click("Change server address");check(serverCalls===1,"server changes use the trusted native bridge");
