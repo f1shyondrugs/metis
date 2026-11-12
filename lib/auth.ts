@@ -116,13 +116,19 @@ export function authenticateUser(username: string, password: string) {
     (candidate) => candidate.username === username.trim() && verifyPassword(password, candidate.passwordHash),
   );
   if (!user) return null;
+  return {user,...createUserSession(user.id)};
+}
+
+/** Session issuance after a verified password or WebAuthn assertion. */
+export function createUserSession(userId:string) {
+  if(!getDatabase().prepare("SELECT id FROM users WHERE id=?").get(userId))throw new Error("Account unavailable.");
   const token = randomBytes(32).toString("base64url");
   getDatabase().prepare(
     "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
   ).run(
     tokenHash(token),
-    user.id,
+    userId,
     new Date(Date.now() + sessionMaxAge * 1000).toISOString(),
   );
-  return { user, token, maxAge: sessionMaxAge };
+  return { token, maxAge: sessionMaxAge };
 }

@@ -35,7 +35,12 @@ html:has(.desktop-assistant),html:has(.desktop-assistant) body { background:tran
 @media(max-width:1000px) { .assistant-conversation { top:76px; max-height:calc(100dvh - var(--assistant-compose-height,120px) - 108px); } }
 @media(max-width:480px) { .assistant-conversation { right:16px; } .assistant-compose { bottom:16px; } }
 @media(pointer:coarse) { .assistant-form button,.assistant-conversation-header button { width:44px; height:44px; } .assistant-model-row .assistant-model-picker { min-height:44px; height:44px; width:auto; } .assistant-model-options { min-width:44px; height:44px; } .assistant-options-menu button,.assistant-model-menu button,.assistant-model-menu [data-slot="dropdown-menu-item"] { min-height:44px; } }
-.assistant-conversation-header { flex-shrink:0; }
+.assistant-conversation-header { flex-shrink:0; cursor:grab; touch-action:none; user-select:none; gap:4px; }
+.assistant-conversation[data-gesture=move] .assistant-conversation-header {cursor:grabbing}
+.assistant-conversation-header button[data-assistant-move]{display:grid;place-items:center;cursor:grab}
+.assistant-conversation[data-gesture=""]{transition:width 180ms ease,height 180ms ease}
+@media(prefers-reduced-motion:reduce){.assistant-conversation[data-gesture=""]{transition:none}}
+.assistant-conversation[data-gesture=move],.assistant-conversation[data-gesture=resize] {animation:none}
 .assistant-resize-handle { position:absolute; left:0; bottom:0; display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:8px; color:var(--muted-foreground); cursor:nesw-resize; touch-action:none; background:var(--background); }
 .assistant-resize-handle:focus-visible { outline:2px solid var(--ring); outline-offset:-2px; }
 .assistant-messages { padding-bottom:32px; }

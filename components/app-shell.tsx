@@ -21,7 +21,7 @@ import { modelAccountGroups, modelAccountKey, modelAccountLabel, modelMatchesAcc
 import { notifyClientError } from "@/lib/client-error-notifications";
 import { useNotificationInbox } from "@/components/account/use-notification-inbox";
 import { DesktopFileDrop } from "@/components/desktop-file-drop";
-import { OnboardingStage, OnboardingProgress } from "@/components/onboarding-stage";
+import { SignInScreen } from "@/components/sign-in-screen";
 import { AccountMenu, useAccountProfile } from "@/components/account/account-menu";
 import type { AccountView } from "@/components/account/account-panel";
 
@@ -311,7 +311,6 @@ import { modelAttrSummary } from "@/lib/model-label";
 import { clientConfig } from "@/lib/client-config";
 import { MODEL_STORAGE_KEY, PARAMS_STORAGE_KEY } from "@/lib/client-model-selection";
 import { isLegacyCodexNoiseTool, partsFromFlat } from "@/lib/chat-message-parts";
-import { loginErrorMessage } from "@/lib/login-error";
 import {
   DEFAULT_RUNTIME_MODE,
   RUNTIME_MODES,
@@ -1583,9 +1582,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     installGlobalClientTelemetry();
   }, []);
   const [username, setUsername] = useState(clientConfig.username);
-  const [password, setPassword] = useState("");
-  const [passwordVisible, setPasswordVisible] = useState(false);
-  const [authError, setAuthError] = useState("");
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const workspaceDefaultCwd = status?.agentCwd?.trim() || defaultCwd.trim() || clientConfig.defaultCwd;
   const chatCacheScope = status?.agentCwd?.trim() || clientConfig.storagePrefix;
@@ -6008,29 +6004,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     return () => observer.disconnect();
   }, [isEmpty, queuedMessages.length, liveStatus, referenceText, pendingFiles.length]);
 
-  async function login(e: FormEvent) {
-    e.preventDefault();
-    setAuthError("");
-    let res: Response;
-    try {
-      res = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-    } catch {
-      setAuthError(loginErrorMessage());
-      return;
-    }
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      setAuthError(loginErrorMessage(res.status, body.error));
-      return;
-    }
-    setPassword("");
-    window.dispatchEvent(new Event("metis:auth-changed"));
-    await refreshStatus();
-  }
+
 
   async function logout() {
     if (!(await flushNoteEditors())) {
@@ -10111,49 +10085,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
    );
  }
 
-  if (!authed) {
-    return (
-      <OnboardingStage eyebrow="Metis · Your account" title="Sign in to your Metis" description="Use the account on this server. If this is a fresh installation, Metis will guide you through server setup first. Desktop pairing and system permissions come after sign-in." progress={<OnboardingProgress steps={[{id:"account",label:"Account"}]} index={0}/>} footer={<Button type="submit" form="metis-onboarding-sign-in">Continue</Button>}>
-        <form id="metis-onboarding-sign-in" onSubmit={login} className="w-full space-y-4">
-          <div className="space-y-1 text-center">
-            <h2 className="text-base font-medium">Your account</h2>
-            <p className="text-sm text-muted-foreground">Password</p>
-          </div>
-          <Input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-            className="h-10 rounded-xl"
-            placeholder="Username"
-          />
-          <div className="relative">
-            <Input
-              type={passwordVisible ? "text" : "password"}
-              autoFocus
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              aria-label="Password"
-              className="h-10 rounded-xl pr-10"
-            />
-            <button
-              type="button"
-              onClick={() => setPasswordVisible((visible) => !visible)}
-              aria-label={passwordVisible ? "Hide password" : "Show password"}
-              aria-pressed={passwordVisible}
-              title={passwordVisible ? "Hide password" : "Show password"}
-              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-xl text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              {passwordVisible ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
-            </button>
-          </div>
-          {authError ? (
-            <p role="alert" aria-live="polite" className="text-center text-sm text-destructive">{authError}</p>
-          ) : null}
-        </form>
-      </OnboardingStage>
-    );
-  }
+  if (!authed) return <SignInScreen initialUsername={username} onSignedIn={refreshStatus}/>;
 
   const settingsPanel = settingsOpen ? (
       <SettingsPanel

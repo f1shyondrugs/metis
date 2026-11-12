@@ -4,6 +4,13 @@ All notable Metis AI releases are documented here. Release tags and GitHub
 releases are created locally with `pnpm release`; GitHub Actions does not
 publish releases.
 
+## v1.0.26 — 2026-11-12
+
+- Simplify sign-in with a centered Metis wordmark, properly aligned username/password labels and a dedicated passkey sign-in action.
+- Add account-scoped, discoverable WebAuthn passkeys in Settings → Security, with user verification, one-use expiring browser/session-bound challenges, replay protection and password fallback.
+- Grow the Desktop Assistant conversation with its latest reply, retain manual sizing and support moving the panel without stealing focus or losing desktop click-through.
+- Position walkthrough cards beside their actual visible targets and finish with a larger, centered thank-you screen.
+
 ## v1.0.25 — 2026-11-12
 
 - Add per-account, per-browser and per-desktop guided onboarding, with a single-admin first-run setup, reactive walkthrough targets, concise navigation and motion/accessibility support.

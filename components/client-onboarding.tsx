@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useRef,useState} from "react";
+import {useCallback,useEffect,useLayoutEffect,useRef,useState} from "react";
 import {ArrowLeft,ArrowRight,Check,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Shield} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {OnboardingTarget} from "@/components/onboarding-target";
@@ -8,6 +8,7 @@ import {OnboardingStage,OnboardingProgress,OnboardingTransition} from "@/compone
 import {AppInstallOffer} from "@/components/app-install-offer";
 import {desktopBridge} from "@/lib/desktop-bridge";
 import {onboardingStorageKey,parseOnboardingState,PRODUCT_TOUR,type ClientOnboardingState,type TourTarget} from "@/lib/client-onboarding";
+import {tourPlacement,type TourRect} from "@/lib/tour-placement";
 const sessionProgress=new Map<string,ClientOnboardingState>();
 const tourIcons=[MessageSquare,Folder,NotebookPen,Monitor,Puzzle,Settings];
 export function ClientOnboarding({userId,username,onNavigate,hasProvider,onPairDevice}:{userId:string;username:string;onNavigate:(target:TourTarget)=>void;onConnectProvider:()=>void;hasProvider:boolean;onPairDevice?:()=>void}){
@@ -65,15 +66,23 @@ export function ClientOnboarding({userId,username,onNavigate,hasProvider,onPairD
 }
 export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish,hasProvider=true}:{hasProvider?:boolean;index:number;onIndex:(index:number)=>void;onNavigate:(target:TourTarget)=>void;onPause:()=>void;onBack:()=>void;onFinish:()=>void}){
  const item=PRODUCT_TOUR[index]||PRODUCT_TOUR[0],Icon=tourIcons[index]||MessageSquare;
- const [topAligned,setTopAligned]=useState(false);
+ const [targetRect,setTargetRect]=useState<TourRect|null>(null),card=useRef<HTMLElement>(null),[placement,setPlacement]=useState<{left:number;top:number}|null>(null);
+ const targetPlacement=useCallback((rect:TourRect|null)=>setTargetRect(old=>JSON.stringify(old)===JSON.stringify(rect)?old:rect),[]);
  const [thanks,setThanks]=useState(false);
+ useLayoutEffect(()=>{
+  const node=card.current;if(!node)return;
+  let frame=0;const measure=()=>{frame=0;const next=tourPlacement(thanks?null:targetRect,{width:node.offsetWidth,height:node.offsetHeight},{width:innerWidth,height:innerHeight});setPlacement(old=>old?.left===next.left&&old?.top===next.top?old:next);};
+  const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
+  const observer=new ResizeObserver(schedule);observer.observe(node);addEventListener("resize",schedule);measure();
+  return()=>{cancelAnimationFrame(frame);observer.disconnect();removeEventListener("resize",schedule);};
+ },[targetRect,thanks]);
  useEffect(()=>{
   const escape=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();event.stopPropagation();onPause();}};
   addEventListener("keydown",escape,true);
   return ()=>removeEventListener("keydown",escape,true);
  },[item.id,onPause,thanks]);
- return <><OnboardingTarget target={item.id} enabled={!thanks} onPlacement={setTopAligned}/>
-  <section className="onboarding-tour" style={topAligned?{top:16,bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingTransition step={thanks?"thanks":item.id}>
+ return <><OnboardingTarget target={item.id} enabled={!thanks} onPlacement={targetPlacement}/>
+  <section ref={card} className={"onboarding-tour"+(thanks?" onboarding-tour-complete":"")} style={placement?{...placement,right:"auto",bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingTransition step={thanks?"thanks":item.id}>
    <p className="onboarding-eyebrow">{thanks?"Getting started":`Getting started · ${index+1} of ${PRODUCT_TOUR.length}`}</p>{thanks?<Check aria-hidden="true" className="mb-3 size-5 text-primary"/>:<Icon aria-hidden="true" className="mb-3 size-5 text-primary"/>}
    <h2 aria-live="polite" tabIndex={-1} data-onboarding-heading>{thanks?"Thanks for using Metis!":item.label}</h2>{!thanks?<p>{item.id==="chat"&&!hasProvider?"Add your provider here to start chatting.":item.description}</p>:null}
    <footer className="onboarding-footer"><OnboardingProgress steps={[...PRODUCT_TOUR,{id:"thanks",label:"Thanks"}]} index={thanks?PRODUCT_TOUR.length:index}/><div className="onboarding-actions">

@@ -1,3 +1,4 @@
+.metis-sign-in-form>section{display:grid;gap:14px}.metis-sign-in-form{width:min(100%,360px);display:grid;gap:14px;padding:32px 0}.metis-sign-in-form .metis-wordmark{display:block;width:128px;height:40px;margin:0 auto 24px}.metis-sign-in-form input{min-height:46px}.metis-sign-in{padding:32px 24px}
 .onboarding-stage{position:relative;min-height:100dvh;display:grid;place-items:center;isolation:isolate;padding:48px 28px;background:var(--background);color:var(--foreground);overflow:auto}
 .onboarding-motion{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:-1}
 .onboarding-shell{display:flex;flex-direction:column;gap:28px;width:100%;max-width:640px;min-height:360px;padding:36px;position:relative}
@@ -21,6 +22,7 @@
 .onboarding-platforms select{width:100%;min-height:44px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--foreground);font:inherit;font-size:14px}.onboarding-platforms select:focus-visible{outline:2px solid var(--ring);outline-offset:3px}
 .onboarding-downloads{display:grid;gap:10px;margin-top:18px}
 .onboarding-tour{position:fixed;z-index:90;bottom:24px;right:24px;width:min(380px,calc(100vw - 32px));padding:24px;background:var(--background);color:var(--foreground);border:1px solid var(--foreground);border-radius:16px;box-shadow:0 12px 40px #0002;isolation:isolate}
+.onboarding-tour-complete{width:min(600px,calc(100vw - 32px));padding:40px;text-align:center}.onboarding-tour.onboarding-tour-complete h2{font-size:clamp(28px,4vw,42px);line-height:1.15;letter-spacing:-.035em}.onboarding-tour-complete svg{margin-left:auto;margin-right:auto}.onboarding-tour-complete .onboarding-actions svg{margin:0}
 .onboarding-tour h2{font-size:20px;line-height:1.3;font-weight:600;margin:0 0 12px}
 .onboarding-tour p{font-size:13px;line-height:1.7;color:var(--muted-foreground)}
 .onboarding-tour-highlight{position:fixed;z-index:89;pointer-events:none;border:2px solid #fff;border-radius:10px;box-shadow:0 0 0 1px #0009;transition:box-shadow 180ms ease}

@@ -376,7 +376,7 @@ export function DesktopAssistant() {
   const hasActivity=last?.role==="assistant"&&Boolean(last.thinking||last.tools?.length||last.parts?.some(part=>part.type==="tool"||part.type==="thinking"||part.type==="compaction"));
   return <TooltipProvider><main ref={root} className="desktop-assistant" data-editing={editing}
     onPointerDown={event=>{if(event.target===event.currentTarget)void assistantBridge()?.focusInput?.(false);}}>
-    {messages.length||running?<AssistantConversationPanel size={panelSize} onChange={resizePanel} onMenuOpen={open=>menuOpen("size",open)} actions={<>
+    {messages.length||running?<AssistantConversationPanel messageKey={[...messages].reverse().find(message=>message.role==="assistant")?.id||""} size={panelSize} onChange={resizePanel} onMenuOpen={open=>menuOpen("size",open)} actions={<>
           <Button type="button" size="icon-action" variant="ghost" aria-label="Open in Metis" title={shortcuts?"Open chat · "+keyLabel(shortcuts.openChat):"Open chat"}
             onClick={()=>void assistantBridge()?.openChat(chatId)}><ArrowUpRight className="size-4"/></Button>
           <Button type="button" size="icon-action" variant="ghost" aria-label="Close assistant" onClick={()=>void assistantBridge()?.close()}><X className="size-4"/></Button>

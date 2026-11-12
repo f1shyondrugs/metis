@@ -3,13 +3,13 @@ import {useEffect,useState} from "react";
 import {useReducedMotion} from "@/components/use-chart-motion";
 import type {TourTarget} from "@/lib/client-onboarding";
 
-type TargetRect={left:number;top:number;width:number;height:number};
+import type {TourRect as TargetRect} from "@/lib/tour-placement";
 /** Presentation only: the real target keeps its own pointer, keyboard and permission behavior. */
-export function OnboardingTarget({target,enabled,onPlacement}:{target:TourTarget;enabled:boolean;onPlacement:(top:boolean)=>void}){
+export function OnboardingTarget({target,enabled,onPlacement}:{target:TourTarget;enabled:boolean;onPlacement:(rect:TargetRect|null)=>void}){
  const reduced=useReducedMotion();
  const [rect,setRect]=useState<TargetRect|null>(null),[engaged,setEngaged]=useState(false);
  useEffect(()=>{
-  if(!enabled){setRect(null);setEngaged(false);onPlacement(false);return;}
+  if(!enabled){setRect(null);setEngaged(false);onPlacement(null);return;}
   let frame=0,selected:HTMLElement|undefined,detach=()=>{},hovered=false,focused=false;
   const updateInteraction=()=>setEngaged(hovered||focused);
   const measure=()=>{
@@ -31,10 +31,10 @@ export function OnboardingTarget({target,enabled,onPlacement}:{target:TourTarget
      detach=()=>{element.removeEventListener("pointerenter",enter);element.removeEventListener("pointerleave",leave);element.removeEventListener("focusin",focus);element.removeEventListener("focusout",blur);};
     }else detach=()=>{};
    }
-   if(!element){setRect(null);onPlacement(false);return;}
+   if(!element){setRect(null);onPlacement(null);return;}
    const r=element.getBoundingClientRect(),left=Math.max(2,r.left-4),top=Math.max(2,r.top-4);
    const next={left,top,width:Math.max(0,Math.min(innerWidth-2,r.right+4)-left),height:Math.max(0,Math.min(innerHeight-2,r.bottom+4)-top)};
-   onPlacement(r.top+r.height/2>innerHeight/2);
+   onPlacement(next);
    setRect(old=>old&&Object.keys(next).every(key=>old[key as keyof TargetRect]===next[key as keyof TargetRect])?old:next);
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};

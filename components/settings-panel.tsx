@@ -5,6 +5,7 @@ import { useDesktopAvailable } from "@/lib/desktop-bridge";
 import { DesktopDeviceSettings } from "@/components/desktop-device-settings";
 import { RecentlyDeletedChats } from "@/components/recently-deleted-chats";
 import { SavedWebsiteLogins } from "@/components/saved-website-logins";
+import { PasskeySettings } from "@/components/passkey-settings";
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import {
@@ -2746,7 +2747,8 @@ export function SettingsPanel({
  <>
 
 {desktopAvailable ? <TabsContent value="remote-client" className="mt-0"><DesktopClientSettings /></TabsContent> : null}
-<TabsContent value="security" className="mt-0">
+<TabsContent value="security" className="mt-0 space-y-6">
+ <PasskeySettings/>
  <SettingsOverview title="Security">
   <SettingsTile id="settings-credential-vault" title="Credential vault" meta="Manage encrypted website and console logins" icon={ShieldCheck} onOpen={() => openSettingsPane("credential-vault")} />
  </SettingsOverview>
