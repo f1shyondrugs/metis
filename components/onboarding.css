@@ -6,7 +6,7 @@
 .onboarding-intro h1{font-size:clamp(26px,3.5vw,38px);font-weight:600;letter-spacing:-.035em;line-height:1.15;text-wrap:balance;margin:0 0 16px}
 .onboarding-stage [data-onboarding-heading]:focus,.onboarding-tour [data-onboarding-heading]:focus{outline:none}
 .onboarding-description{font-size:14px;line-height:1.75;color:var(--muted-foreground);max-width:38ch}
-.onboarding-body{min-width:0;max-height:65dvh;overflow-y:auto;align-self:center}
+.onboarding-body{min-width:0;max-height:65dvh;overflow-y:auto;align-self:stretch}
 .onboarding-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:24px;margin-top:auto;min-height:68px}.onboarding-body:empty{display:none}
 .onboarding-actions{display:flex;gap:8px;align-items:center;margin-left:auto;flex-shrink:0}.onboarding-actions>button{min-height:44px}.onboarding-tour .onboarding-footer{margin-top:20px;padding-top:0;min-height:44px}.onboarding-tour .onboarding-progress{gap:5px}
 .onboarding-progress{display:flex;gap:7px;list-style:none;margin:0;padding:12px 0}

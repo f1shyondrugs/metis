@@ -1,9 +1,7 @@
-export type SetupStep = "welcome" | "people" | "provider" | "ready";
+export type SetupStep = "admin" | "complete";
 
-const SETUP_STEPS = new Set<SetupStep>(["welcome", "people", "provider", "ready"]);
-
-export function resolveSetupStep(hasUsers: boolean, savedStep: string | null | undefined): SetupStep {
-  const step = savedStep && SETUP_STEPS.has(savedStep as SetupStep) ? savedStep as SetupStep : null;
-  if (!hasUsers) return step === "people" ? "people" : "welcome";
-  return step && step !== "welcome" ? step : "people";
+/** Legacy welcome/people/provider records cannot reintroduce removed setup steps.
+ * Account existence comes from the server, never from browser progress storage. */
+export function resolveSetupStep(hasUsers: boolean, _savedStep?: string | null): SetupStep {
+  return hasUsers ? "complete" : "admin";
 }

@@ -80,9 +80,13 @@ export function bootstrapSetupAccount(input: {
     const id = randomUUID();
     const createdAt = new Date().toISOString();
     const workspace = resolveManagedWorkspaceRoot(config.agentCwd);
-    const osUsername = input.osUsername?.trim() || inferOsUsernameForWorkspace(workspace);
+    const explicitOsUsername = input.osUsername?.trim();
+    let osUsername: string | undefined = explicitOsUsername || inferOsUsernameForWorkspace(workspace);
     if (osUsername && lookupHostOsUser(osUsername)?.uid === 0 && !config.allowRootAgents) {
-      throw new SetupBootstrapError("Root agent execution is disabled on this installation. Leave the OS user blank to create the admin, or choose an existing unprivileged OS user.", 400);
+      if (explicitOsUsername) throw new SetupBootstrapError("Root agent execution is disabled on this installation. Leave the OS user blank to create the admin, or choose an existing unprivileged OS user.", 400);
+      // Account setup may finish without an execution identity. Preserve the
+      // operator's root policy; agent execution stays blocked until configured.
+      osUsername = undefined;
     }
     getDatabase().prepare("INSERT INTO users (id, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 1)")
       .run(id, username, passwordHash, createdAt);

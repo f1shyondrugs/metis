@@ -2,11 +2,17 @@
 
 ## Two separate state owners
 
-Server bootstrap remains in `SetupWizard`, `/api/setup` and the existing setup database record. An empty instance is detected before sign-in, in both the browser and the desktop WebContentsView. Operator-token verification, first-admin creation, OS-user choice, provider authentication and setup completion keep their existing backend contracts. Client progress cannot complete server setup or grant computer permissions.
+Server bootstrap remains in `SetupWizard`, `/api/setup` and the existing setup database record. An empty instance opens directly at one admin form in both browser and desktop WebContentsView: username, password, and the required protected operator token. There is no welcome detour, extra-user creation, OS-user chooser, provider connection or separate success screen in server setup. Acknowledged bootstrap is followed immediately by authenticated completion and entry into the ordinary UI. Operator verification, first-admin-only transaction, token consumption, session cookie, authorization and execution guards stay unchanged. Client progress cannot grant access.
 
 After authentication, `/api/status` exposes only the current authenticated user's stable ID. AppShell mounts `ClientOnboarding` keyed by that ID after server setup. Completion is **not** a server-wide or account-wide setting: localStorage is scoped to this origin/browser profile and the account ID. Native clients additionally use a random installation ID from their local userData profile, exposed through a main-frame-only current-server IPC. Each other account, browser profile, server origin and desktop profile therefore gets a separate guide. Updates retain the ID and v1 record; completing one client does not complete another. A new tab in the same browser profile is not a new client.
 
 Only version/phase/tourIndex are persisted. Unknown fields and malformed records are discarded. Passwords, setup tokens, pairing codes and provider credentials never enter this progress record. Old global provider-onboarding flags do not suppress another account's introduction. Storage events synchronize the same account/client across tabs; asynchronous native replies are cancelled on user changes. When browser storage is blocked, a per-session in-memory record is used and the guide explains that limitation.
+
+## Minimal account setup and recovery
+
+Only one admin is created during setup. More users, provider connections and OS execution identity management remain available in normal Settings. Legacy welcome/people/provider/ready browser records cannot revive removed steps: server account existence determines admin creation versus authenticated completion. Completion failures preserve the acknowledged account and clear secrets; Retry/Continue only repeats completion, never bootstrap. Conflicting account creation offers sign-in recovery. Duplicate submits are guarded synchronously.
+
+Safe inferred OS mappings remain as before. If the inferred identity is root and root execution is explicitly disabled, account setup may finish with no execution mapping; agent execution remains blocked until explicitly configured. An explicit disallowed root mapping still fails. Authorized root defaults are preserved, and the root policy is never toggled.
 
 ## Web and desktop paths
 
@@ -40,7 +46,7 @@ The native local domain launcher uses the same timing constants and readiness ev
 
 Native fresh-profile setup uses a frameless, menu-free host with a draggable header. The logo, title and short description replace the old desktop eyebrow and right-hand feature checklist. On the first successful server load, the same authorized WebContentsView transfers to the regular framed app window without a page reload. Configured installations still open directly in their normal window; closing a retired splash cannot dispose the workspace. No pairing, authentication, permissions or autostart state changes as part of this presentation.
 
-Native and web welcome, account setup, client guide and tour use one bottom navigation row: progress dots on the left and Continue at the far right, with Back immediately before it. Forms use their original submit handlers through associated footer buttons; embedded provider continuation uses the stage footer portal without moving credentials or changing provider actions. The footer stays on one row on small viewports. Full-screen dots/glow and the thin white tour outline retain their existing motion behavior.
+Native and web welcome, account setup, client guide and tour use one bottom navigation row: progress dots on the left and Continue at the far right, with Back immediately before it. Forms use their original submit handlers through associated footer buttons. Provider connection now lives solely in the ordinary UI, not in first-instance setup; its standalone dialog and existing settings controls remain available. The footer stays on one row on small viewports. Full-screen dots/glow and the thin white tour outline retain their existing motion behavior.
 
 ## Verification
 

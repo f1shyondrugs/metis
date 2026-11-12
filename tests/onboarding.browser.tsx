@@ -15,7 +15,7 @@ Object.defineProperties(motionMedia,{matches:{get:()=>reducedMotion},media:{valu
 window.matchMedia=query=>query==="(prefers-reduced-motion: reduce)"?motionMedia as MediaQueryList:originalMatchMedia(query);
 async function reduceMotion(value:boolean){reducedMotion=value;motionMedia.dispatchEvent(new Event("change"));await pause(40);}
 let failures=0,permissionCalls=0,deviceCalls=0,serverCalls=0,providerCalls=0,pairingNavigationCalls=0,setupFinished=0,setupCompleteRequests=0;
-let nativeId="",downloadFail=false,bootstrapCalls=0;
+let nativeId="",downloadFail=false,bootstrapCalls=0,providerRequests=0,adminRequests=0,osRequests=0,bootstrapFailureStatus=0,setupCompleteFailures=0;
 const nav:TourTarget[]=[];
 const pause=(ms=80)=>new Promise(resolve=>setTimeout(resolve,ms));
 const state={paired:false,clientId:"",connection:"offline",version:"Fixture",platform:"darwin",desktopAvailable:false,desktopReason:"Screen Recording and Accessibility are not enabled.",autostartEnabled:false,hideOverlayFromCapture:true};
@@ -33,9 +33,9 @@ window.fetch=async(input,init)=>{
   if(downloadFail){downloadFail=false;return Response.json({error:"Synthetic download error"},{status:503});}
   return Response.json({downloads:[{label:platform==="macos"?"macOS · Apple Silicon":platform==="linux"?"Linux · Intel / AMD":"Windows installer",url:"https://github.com/f1shyondrugs/Metis-Apps/releases/download/v-fixture/"+platform+".bin"}]});
  }
- if(url==="/api/setup"){const body=init?.body?JSON.parse(String(init.body)):{};if(body.action==="bootstrap"){bootstrapCalls++;return Response.json({user:{id:"fixture-admin",username:"Demo",isAdmin:true}});}if(body.action==="complete"){setupCompleteRequests++;return Response.json({ok:true});}return Response.json({platform:"linux",osUsers:[],osUsersAvailable:false});}
- if(url==="/api/providers")return Response.json({providers:[{key:"synthetic-provider",name:"Fixture provider",description:"Isolated UI test only",authTypes:["api_key"],capabilities:[]}]});
- if(url==="/api/admin/users")return Response.json({users:[{id:"fixture-admin",username:"Demo",isAdmin:true}]});
+ if(url==="/api/setup"){const body=init?.body?JSON.parse(String(init.body)):{};if(body.action==="bootstrap"){bootstrapCalls++;await pause(60);if(bootstrapFailureStatus){const status=bootstrapFailureStatus;bootstrapFailureStatus=0;return Response.json({error:"Synthetic bootstrap error"},{status});}return Response.json({user:{id:"fixture-admin",username:"Demo",isAdmin:true}});}if(body.action==="complete"){setupCompleteRequests++;if(setupCompleteFailures>0){setupCompleteFailures--;return Response.json({error:"Synthetic completion error"},{status:503});}return Response.json({ok:true});}if(body.action==="os-users")osRequests++;return Response.json({platform:"linux",osUsers:[],osUsersAvailable:false});}
+ if(url==="/api/providers"){providerRequests++;return Response.json({providers:[{key:"synthetic-provider",name:"Fixture provider",description:"Isolated UI test only",authTypes:["api_key"],capabilities:[]}]});}
+ if(url==="/api/admin/users"){adminRequests++;return Response.json({users:[{id:"fixture-admin",username:"Demo",isAdmin:true}]});}
  return originalFetch(input,init);
 };
 const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
@@ -55,7 +55,7 @@ function button(text:string){const scope=document.querySelector(".onboarding-tou
 function linearNavigation(){const scope=document.querySelector(".onboarding-tour")||document.querySelector(".onboarding-stage");const buttons=Array.from(scope?.querySelectorAll("button")||[]);return buttons.length>=1&&buttons.length<=2&&buttons.every(el=>["Back","Continue"].includes(el.textContent?.trim()||""));}
 async function selectPlatform(value:string){const select=document.querySelector<HTMLSelectElement>('select[aria-label="App platform"]')!;select.value=value;select.dispatchEvent(new Event("change",{bubbles:true}));await pause(150);}
 async function click(text:string){const target=button(text);if(!target)throw Error("Missing button "+text);
- if(text==="Continue"||text==="Enter Metis"){const footer=target.closest(".onboarding-footer"),dots=footer?.querySelector(".onboarding-progress"),actions=target.closest(".onboarding-actions");const b=target.getBoundingClientRect(),p=dots?.getBoundingClientRect(),f=footer?.getBoundingClientRect();check(!!footer&&!!actions&&!!p&&!!f&&Math.abs(p.top+p.height/2-b.top-b.height/2)<2&&Math.abs(f.right-b.right)<2&&p.right<b.left,"Continue stays bottom-right on the dots row: "+(document.querySelector(".onboarding-tour h2")?.textContent||document.querySelector(".onboarding-stage h1")?.textContent));}
+ if((text==="Continue"||text==="Enter Metis")&&document.querySelector(".onboarding-stage,.onboarding-tour")){const footer=target.closest(".onboarding-footer"),dots=footer?.querySelector(".onboarding-progress"),actions=target.closest(".onboarding-actions");const b=target.getBoundingClientRect(),p=dots?.getBoundingClientRect(),f=footer?.getBoundingClientRect();check(!!footer&&!!actions&&!!p&&!!f&&Math.abs(p.top+p.height/2-b.top-b.height/2)<2&&Math.abs(f.right-b.right)<2&&p.right<b.left,"Continue stays bottom-right on the dots row: "+(document.querySelector(".onboarding-tour h2")?.textContent||document.querySelector(".onboarding-stage h1")?.textContent));}
  target.click();await pause(150);for(let i=0;i<60&&document.querySelector('.onboarding-transition[data-phase="out"]');i++)await pause(20);}
 function read(owner:string,client="browser"){return JSON.parse(localStorage.getItem(onboardingStorageKey(owner,client))||"null");}
 async function fill(label:string,value:string){
@@ -186,19 +186,37 @@ async function run(){
   root.render(<div/>);await pause(750);
   check(!document.querySelector(".onboarding-motion")&&waitingHost.dataset.onboardingEntrance===undefined,"leaving during entrance cancels animation and stale readiness callbacks");
  }finally{if(fontDescriptor)Object.defineProperty(document,"fonts",fontDescriptor);else Reflect.deleteProperty(document,"fonts");}
- // Server first-run, with fake HTTP only: no account or real credential operation.
- sessionStorage.removeItem("metis-setup-step");
- root.render(<SetupWizard open hasUsers={false} onFinished={()=>{setupFinished++;}}/>);await pause(200);
- check(document.body.textContent?.includes("fresh Metis installation"),"fresh server is explicitly recognised in shared guided setup");
- await click("Continue");
- check(!!document.querySelector('input[aria-describedby="setup-token-help"]')&&document.querySelectorAll('input[type="password"]').length===2,"operator token and account password remain protected inputs");
- check(document.activeElement?.getAttribute("autocomplete")==="username","the first account field receives focus after the step fade");
- await fill("Operator setup token","synthetic-token");await fill("Admin username","demo-admin");await fill("Password","synthetic-password");await click("Create admin");await pause(200);
- check(bootstrapCalls===1&&document.body.textContent?.includes("Admin"),"first admin setup uses the existing bootstrap action");
- await click("Continue");await pause(150);
- check(!!document.querySelector('[aria-label="Setup progress"]')||document.body.textContent?.includes("Connect a provider"),"provider setup follows the first account");
- await click("Continue");check(!!Array.from(document.querySelectorAll(".onboarding-footer button")).find(el=>el.textContent?.includes("Save & continue")),"embedded provider continuation stays in the shared footer");await click("Back");await click("Skip for now");await click("Enter Metis");check(setupCompleteRequests===1&&setupFinished===1,"server completion reuses the authenticated setup completion action");
+ // Actual minimal setup UI, with fake HTTP only: no owner account changes.
+ const providerBeforeSetup=providerRequests,adminBeforeSetup=adminRequests,osBeforeSetup=osRequests;
+ const mountSetup=async(hasUsers=false)=>{root.render(<SetupWizard key={"setup-"+ ++nonce} open hasUsers={hasUsers} onFinished={()=>{setupFinished++;}}/>);await pause(220);};
+ const fillAdmin=async()=>{await fill("Admin username","demo-admin");await fill("Password","synthetic-password");await fill("Operator setup token","synthetic-token");};
+ sessionStorage.setItem("metis-setup-step","provider");await mountSetup();
+ check(document.querySelector(".onboarding-stage h1")?.textContent==="Create your admin account","fresh and legacy saved setup open directly at the admin form");
+ check(document.querySelectorAll("input").length===3&&document.querySelectorAll('input[type="password"]').length===2,"only username, password and protected operator token remain");
+ check(!document.querySelector("select")&&!document.querySelector('input[type="checkbox"]')&&!document.body.textContent?.includes("OS user"),"OS mapping and extra account options are deferred to Settings");
+ check(document.activeElement?.getAttribute("autocomplete")==="username","admin username receives initial focus");
+ check(!document.querySelector("details")?.open,"operator-token help is collapsed by default");
+ await click("Continue");check(bootstrapCalls===0,"associated footer submit keeps native required-field validation");
+ await fillAdmin();bootstrapFailureStatus=403;await click("Continue");
+ check(bootstrapCalls===1&&setupCompleteRequests===0&&!!document.querySelector('[role="alert"]'),"rejected operator validation cannot finish setup");
+ check(document.querySelectorAll("input").length===3,"rejected bootstrap preserves the account form for correction");
+ button("Continue")!.click();button("Continue")!.click();await pause(260);
+ check(bootstrapCalls===2&&setupCompleteRequests===1&&setupFinished===1,"one valid submit creates one admin and immediately enters the UI without a provider step");
+ check(document.querySelectorAll("input").length===0,"acknowledged creation clears credential fields");
+ check(providerRequests===providerBeforeSetup&&adminRequests===adminBeforeSetup&&osRequests===osBeforeSetup,"setup never fetches providers, lists extra users or discovers OS users");
+ await mountSetup();await fillAdmin();setupCompleteFailures=1;await click("Continue");await pause(150);
+ const createsBeforeRetry=bootstrapCalls,completesBeforeRetry=setupCompleteRequests;
+ check(document.querySelectorAll("input").length===0&&document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic completion error"),"completion failure keeps the acknowledged admin instead of asking for credentials again");
+ await click("Continue");check(bootstrapCalls===createsBeforeRetry&&setupCompleteRequests===completesBeforeRetry+1&&setupFinished===2,"completion retry never recreates an admin or resubmits secrets");
+ sessionStorage.setItem("metis-setup-step","people");await mountSetup(true);
+ check(document.querySelectorAll("input").length===0&&document.body.textContent?.includes("Your account is ready"),"existing incomplete installs resume directly at the authenticated completion action");
+ const beforeResume=bootstrapCalls;await click("Continue");check(bootstrapCalls===beforeResume&&setupFinished===3,"resuming existing setup cannot create another account");
+ await mountSetup();await fillAdmin();bootstrapFailureStatus=409;await click("Continue");
+ check(document.querySelectorAll("input").length===0&&document.body.textContent?.includes("Sign in to continue"),"an already-created account switches to sign-in recovery without another bootstrap");
  check(![...Object.keys(localStorage)].some(k=>(localStorage.getItem(k)||"").includes("synthetic-password")||(localStorage.getItem(k)||"").includes("synthetic-token")),"setup secrets never enter client onboarding storage");
+ root.render(<ProviderSetupDialog open onOpenChange={()=>{}} onConnected={()=>{}}/>);await pause(180);
+ check(providerRequests===providerBeforeSetup+1&&!document.querySelector(".onboarding-stage")&&!!button("Continue"),"provider connection remains available only when explicitly opened inside the ordinary UI");
+ await click("Continue");check(!!document.querySelector('input[type="password"]'),"ordinary provider connection still reaches its existing credential form");
  root.render(<div/>);await pause(100);check(!document.querySelector(".onboarding-motion svg"),"leaving onboarding disposes its animation controller");
  applyAppearanceTheme(document.documentElement,getSelectedTheme(createDefaultAppearanceState()),"metis");
  const noOverflow=()=>document.documentElement.scrollWidth<=innerWidth+1;
