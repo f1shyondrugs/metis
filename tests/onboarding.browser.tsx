@@ -54,7 +54,7 @@ async function mount(owner="alice",hasProvider=true){root.render(<Harness key={+
 function button(text:string){const scope=document.querySelector(".onboarding-tour")||document;return Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).find(button=>button.textContent?.trim()===text||button.getAttribute("aria-label")?.split(",")[0]===text);}
 function linearNavigation(){const scope=document.querySelector(".onboarding-tour")||document.querySelector(".onboarding-stage");const buttons=Array.from(scope?.querySelectorAll("button")||[]);return buttons.length>=1&&buttons.length<=2&&buttons.every(el=>["Back","Continue"].includes(el.textContent?.trim()||""));}
 async function selectPlatform(value:string){const select=document.querySelector<HTMLSelectElement>('select[aria-label="App platform"]')!;select.value=value;select.dispatchEvent(new Event("change",{bubbles:true}));await pause(150);}
-async function click(text:string){const target=button(text);if(!target)throw Error("Missing button "+text);target.click();await pause(150);}
+async function click(text:string){const target=button(text);if(!target)throw Error("Missing button "+text);target.click();await pause(150);for(let i=0;i<60&&document.querySelector('.onboarding-transition[data-phase="out"]');i++)await pause(20);}
 function read(owner:string,client="browser"){return JSON.parse(localStorage.getItem(onboardingStorageKey(owner,client))||"null");}
 async function fill(label:string,value:string){
  const el=Array.from(document.querySelectorAll<HTMLInputElement>("input")).find(el=>el.getAttribute("aria-label")===label||el.closest("label")?.textContent?.includes(label));
@@ -103,6 +103,7 @@ async function run(){
  check(document.querySelector(".onboarding-shell")?.getAttribute("data-phase")==="in","the next step fades in after the previous step leaves");
  check(!!document.querySelector('[aria-label="Get the Metis app"]'),"web onboarding offers the desktop app");
  check(document.querySelectorAll(".onboarding-platforms option:not([disabled])").length===5,"Windows macOS Linux iOS Android can all be selected");
+ for(let i=0;i<60&&!document.querySelector<HTMLSelectElement>('.onboarding-platforms select')?.value;i++)await pause(20);
  const expected=suggestedAppPlatform(navigator);
  check(document.querySelector<HTMLSelectElement>('.onboarding-platforms select')?.value===expected,"actual browser OS is suggested");
  await selectPlatform("windows");await selectPlatform("macos");await pause(400);
