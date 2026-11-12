@@ -4,6 +4,15 @@ All notable Metis AI releases are documented here. Release tags and GitHub
 releases are created locally with `pnpm release`; GitHub Actions does not
 publish releases.
 
+## v1.0.25 — 2026-11-12
+
+- Add per-account, per-browser and per-desktop guided onboarding, with a single-admin first-run setup, reactive walkthrough targets, concise navigation and motion/accessibility support.
+- Give the Desktop Assistant native Codex image input, protected image crops, clearer model-led visual guidance and parallel monitor uploads without overriding model or reasoning preferences.
+- Add monitor-scoped desktop annotations and isolated rich content, with animated transitions and existing permission, capture privacy and Escape controls.
+- Improve notebook collaboration, icons, image framing, field dictation, HTML previews, references, project notes and targeted chat reads.
+- Expand protected browser/console credential management and MCP environment credentials; preserve authenticated sessions, secret boundaries and ordinary screenshot visibility.
+- Improve provider usage reporting and reset-credit warnings, queue editing, desktop session saves and personal-calendar management.
+
 ## v1.0.24 — 2026-11-03
 
 - Deliver files created by the agent without converting the complete file to Base64, removing the JavaScript string-size barrier even when Attachments is set to Unlimited.

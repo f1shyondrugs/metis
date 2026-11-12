@@ -11,15 +11,20 @@ const dir=mkdtempSync(path.join(os.tmpdir(),"metis-login-target-"));
 Object.assign(process.env,{CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"chat.sqlite"),AGENT_CWD:dir,AI_CHAT_ROOT:dir});
 test.after(()=>rmSync(dir,{recursive:true,force:true}));
 
-test("trusted login target survives hidden return-URL redaction without exposing another user's page",async t=>{
+test("public return URLs remain visible without exposing another user's trusted login target",async t=>{
   const {performBrowserAction,getBrowserLoginTarget,closeBrowserSession}=await import("../lib/server-browser");
-  const server=http.createServer((req,res)=>{res.setHeader("Content-Type","text/html");res.end(`<form><input type="hidden" name="return_to" value="http://${req.headers.host}/login"><input name="username"><input type="password"></form>`);});
+  const server=http.createServer((req,res)=>{res.setHeader("Content-Type","text/html");res.end(`<form><input type="hidden" name="return_to" value="http://${req.headers.host}/login"><input name="username" value="public-handle"><input type="password" value="FIXTURE-PASSWORD"></form><a href="/public-handle">http://${req.headers.host}/public-handle</a>`);});
   await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));
   t.after(async()=>{await closeBrowserSession("owner-a","chat-a");await new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());});});
   const url=`http://127.0.0.1:${(server.address() as {port:number}).port}/login`;
   const result=await performBrowserAction("owner-a","chat-a",{action:"navigate",url,source:"agent",includeScreenshot:false});
-  assert.equal(result.url,"[REDACTED]");
-  assert.equal(getBrowserLoginTarget("owner-a","chat-a",result.tabId),url);
+  assert.equal(result.url,url);
+  const profileUrl=new URL("/public-handle",url).href;
+  const profile=await performBrowserAction("owner-a","chat-a",{action:"navigate",url:profileUrl,source:"agent",includeScreenshot:false,includeSnapshot:true});
+  assert.equal(profile.url,profileUrl);
+  assert.ok(profile.snapshot?.includes(profileUrl),"public profile link stays readable in the actual browser snapshot");
+  assert.ok(!profile.snapshot?.includes("FIXTURE-PASSWORD"),"password remains absent from the snapshot");
+  assert.equal(getBrowserLoginTarget("owner-a","chat-a",result.tabId),profileUrl);
   assert.throws(()=>getBrowserLoginTarget("owner-b","chat-a",result.tabId));
   assert.throws(()=>getBrowserLoginTarget("owner-a","chat-b",result.tabId));
   assert.throws(()=>getBrowserLoginTarget("owner-a","chat-a","missing-tab"));

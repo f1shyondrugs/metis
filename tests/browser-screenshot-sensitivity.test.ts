@@ -25,7 +25,7 @@ test("Bing-style hidden search parameters do not block screenshots and stay reda
   assert.match(await page.locator("h1").innerText(),/Search results/);
 });
 
-test("filled credentials still block screenshots, including revealed and explicitly named hidden passwords",{skip:needsNonRoot},async t=>{
+test("filled and reflected credential values leave screenshots unchanged, including revealed and hidden passwords",{skip:needsNonRoot},async t=>{
   const {screenshotPage}=await helpers;
   const browser=await chromium.launch({headless:true,chromiumSandbox:true});
   t.after(()=>browser.close());
@@ -39,29 +39,34 @@ test("filled credentials still block screenshots, including revealed and explici
     'type="text" autocomplete="cc-number"',
   ]){
     await page.setContent('<input '+attributes+' value="TEST-SECRET"><p>TEST-SECRET</p>');
-    await assert.rejects(screenshotPage(page,{type:"png"}),/sensitive form values/);
+    assert.deepEqual(await screenshotPage(page,{type:"png"}),await page.screenshot({type:"png"}));
   }
   await page.setContent('<input type="password" value=""><input type="hidden" name="form" value="QUERY-ORIGIN">');
   assert.ok((await screenshotPage(page,{type:"jpeg",quality:60})).length>0,"Empty login fields alone are not a secret");
 });
 
-test("credentials inside an embedded frame still prevent capture",{skip:needsNonRoot},async t=>{
+test("credentials inside an embedded frame leave screenshots unchanged",{skip:needsNonRoot},async t=>{
   const {screenshotPage}=await helpers;
   const browser=await chromium.launch({headless:true,chromiumSandbox:true});
   t.after(()=>browser.close());
   const page=await browser.newPage();
   await page.setContent('<iframe srcdoc="&lt;input type=password value=TEST-FRAME-SECRET&gt;&lt;p&gt;TEST-FRAME-SECRET&lt;/p&gt;"></iframe>');
   await page.frameLocator("iframe").locator("input").waitFor();
-  await assert.rejects(screenshotPage(page,{type:"png"}),/sensitive form values/);
+  assert.deepEqual(await screenshotPage(page,{type:"png"}),await page.screenshot({type:"png"}));
 });
 
-test("capture remains blocked when frame inspection fails",async()=>{
+test("PNG and live JPEG capture do not depend on form or frame inspection",async()=>{
   const {screenshotPage}=await helpers;
-  let captured=false;
+  const image=Buffer.from("captured image");
+  const calls:unknown[]=[];
   const page={
-    frames:()=>[{locator:()=>({evaluateAll:async()=>{throw Error("Frame unavailable");}})}],
-    screenshot:async()=>{captured=true;return Buffer.from("must not capture");},
+    frames:()=>{throw Error("Frame inspection unavailable");},
+    screenshot:async(options:unknown)=>{calls.push(options);return image;},
   } as unknown as Page;
-  await assert.rejects(screenshotPage(page,{type:"png"}),/sensitive form values/);
-  assert.equal(captured,false);
+  assert.equal(await screenshotPage(page,{type:"png"}),image);
+  assert.equal(await screenshotPage(page,{type:"jpeg",quality:60}),image);
+  assert.deepEqual(calls,[
+    {type:"png",timeout:15_000},
+    {type:"jpeg",quality:60,timeout:15_000},
+  ]);
 });

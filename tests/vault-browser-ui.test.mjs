@@ -116,7 +116,7 @@ test("Vault UI: add, safe errors, retry, duplicate protection, cancellation and 
  assert(!await page.evaluate(value=>JSON.stringify([localStorage,sessionStorage]).includes(value),secret));
 });
 
-test("Screenshot pixels: normal text stays readable, native password dots stay unchanged and revealed values are masked",{skip:nonRoot},async t=>{
+test("Screenshot pixels match the page for normal text, native password dots and revealed values",{skip:nonRoot},async t=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),"metis-vault-screen-"));
  Object.assign(process.env,{AI_CHAT_ROOT:dir,CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"chat.sqlite"),AGENT_CWD:dir});
  t.after(()=>rmSync(dir,{recursive:true,force:true}));
@@ -134,15 +134,15 @@ test("Screenshot pixels: normal text stays readable, native password dots stay u
  const native=await page.screenshot({type:"png"});
  assert.deepEqual(await screenshotPage(page,{type:"png"}),native,"the browser's native password bullets need no extra black box");
  await page.setContent('<h1>Revealed password</h1><input type="text" name="password" value="ABCD1234">');
- const plain=await page.screenshot({type:"png"}),masked=await screenshotPage(page,{type:"png"});
- assert.notDeepEqual(masked,plain);
+ const plain=await page.screenshot({type:"png"});
+ assert.deepEqual(await screenshotPage(page,{type:"png"}),plain);
  await page.locator("input").fill("WXYZ5678");await page.locator("input").evaluate(el=>el.blur());
- assert.deepEqual(await screenshotPage(page,{type:"png"}),masked,"revealed secrets never change the masked pixels");
+ assert.notDeepEqual(await screenshotPage(page,{type:"png"}),plain,"revealed values change the visible pixels");
  await page.setContent('<div id="shadow"></div>');
  await page.locator("#shadow").evaluate(el=>{el.attachShadow({mode:"open"}).innerHTML='<input type="text" name="password" value="SHADOW-TEST-9842"><span>SHADOW-TEST-9842</span>';});
- await assert.rejects(screenshotPage(page,{type:"png"}),/sensitive form values/);
+ assert.deepEqual(await screenshotPage(page,{type:"png"}),await page.screenshot({type:"png"}));
  await page.setContent('<h1>Reflection after field removal</h1><p>ABCD1234</p>');
- await assert.rejects(screenshotPage(page,{type:"png"}),/sensitive form values/);
+ assert.deepEqual(await screenshotPage(page,{type:"png"}),await page.screenshot({type:"png"}));
  mkdirSync(artifacts,{recursive:true});await page.setContent('<h1>Normal inputs remain visible</h1><label>Search <input value="Metis AI"></label><label>Notes <textarea>Public test text</textarea></label><label>Password <input type="password" value="TEST-ONLY-NATIVE"></label>');
  await screenshotPage(page,{type:"png"}).then(image=>import("node:fs").then(fs=>fs.writeFileSync(path.join(artifacts,"browser-input-masking.png"),image)));
 });

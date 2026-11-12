@@ -526,10 +526,11 @@ async function waitForLocatorAcrossFrames(
 }
 
 import {BROWSER_CREDENTIAL_SELECTOR,screenshotPage} from "./browser-screenshot-policy";
-import {browserInputSecrets,retainBrowserSecrets} from "./browser-secure-input";
+import {browserInputSecrets,browserUrlSecrets,retainBrowserSecrets} from "./browser-secure-input";
+import {BROWSER_PUBLIC_URL_VALUE_SELECTOR,createBrowserTextRedactor} from "./browser-redaction";
 export {BROWSER_CREDENTIAL_SELECTOR,screenshotPage} from "./browser-screenshot-policy";
-// Preserve hidden-token redaction in DOM results. Only actual credential fields
-// join the screenshot history; public hidden routing flags are not visible pixels.
+// Preserve hidden-token redaction in DOM results. Retain credential values for
+// subsequent text redaction, independently of screenshot capture.
 export const BROWSER_SENSITIVE_SELECTOR = BROWSER_CREDENTIAL_SELECTOR + ', input[type="hidden"]';
 
 async function redactBrowserText(page: Page, text: string) {
@@ -537,18 +538,23 @@ async function redactBrowserText(page: Page, text: string) {
 }
 
 async function browserTextRedactor(page: Page) {
-  const secrets:string[]=[],credentials:string[]=[];
+  const secrets:string[]=[],urlSecrets:string[]=[];
   for (const frame of page.frames()) {
     try {
-      const values=await frame.locator(BROWSER_SENSITIVE_SELECTOR).evaluateAll((elements,selector)=>({
+      const values=await frame.locator(BROWSER_SENSITIVE_SELECTOR).evaluateAll((elements,selectors)=>({
         all:elements.map(el=>"value" in el?String((el as HTMLInputElement).value||""):el.textContent||"").filter(Boolean),
-        credentials:elements.filter(el=>el.matches(selector)).map(el=>"value" in el?String((el as HTMLInputElement).value||""):el.textContent||"").filter(Boolean),
-      }),BROWSER_CREDENTIAL_SELECTOR);
-      secrets.push(...values.all);credentials.push(...values.credentials);
+        urlSecrets:elements.filter(el=>!el.matches(selectors.publicUrl)).map(el=>"value" in el?String((el as HTMLInputElement).value||""):el.textContent||"").filter(Boolean),
+        credentials:elements.filter(el=>el.matches(selectors.credential)&&!el.matches(selectors.publicUrl)).map(el=>"value" in el?String((el as HTMLInputElement).value||""):el.textContent||"").filter(Boolean),
+        identities:elements.filter(el=>el.matches(selectors.credential)&&el.matches(selectors.publicUrl)).map(el=>"value" in el?String((el as HTMLInputElement).value||""):el.textContent||"").filter(Boolean),
+        navigation:elements.filter(el=>el.matches('input[type="hidden"]')&&el.matches(selectors.publicUrl)).map(el=>String((el as HTMLInputElement).value||"")).filter(Boolean),
+      }),{credential:BROWSER_CREDENTIAL_SELECTOR,publicUrl:BROWSER_PUBLIC_URL_VALUE_SELECTOR});
+      secrets.push(...values.all);urlSecrets.push(...values.urlSecrets);
+      retainBrowserSecrets(page,values.credentials);
+      retainBrowserSecrets(page,values.identities,true);
+      retainBrowserSecrets(page,values.navigation,true);
     } catch { throw new Error('Browser content unavailable'); }
   }
-  retainBrowserSecrets(page,credentials);
-  return (text:string)=>[...new Set([...browserInputSecrets(page),...secrets])].sort((a,b)=>b.length-a.length).reduce((clean,secret)=>clean.split(secret).join('[REDACTED]'),text);
+  return createBrowserTextRedactor([...browserInputSecrets(page),...secrets],[...browserUrlSecrets(page),...urlSecrets]);
 }
 
 export async function collectFrameText(page: Page, mode: "text" | "snapshot") {
@@ -601,11 +607,10 @@ export const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
     'input, textarea, select, button, a[href], [role="radio"], [role="checkbox"], [role="button"], [contenteditable="true"], [draggable="true"], [tabindex]:not([tabindex="-1"])'
   )).slice(0, 500);
   const sensitive = (element) => element.type === "hidden" || element.matches(${JSON.stringify(BROWSER_CREDENTIAL_SELECTOR)});
-  // Inspect every input, even when the interactive control list is truncated.
-  const secrets = Array.from(document.querySelectorAll('input, textarea')).filter(sensitive).map(element => String(element.value || '')).filter(Boolean);
-  const redact = (text) => secrets.reduce((result, secret) => result.split(secret).join('[REDACTED]'), text);
+  // Field values are concealed here; cross-frame text and URL redaction runs
+  // once on the complete result through the shared browser text redactor.
   return {
-    text: redact((document.body && document.body.innerText || '').slice(0, 60000)),
+    text: (document.body && document.body.innerText || '').slice(0, 60000),
     controls: elements.map((element) => {
       const id = element.id || undefined;
       const name = element.name || undefined;
@@ -620,17 +625,17 @@ export const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
         tag: element.tagName.toLowerCase(),
         type: element.type || undefined,
         role: element.getAttribute('role') || undefined,
-        id: id ? redact(id) : undefined,
-        name: name ? redact(name) : undefined,
-        selector: redact(cssPath(element)),
-        label: redact(explicitLabel || closestLabel || (element.innerText || '').trim().slice(0, 500)) || undefined,
-        placeholder: redact(element.placeholder || '') || undefined,
-        ariaLabel: redact(element.getAttribute('aria-label') || '') || undefined,
-        value: element.type === 'hidden' || sensitive(element) ? '[REDACTED]' : ('value' in element ? redact(String(element.value ?? '')) : undefined),
+        id,
+        name,
+        selector: cssPath(element),
+        label: (explicitLabel || closestLabel || (element.innerText || '').trim().slice(0, 500)) || undefined,
+        placeholder: element.placeholder || undefined,
+        ariaLabel: element.getAttribute('aria-label') || undefined,
+        value: element.type === 'hidden' || sensitive(element) ? '[REDACTED]' : ('value' in element ? String(element.value ?? '') : undefined),
         checked: typeof element.checked === 'boolean' ? element.checked : undefined,
         disabled: 'disabled' in element ? Boolean(element.disabled) : undefined,
         visible: element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0 && !['hidden', 'collapse'].includes(getComputedStyle(element).visibility),
-        options: options?.map(option => ({...option, value:redact(option.value), text:redact(option.text)})),
+        options,
       };
     }),
   };
