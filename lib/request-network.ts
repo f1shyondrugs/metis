@@ -106,6 +106,37 @@ export function requestIsSecure(req: Request) {
   return metadata ? metadata.protocol === "https" : new URL(req.url).protocol === "https:";
 }
 
+/**
+ * HTTP mutation origin check. Next's custom-server Request URL can contain the
+ * loopback listener even when the browser used the public HTTPS origin.
+ * Never treat unverified forwarded headers or the caller's Origin as authority.
+ * Missing Origin retains the existing non-browser API behavior.
+ */
+export function requestOriginAllowed(req: Request) {
+  const origin = req.headers.get("origin");
+  if (origin === null) return true;
+  try {
+    const parsed = new URL(origin);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.origin !== origin) return false;
+    const allowed = new Set([new URL(req.url).origin]);
+    const publicUrl = process.env.AI_CHAT_PUBLIC_URL?.trim();
+    if (publicUrl) {
+      try {
+        const configured = new URL(publicUrl);
+        if (["http:", "https:"].includes(configured.protocol) && !configured.username && !configured.password)
+          allowed.add(configured.origin);
+      } catch { /* Invalid optional configuration grants no additional origin. */ }
+    }
+    const metadata = verifiedNetwork(req);
+    const host = req.headers.get("host");
+    if (metadata && host && !/[\s/@\\?#]/u.test(host)) {
+      const external = new URL(metadata.protocol + "://" + host);
+      if (!external.username && !external.password && external.pathname === "/") allowed.add(external.origin);
+    }
+    return allowed.has(origin);
+  } catch { return false; }
+}
+
 export function browserStreamOriginAllowed(request: IncomingMessage) {
   const origin = header(request, "origin");
   if (!origin || origin === "null") return false;

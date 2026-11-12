@@ -40,7 +40,8 @@ export function useAssistantSession(deviceId:string){
    await writer.current?.settle().catch(()=>{});
    await load();
    if(Object.keys(pending.current).length)await save(pending.current);
-  }catch(cause){if(alive.current)setError(cause instanceof Error?cause.message:"Could not restore the assistant.");}
+   return true;
+  }catch(cause){if(alive.current)setError(cause instanceof Error?cause.message:"Could not restore the assistant.");return false;}
  },[load,save]);
  return {session,error,saving,save,retry};
 }

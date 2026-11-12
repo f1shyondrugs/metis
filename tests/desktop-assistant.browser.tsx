@@ -2,6 +2,8 @@ import React from "react";
 import {createRoot} from "react-dom/client";
 import {DesktopAssistant} from "../components/desktop-assistant";
 const mode=new URLSearchParams(location.search).get("mode")||"text";
+const fixtureDeviceId=(window as Window&{fixtureDeviceId?:string}).fixtureDeviceId||"fixture-client";
+const fixtureChatId=(window as Window&{fixtureChatId?:string}).fixtureChatId||"fixture-chat";
 const realtime=mode.startsWith("realtime"),manual=mode.endsWith("edit");
 const models=[{id:"fixture/first",providerId:"fixture",displayName:"First model",parameters:[],defaultParams:[]},{id:"fixture/recent",providerId:"fixture",displayName:"Recent model",parameters:[{id:"effort",values:[{value:"high"},{value:"low"}]}],defaultParams:[{id:"effort",value:"low"}]}];
 localStorage.setItem("metis-ai_model","fixture/recent");
@@ -16,12 +18,12 @@ let preferenceParams:Record<string,Array<{id:string;value:string}>>={"unrelated/
 const shortcuts={assistant:"Control+Shift+Space",focusInput:"Control+Shift+Enter",openChat:"Control+Shift+M",deviceSettings:"Control+Shift+D",cancel:"Escape"};
 const game=document.createElement("button");game.textContent="Game keeps keyboard focus";game.id="fixture-game";document.body.append(game);game.focus();
 Object.defineProperty(window,"metisAssistant",{value:{
- ready:async()=>({gestures:[],device:{hostname:"Fixture PC",clientId:"fixture-client",platform:"win32"},shortcuts,editing:false}),
+ ready:async()=>({gestures:[],device:{hostname:"Fixture PC",clientId:fixtureDeviceId,platform:"win32"},shortcuts,editing:false}),
  onGesture:(callback:(value:string)=>void)=>{gesture=callback;return ()=>{};},
  voice:()=>{},resize:async()=>{},close:async()=>gesture("cancel"),openChat:async(id:string|null)=>{openedChat=id;},
  configure:async(value:{voiceConfigured:boolean})=>{if(autoFocus){editing=!value.voiceConfigured;autoFocus=false;if(editing)gesture("focus-input");}return {editing,shortcuts};},
  focusInput:async(value:boolean)=>{editing=value;gesture(value?"focus-input":"passive");},
- capture:async()=>{captured++;return {device:{clientId:"fixture-client",hostname:"Fixture PC",platform:"win32",version:"fixture"},capturedAt:new Date().toISOString(),monitors:[{id:"left",name:"Left",primary:false,bounds:{x:-1920,y:0,width:1920,height:1080},scaleFactor:1,image:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="},{id:"main",name:"Main",primary:true,bounds:{x:0,y:0,width:1920,height:1080},scaleFactor:1,image:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="}]};}
+ capture:async()=>{captured++;return {device:{clientId:fixtureDeviceId,hostname:"Fixture PC",platform:"win32",version:"fixture"},capturedAt:new Date().toISOString(),monitors:[{id:"left",name:"Left",primary:false,bounds:{x:-1920,y:0,width:1920,height:1080},scaleFactor:1,image:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="},{id:"main",name:"Main",primary:true,bounds:{x:0,y:0,width:1920,height:1080},scaleFactor:1,image:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="}]};}
 }});
 Object.defineProperty(window,"AudioContext",{value:undefined,configurable:true});
 Object.defineProperty(navigator,"mediaDevices",{value:{getUserMedia:async()=>{
@@ -53,6 +55,7 @@ window.fetch=async(input,init)=>{
  const url=String(input);
  if(url.startsWith("data:"))return nativeFetch(input,init);
  if(url.startsWith("/api/desktop-assistant/session")){
+  if(mode==="origin")return nativeFetch(input,init);
   if(init?.method==="PUT"){
    const {patch}=JSON.parse(String(init.body));
    assistantSession={...assistantSession,...(patch.chatId!==undefined?{chatId:patch.chatId}:{}),version:assistantSession.version+1,draft:{text:patch.draftText??assistantSession.draft.text},panelSize:patch.panelSize||assistantSession.panelSize};
@@ -62,8 +65,8 @@ window.fetch=async(input,init)=>{
  if(url==="/api/voice/realtime")return Response.json({value:"fixture-ephemeral"});
  if(url==="https://api.openai.com/v1/realtime/calls")return new Response("fixture-sdp");
  if(url==="/api/models"){if(mode==="models-pending")await new Promise<void>(resolve=>{releaseModels=resolve;});return Response.json({models});}
- if(url==="/api/preferences"){if(init?.method==="PATCH")preferenceParams=JSON.parse(String(init.body)).modelParamsByModel;return Response.json({settings:{modelId:"fixture/first",modelParamsByModel:preferenceParams,voiceInput:["text","error","options","tools"].includes(mode)?{enabled:false}:{enabled:true,provider:"openai",connectionId:"fixture",modelId:"fixture",realtime,maxDurationSeconds:60}}});}
- if(url==="/api/chats"){created=JSON.parse(String(init?.body));return Response.json({chat:{id:"fixture-chat"}});}
+ if(url==="/api/preferences"){if(init?.method==="PATCH")preferenceParams=JSON.parse(String(init.body)).modelParamsByModel;return Response.json({settings:{modelId:"fixture/first",modelParamsByModel:preferenceParams,voiceInput:["text","error","options","tools","origin"].includes(mode)?{enabled:false}:{enabled:true,provider:"openai",connectionId:"fixture",modelId:"fixture",realtime,maxDurationSeconds:60}}});}
+ if(url==="/api/chats"){created=JSON.parse(String(init?.body));return Response.json({chat:{id:fixtureChatId}});}
  if(url.startsWith("/api/runs?"))return Response.json({job:{id:"fixture-job",status:mode==="error"?"error":"completed",error:mode==="error"?"Fixture provider rejected the request.":undefined}});
  if(url==="/api/file-uploads")return Response.json({id:"fixture-upload-"+captured});
  if(url.startsWith("/api/file-uploads/"))return Response.json({id:"fixture-upload",name:"Monitor.png",mimeType:"image/png",size:32,kind:"image",offset:999999});
@@ -89,6 +92,34 @@ async function run(){
  await until(()=>document.querySelector("textarea"));
  await pause(100);
  if(mode!=="models-pending")check(document.querySelector('[aria-label="Assistant model"]')?.textContent?.includes("Recent model"),"Uses the same latest local model as New chat, not the legacy server default");
+ if(mode==="origin"){
+  const input=document.querySelector<HTMLTextAreaElement>("textarea")!;
+  const type=(value:string)=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new Event("input",{bubbles:true}));};
+  type("Original assistant draft");await pause();
+  // Explicit send also exercises a rejected write before the debounce completes.
+  document.querySelector<HTMLButtonElement>('[aria-label="Send message with all monitors"]')!.click();
+  await until(()=>Boolean(document.querySelector(".assistant-error")));
+  await pause(400);
+  check(document.querySelectorAll(".assistant-error").length===1,"The same failed save is shown once, not as duplicate alerts");
+  check(document.querySelector(".assistant-save-state")?.textContent==="Not saved","A failed write never remains labelled Saving");
+  check(input.value==="Original assistant draft","A rejected save keeps the complete local draft");
+  check(document.querySelector<HTMLButtonElement>('[type="submit"]')?.disabled,"Sending stays blocked while a draft save has failed");
+  check(submitted===0,"A rejected session save never submits a competing chat request");
+  await nativeFetch("/enable-origin-fix",{method:"POST"});
+  const retry=[...document.querySelectorAll<HTMLButtonElement>("button")].find(button=>button.textContent==="Retry save")!;retry.click();
+  await until(()=>!document.querySelector(".assistant-error")&&document.querySelector(".assistant-save-state")?.textContent==="Saved");
+  check(input.value==="Original assistant draft","Retry save restores persistence without clearing or resending the draft");
+  const restored=await nativeFetch("/api/desktop-assistant/session?deviceId="+fixtureDeviceId).then(response=>response.json());
+  check(restored.session.draft.text==="Original assistant draft","The real authenticated proxied API persists the retry");
+  const before=captured;
+  document.querySelector<HTMLButtonElement>('[aria-label="Send message with all monitors"]')!.click();
+  await until(()=>submitted===1);
+  check(post?.message==="Original assistant draft","Explicit send uses the original preserved draft exactly once");
+  check(captured===before+1,"Retry save does not capture monitors; explicit send captures once");
+  await until(()=>document.body.textContent?.includes("Both monitors are attached."));
+  check(!document.querySelector(".assistant-error"),"Proxied session writes and canonical response complete without Invalid origin");
+  await nativeFetch("/result",{method:"POST",body:JSON.stringify({mode,width:innerWidth,height:innerHeight,checks,passed:true})});return;
+ }
  if(["text","error","options","tools"].includes(mode)){
   check(document.activeElement===document.querySelector("textarea"),"Without voice the text field is focused after rendering");
   check(document.querySelector("textarea")!.placeholder==="Ask Metis","Compact field uses the requested placeholder");
@@ -109,7 +140,7 @@ async function run(){
   check(captured===1,"Captures only on explicit send");
   check((post?.uploadIds as string[]).length===2,"Both monitor images use registered uploads");
   check(String(post?.referenceText).includes('"x":-1920'),"Monitor positions reach the agent");
-  check(String(post?.referenceText).includes("fixture-client"),"Origin device reaches the agent");
+  check(String(post?.referenceText).includes(fixtureDeviceId),"Origin device reaches the agent");
   check(post?.modelId==="fixture/recent"&&created?.modelId==="fixture/recent","The chat and actual submitted job receive the selected account model");
   check(JSON.stringify(post?.modelParams)===JSON.stringify([{id:"effort",value:mode==="options"?"low":"high"}]),"The actual job receives the selected Thinking setting");
   if(mode==="error"){
@@ -133,7 +164,7 @@ async function run(){
     check(document.querySelector('[aria-label="Command details"]')?.textContent?.includes("C:\\Fixture"),"The shared tool preview shows its saved result");
     openedChat=null;
     document.querySelector<HTMLButtonElement>('[aria-label="Show raw tool information"]')!.click();
-    await until(()=>openedChat==="fixture-chat");
+    await until(()=>openedChat===fixtureChatId);
     check(true,"Full tool details open the same normal Metis chat");
     tool.click();await pause();
   }
@@ -141,7 +172,7 @@ async function run(){
   check(Boolean(user.compareDocumentPosition(reply)&Node.DOCUMENT_POSITION_FOLLOWING),"Your canonical message appears above the canonical reply");
   check(card.getBoundingClientRect().right>innerWidth-40,"Conversation is anchored at the top right");
   document.querySelector<HTMLButtonElement>('[aria-label="Open in Metis"]')!.click();await pause();
-  check(openedChat==="fixture-chat","Open chat targets the same persisted chat");
+  check(openedChat===fixtureChatId,"Open chat targets the same persisted chat");
   const trigger=document.querySelector<HTMLButtonElement>('[aria-label="Assistant model"]')!;
   trigger.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,button:0,pointerType:"mouse"}));
   await until(()=>document.querySelector(".assistant-model-menu"));
@@ -192,4 +223,4 @@ async function run(){
  check(document.documentElement.scrollWidth<=innerWidth,"No horizontal overflow");
  await nativeFetch("/result",{method:"POST",body:JSON.stringify({mode,width:innerWidth,height:innerHeight,checks,passed:true})});
 }
-run().catch(async error=>{await nativeFetch("/result",{method:"POST",body:JSON.stringify({mode,checks,passed:false,error:String(error)})});});
+run().catch(async error=>{await nativeFetch("/result",{method:"POST",body:JSON.stringify({mode,width:innerWidth,height:innerHeight,checks,passed:false,error:String(error)})});});

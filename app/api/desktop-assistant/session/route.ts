@@ -1,4 +1,5 @@
 import { getAuthenticatedUser } from "@/lib/auth";
+import { requestOriginAllowed } from "@/lib/request-network";
 import { AssistantSessionError, getAssistantSession, saveAssistantSession } from "@/lib/desktop-assistant-session-store";
 import type { AssistantSessionPatch } from "@/lib/desktop-assistant-session";
 export const runtime="nodejs";
@@ -15,9 +16,8 @@ export async function GET(req:Request){
 export async function PUT(req:Request){
  const user=await getAuthenticatedUser(req);
  if(!user)return Response.json({error:"Unauthorized"},{status:401});
- // The native assistant uses the same authenticated, same-origin web session.
- const origin=req.headers.get("origin");
- if(origin&&origin!==new URL(req.url).origin)return Response.json({error:"Invalid origin."},{status:403});
+ // Preserve origin checks across the trusted HTTPS proxy/custom-server boundary.
+ if(!requestOriginAllowed(req))return Response.json({error:"Invalid origin."},{status:403,headers});
  try{
   const body=await req.json() as {deviceId:string;version:number;patch:AssistantSessionPatch;editQueueId?:string};
   if(typeof body.deviceId!=="string"||!body.deviceId||body.deviceId.length>200||!Number.isSafeInteger(body.version)||body.version<0||!body.patch||typeof body.patch!=="object"||Array.isArray(body.patch))throw new AssistantSessionError("Invalid assistant session.",400);

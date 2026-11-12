@@ -399,11 +399,11 @@ export function DesktopAssistant() {
     </AssistantConversationPanel>:null}
     <div ref={compose} className="assistant-compose">
       <section ref={panel} className="assistant-input assistant-surface" aria-label="Metis Desktop Assistant">
-        {saved.error?<div className="assistant-error" role="alert">{saved.error}<button type="button" onClick={()=>void saved.retry()}>Retry save</button></div>:null}
+        {saved.error?<div className="assistant-error" role="alert">{saved.error}<button type="button" onClick={()=>{const problem=saved.error;void saved.retry().then(restored=>{if(restored)setError(current=>current===problem?"":current);});}}>Retry save</button></div>:null}
         {!sessionReady?<div className="assistant-save-state" role="status">Restoring assistant…</div>:null}
         <AssistantMessageQueue messages={queue} disabled={queueBusy||busy||Boolean(saved.error)} canEdit={!input.trim()} onEdit={editQueued} onRemove={removeQueued} onMove={moveQueued} onSend={sendQueuedNow}/>
         {draftContext.current.attachments?.length?<div className="assistant-queue-context px-3 pt-2">{draftContext.current.attachments.length} attached file(s) retained from the queue</div>:null}
-        {error||runProblem||pollError?<div role="alert" className="assistant-error">{error||runProblem||pollError}<button type="button" onClick={()=>{if(runProblem&&!error&&!pollError){void assistantBridge()?.openChat(chatId);return;}if(pendingSubmission.current){void send();return;}setError("");reloadSettings(value=>value+1);retryRun(value=>value+1);}}>{runProblem&&!error&&!pollError?"Open chat":"Retry"}</button></div>:null}
+        {(error&&error!==saved.error)||runProblem||pollError?<div role="alert" className="assistant-error">{(error&&error!==saved.error?error:"")||runProblem||pollError}<button type="button" onClick={()=>{if(runProblem&&!error&&!pollError){void assistantBridge()?.openChat(chatId);return;}if(pendingSubmission.current){void send();return;}setError("");reloadSettings(value=>value+1);retryRun(value=>value+1);}}>{runProblem&&!error&&!pollError?"Open chat":"Retry"}</button></div>:null}
         {voice?.realtime&&preview?<p role="status" aria-label="Live transcription" className="assistant-transcript">{preview}</p>:null}
         <form className="assistant-form" onSubmit={event=>{event.preventDefault();void send();}}>
           <RichComposerInput ref={inputRef} aria-label="Message Metis" placeholder="Ask Metis" value={input} syncNonce={inputNonce} focusOnClear={false} disabled={!sessionReady}
@@ -427,7 +427,7 @@ export function DesktopAssistant() {
             onModelParamsChange={params=>void saveSelection({modelId:selectedModel.id,modelParams:params})} disabled={selectionDisabled}
             className="assistant-model-options" contentClassName="assistant-input assistant-options-menu" onOpenChange={open=>menuOpen("options",open)}/>:null}
           {modelsLoaded&&!models.length?<span className="assistant-model-empty">Connect a provider in Settings.</span>:null}
-          <span className="assistant-save-state" role="status">{saved.saving||input!==lastSavedDraft.current?"Saving…":sessionReady&&!saved.error?"Saved":""}</span>
+          <span className="assistant-save-state" role="status">{saved.error?"Not saved":saved.saving||input!==saved.session?.draft.text?"Saving…":sessionReady?"Saved":""}</span>
         </div>
       </section>
       {configured?<div className="assistant-hint">

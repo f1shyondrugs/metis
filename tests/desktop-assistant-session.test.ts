@@ -40,13 +40,24 @@ test("server sessions isolate owners/devices and atomically move queued context 
   assert.equal((await api.GET(req(undefined))).status,401);
   assert.equal((await api.GET(req("other"))).status,404);
   assert.equal((await api.PUT(req("owner",{deviceId,version:0,patch:{}}, "https://foreign.invalid"))).status,403);
-  let session=sessions.saveAssistantSession("owner",deviceId,0,{chatId:chat.id,draftText:"draft\nsecond line",panelSize:{width:720,height:600}});
-  assert.equal(session.version,1);
+  const previousPublic=process.env.AI_CHAT_PUBLIC_URL;
+  process.env.AI_CHAT_PUBLIC_URL="https://assistant.example";
+  try{
+   const proxyBody={deviceId,version:0,patch:{draftText:"behind proxy"}};
+   const proxied=await api.PUT(req("owner",proxyBody,"https://assistant.example"));
+   assert.equal(proxied.status,200,"canonical HTTPS origin must work when Next's route URL is internal HTTP");
+   const stored=await proxied.json();assert.equal(stored.session.draft.text,"behind proxy");
+   for(const origin of ["https://foreign.invalid","null","https://assistant.example.evil","https://assistant.example/path"]){
+    assert.equal((await api.PUT(req("owner",{...proxyBody,version:1},origin))).status,403);
+   }
+  }finally{if(previousPublic===undefined)delete process.env.AI_CHAT_PUBLIC_URL;else process.env.AI_CHAT_PUBLIC_URL=previousPublic;}
+  let session=sessions.saveAssistantSession("owner",deviceId,1,{chatId:chat.id,draftText:"draft\nsecond line",panelSize:{width:720,height:600}});
+  assert.equal(session.version,2);
   assert.throws(()=>sessions.saveAssistantSession("owner",deviceId,0,{draftText:"stale"}),/another window/);
   const otherChat=store.createChat("Private",undefined,"other");
-  assert.throws(()=>sessions.saveAssistantSession("owner",deviceId,1,{chatId:otherChat.id}),/Chat not found/);
+  assert.throws(()=>sessions.saveAssistantSession("owner",deviceId,2,{chatId:otherChat.id}),/Chat not found/);
   store.updateChat(chat.id,{queuedMessages:[{id:"q-one",text:"Queued words",referenceText:"old monitor coordinates",attachments:[{id:"screen",name:"Screen.png",mimeType:"image/png",size:1,kind:"image",storedName:"screen.png"}]}]},"owner");
-  session=sessions.saveAssistantSession("owner",deviceId,1,{},"q-one");
+  session=sessions.saveAssistantSession("owner",deviceId,2,{},"q-one");
   assert.equal(store.getChat(chat.id,"owner")!.queuedMessages?.length||0,0);
   assert.equal(session.draft.attachments?.[0].id,"screen");
   assert.equal(session.draft.referenceText,"old monitor coordinates");

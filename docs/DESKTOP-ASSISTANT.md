@@ -20,6 +20,18 @@ window cannot silently overwrite newer server state; failed saves remain visible
 and require an explicit retry. An inaccessible/deleted remembered chat is not
 restored. The normal New-chat model defaults remain unchanged.
 
+Session mutations validate the exact browser Origin against the configured public
+URL or the canonical request origin. Behind a trusted HTTPS proxy, signed socket
+metadata plus Host may establish the external origin; raw forwarded headers never
+grant access. Next’s internal loopback Request URL alone is not the browser origin.
+Authentication, account/device binding and version checks remain mandatory.
+
+Failed saves show **Not saved**, not a permanent Saving indicator. Matching send
+and save errors share one alert. **Retry save** persists the preserved draft and
+clears only the matching stale send error on success; it never resends the message.
+The Saved indicator reflects the server-acknowledged draft rather than a debounce
+sentinel. Keep an unsaved renderer open until its retry succeeds.
+
 Queue entries are the canonical chat `queuedMessages`, not a second assistant
 queue. The existing chat PATCH, removal tombstones, upload materialization,
 Send now submission and background worker drain own their lifecycle. Consequently
@@ -38,6 +50,14 @@ Send now preserve canonical queue identities and permission checks.
 
 - `tests/desktop-assistant-session.test.ts`: authenticated persistence,
   ownership/device boundaries, compare-and-swap versions and atomic edit.
+- `tests/request-origin.test.ts`: exact public/trusted proxy origin validation,
+  forged forwarding, null/malformed/cross-site origins, direct installations.
+- `tests/desktop-assistant-origin.preview.mjs` serves the actual Assistant fixture
+  against a real authenticated session route with internal HTTP/public origin
+  mismatch. It verifies blocked-save recovery, preserved draft, truthful status,
+  duplicate-alert suppression and explicit one-time send at390/768/1440 pixels.
+  Transports/models/screens outside session persistence are synthetic; no real
+  provider request or user monitor is captured.
 - Existing queue drain/removal/send-now/persistence tests cover background
   execution without an open assistant.
 - `tests/desktop-assistant-queue.browser.tsx`: actual React components with
