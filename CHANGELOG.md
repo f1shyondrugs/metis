@@ -4,6 +4,12 @@ All notable Metis AI releases are documented here. Release tags and GitHub
 releases are created locally with `pnpm release`; GitHub Actions does not
 publish releases.
 
+## v1.0.27 — 2026-11-12
+
+- Give full-screen onboarding a longer coordinated dot entrance and bounded spatial wave feedback on pointer presses, with immediate Reduced Motion behavior.
+- Finish the guided tour on its last real Settings step with Finish; remove the separate thank-you scene.
+- Preserve existing account, pairing, settings, draft and navigation authority; animation never gates authentication or permission actions.
+
 ## v1.0.26 — 2026-11-12
 
 - Simplify sign-in with a centered Metis wordmark, properly aligned username/password labels and a dedicated passkey sign-in action.

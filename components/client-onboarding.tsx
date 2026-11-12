@@ -1,6 +1,6 @@
 "use client";
 import {useCallback,useEffect,useLayoutEffect,useRef,useState} from "react";
-import {ArrowLeft,ArrowRight,Check,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Shield} from "lucide-react";
+import {ArrowLeft,ArrowRight,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Shield} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {OnboardingTarget} from "@/components/onboarding-target";
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from "@/components/ui/dialog";
@@ -68,26 +68,25 @@ export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish,ha
  const item=PRODUCT_TOUR[index]||PRODUCT_TOUR[0],Icon=tourIcons[index]||MessageSquare;
  const [targetRect,setTargetRect]=useState<TourRect|null>(null),card=useRef<HTMLElement>(null),[placement,setPlacement]=useState<{left:number;top:number}|null>(null);
  const targetPlacement=useCallback((rect:TourRect|null)=>setTargetRect(old=>JSON.stringify(old)===JSON.stringify(rect)?old:rect),[]);
- const [thanks,setThanks]=useState(false);
  useLayoutEffect(()=>{
   const node=card.current;if(!node)return;
-  let frame=0;const measure=()=>{frame=0;const next=tourPlacement(thanks?null:targetRect,{width:node.offsetWidth,height:node.offsetHeight},{width:innerWidth,height:innerHeight});setPlacement(old=>old?.left===next.left&&old?.top===next.top?old:next);};
+  let frame=0;const measure=()=>{frame=0;const next=tourPlacement(targetRect,{width:node.offsetWidth,height:node.offsetHeight},{width:innerWidth,height:innerHeight});setPlacement(old=>old?.left===next.left&&old?.top===next.top?old:next);};
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
   const observer=new ResizeObserver(schedule);observer.observe(node);addEventListener("resize",schedule);measure();
   return()=>{cancelAnimationFrame(frame);observer.disconnect();removeEventListener("resize",schedule);};
- },[targetRect,thanks]);
+ },[targetRect]);
  useEffect(()=>{
   const escape=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();event.stopPropagation();onPause();}};
   addEventListener("keydown",escape,true);
   return ()=>removeEventListener("keydown",escape,true);
- },[item.id,onPause,thanks]);
- return <><OnboardingTarget target={item.id} enabled={!thanks} onPlacement={targetPlacement}/>
-  <section ref={card} className={"onboarding-tour"+(thanks?" onboarding-tour-complete":"")} style={placement?{...placement,right:"auto",bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingTransition step={thanks?"thanks":item.id}>
-   <p className="onboarding-eyebrow">{thanks?"Getting started":`Getting started · ${index+1} of ${PRODUCT_TOUR.length}`}</p>{thanks?<Check aria-hidden="true" className="mb-3 size-5 text-primary"/>:<Icon aria-hidden="true" className="mb-3 size-5 text-primary"/>}
-   <h2 aria-live="polite" tabIndex={-1} data-onboarding-heading>{thanks?"Thanks for using Metis!":item.label}</h2>{!thanks?<p>{item.id==="chat"&&!hasProvider?"Add your provider here to start chatting.":item.description}</p>:null}
-   <footer className="onboarding-footer"><OnboardingProgress steps={[...PRODUCT_TOUR,{id:"thanks",label:"Thanks"}]} index={thanks?PRODUCT_TOUR.length:index}/><div className="onboarding-actions">
-    <Button variant="ghost" onClick={()=>{if(thanks)setThanks(false);else if(index===0)onBack();else{onNavigate(PRODUCT_TOUR[index-1].id);onIndex(index-1);}}}><ArrowLeft className="size-4" aria-hidden="true"/>Back</Button>
-    <Button onClick={()=>{if(thanks)onFinish();else if(index===PRODUCT_TOUR.length-1)setThanks(true);else{onNavigate(PRODUCT_TOUR[index+1].id);onIndex(index+1);}}}>Continue<ArrowRight className="size-4" aria-hidden="true"/></Button>
+ },[item.id,onPause]);
+ return <><OnboardingTarget target={item.id} enabled onPlacement={targetPlacement}/>
+  <section ref={card} className="onboarding-tour" style={placement?{...placement,right:"auto",bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingTransition step={item.id}>
+   <p className="onboarding-eyebrow">{`Getting started · ${index+1} of ${PRODUCT_TOUR.length}`}</p><Icon aria-hidden="true" className="mb-3 size-5 text-primary"/>
+   <h2 aria-live="polite" tabIndex={-1} data-onboarding-heading>{item.label}</h2><p>{item.id==="chat"&&!hasProvider?"Add your provider here to start chatting.":item.description}</p>
+   <footer className="onboarding-footer"><OnboardingProgress steps={PRODUCT_TOUR} index={index}/><div className="onboarding-actions">
+    <Button variant="ghost" onClick={()=>{if(index===0)onBack();else{onNavigate(PRODUCT_TOUR[index-1].id);onIndex(index-1);}}}><ArrowLeft className="size-4" aria-hidden="true"/>Back</Button>
+    <Button onClick={()=>{if(index===PRODUCT_TOUR.length-1)onFinish();else{onNavigate(PRODUCT_TOUR[index+1].id);onIndex(index+1);}}}>{index===PRODUCT_TOUR.length-1?"Finish":"Continue"}<ArrowRight className="size-4" aria-hidden="true"/></Button>
    </div></footer>
   </OnboardingTransition></section></>;
 }

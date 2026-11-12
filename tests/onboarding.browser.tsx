@@ -20,6 +20,7 @@ let failures=0,permissionCalls=0,deviceCalls=0,serverCalls=0,providerCalls=0,pai
 let nativeId="",downloadFail=false,bootstrapCalls=0,providerRequests=0,adminRequests=0,osRequests=0,bootstrapFailureStatus=0,setupCompleteFailures=0;
 const nav:TourTarget[]=[];
 const pause=(ms=80)=>new Promise(resolve=>setTimeout(resolve,ms));
+async function until(test:()=>boolean,label:string){for(let i=0;i<150;i++){if(test())return;await pause(20);}throw Error("Timed out: "+label);}
 const state={paired:false,clientId:"",connection:"offline",version:"Fixture",platform:"darwin",desktopAvailable:false,desktopReason:"Screen Recording and Accessibility are not enabled.",autostartEnabled:false,hideOverlayFromCapture:true};
 function native(id:string,delay=0){
  nativeId=id;
@@ -54,10 +55,10 @@ function Harness({owner,hasProvider=true}:{owner:string;hasProvider?:boolean}){
 let nonce=0;
 async function mount(owner="alice",hasProvider=true){root.render(<Harness key={++nonce} owner={owner} hasProvider={hasProvider}/>);await pause(250);}
 function button(text:string){const scope=document.querySelector(".onboarding-tour")||document;return Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).find(button=>button.textContent?.trim()===text||button.getAttribute("aria-label")?.split(",")[0]===text);}
-function linearNavigation(){const scope=document.querySelector(".onboarding-tour")||document.querySelector(".onboarding-stage");const buttons=Array.from(scope?.querySelectorAll("button")||[]);return buttons.length>=1&&buttons.length<=2&&buttons.every(el=>["Back","Continue"].includes(el.textContent?.trim()||""));}
+function linearNavigation(){const scope=document.querySelector(".onboarding-tour")||document.querySelector(".onboarding-stage");const buttons=Array.from(scope?.querySelectorAll("button")||[]);return buttons.length>=1&&buttons.length<=2&&buttons.every(el=>["Back","Continue","Finish"].includes(el.textContent?.trim()||""));}
 async function selectPlatform(value:string){const select=document.querySelector<HTMLSelectElement>('select[aria-label="App platform"]')!;select.value=value;select.dispatchEvent(new Event("change",{bubbles:true}));await pause(150);}
 async function click(text:string){const target=button(text);if(!target)throw Error("Missing button "+text);
- if((text==="Continue"||text==="Enter Metis")&&document.querySelector(".onboarding-stage,.onboarding-tour")){const footer=target.closest(".onboarding-footer"),dots=footer?.querySelector(".onboarding-progress"),actions=target.closest(".onboarding-actions");const b=target.getBoundingClientRect(),p=dots?.getBoundingClientRect(),f=footer?.getBoundingClientRect();check(!!footer&&!!actions&&!!p&&!!f&&Math.abs(p.top+p.height/2-b.top-b.height/2)<2&&Math.abs(f.right-b.right)<2&&p.right<b.left,"Continue stays bottom-right on the dots row: "+(document.querySelector(".onboarding-tour h2")?.textContent||document.querySelector(".onboarding-stage h1")?.textContent));}
+ if((text==="Continue"||text==="Finish"||text==="Enter Metis")&&document.querySelector(".onboarding-stage,.onboarding-tour")){const footer=target.closest(".onboarding-footer"),dots=footer?.querySelector(".onboarding-progress"),actions=target.closest(".onboarding-actions");const b=target.getBoundingClientRect(),p=dots?.getBoundingClientRect(),f=footer?.getBoundingClientRect();check(!!footer&&!!actions&&!!p&&!!f&&Math.abs(p.top+p.height/2-b.top-b.height/2)<2&&Math.abs(f.right-b.right)<2&&p.right<b.left,"Continue stays bottom-right on the dots row: "+(document.querySelector(".onboarding-tour h2")?.textContent||document.querySelector(".onboarding-stage h1")?.textContent));}
  target.click();await pause(150);for(let i=0;i<60&&document.querySelector('.onboarding-transition[data-phase="out"]');i++)await pause(20);}
 function read(owner:string,client="browser"){return JSON.parse(localStorage.getItem(onboardingStorageKey(owner,client))||"null");}
 async function fill(label:string,value:string){
@@ -120,14 +121,12 @@ async function run(){
  check(document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic download error"),"download lookup failure is visible");
  await click("Retry");await pause(100);check(!!document.querySelector(".onboarding-downloads a"),"download lookup can retry successfully");
  check(linearNavigation(),"app offer has only Back and Continue navigation");await click("Continue");
- for(let i=0;i<PRODUCT_TOUR.length;i++){check(linearNavigation(),"tour navigation stays linear at "+i);check(document.querySelector<HTMLElement>(".onboarding-tour-highlight")?.dataset.target===PRODUCT_TOUR[i].id&&getComputedStyle(document.querySelector(".onboarding-tour-highlight")!).display!=="none","each feature receives its own visible target ring: "+PRODUCT_TOUR[i].id);await click("Continue");}
- check(document.querySelector(".onboarding-tour h2")?.textContent==="Thanks for using Metis!"&&read("alice")?.phase==="tour","tour ends with thanks before committing completion");
- check(linearNavigation(),"thanks keeps only Back and Continue");
- check(getComputedStyle(document.querySelector(".onboarding-tour-highlight")!).display==="none","thanks removes the feature highlight");
- const navigationBeforeThanks=nav.length;await click("Back");
- check(document.querySelector(".onboarding-tour h2")?.textContent==="Settings"&&nav.length===navigationBeforeThanks,"thanks Back returns to the last step without extra navigation");
- await click("Continue");await click("Continue");
- check(read("alice")?.phase==="done","Continue completes only this client/account");
+ for(let i=0;i<PRODUCT_TOUR.length-1;i++){check(linearNavigation(),"tour navigation stays linear at "+i);check(document.querySelector<HTMLElement>(".onboarding-tour-highlight")?.dataset.target===PRODUCT_TOUR[i].id&&getComputedStyle(document.querySelector(".onboarding-tour-highlight")!).display!=="none","each feature receives its own visible target ring: "+PRODUCT_TOUR[i].id);await click("Continue");}
+ check(document.querySelector(".onboarding-tour h2")?.textContent==="Settings"&&read("alice")?.phase==="tour","last real step stays Settings until Finish");
+ check(!!button("Finish")&&!button("Continue"),"last step replaces Continue with Finish");
+ await click("Back");check(document.querySelector(".onboarding-tour h2")?.textContent===PRODUCT_TOUR.at(-2)?.label,"Back from last step still navigates to previous feature");
+ await click("Continue");await click("Finish");
+ check(!document.querySelector(".onboarding-tour")&&read("alice")?.phase==="done","Finish completes with no thanks scene");
  await mount();check(!document.querySelector(".onboarding-stage"),"completed introduction stays closed after remount");
  await mount("bob");check(document.body.textContent?.includes("Welcome, bob"),"another account on same browser receives its own onboarding");
  await click("Continue");await click("Continue");
@@ -143,8 +142,7 @@ async function run(){
  dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await pause();
  check(!document.querySelector(".onboarding-tour"),"Escape pauses the tour without blocking the workspace");
  await mount("bob");check(document.querySelector(".onboarding-tour h2")?.textContent==="Projects","tour resumes at the saved step");
- for(let i=1;i<PRODUCT_TOUR.length;i++){check(document.querySelector(".onboarding-tour h2")?.textContent===PRODUCT_TOUR[i].label,"feature tour includes "+PRODUCT_TOUR[i].id);await click("Continue");}
- await click("Continue");
+ for(let i=1;i<PRODUCT_TOUR.length;i++){check(document.querySelector(".onboarding-tour h2")?.textContent===PRODUCT_TOUR[i].label,"feature tour includes "+PRODUCT_TOUR[i].id);await click(i===PRODUCT_TOUR.length-1?"Finish":"Continue");}
  check(read("bob")?.phase==="done"&&document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')?.value==="Keep this draft","finishing tour preserves the existing workspace draft");
  dispatchEvent(new Event("metis:onboarding-open"));await pause();check(!!document.querySelector(".onboarding-stage"),"account menu event can restart a completed guide");
  native("one");await mount("alice");
@@ -154,7 +152,7 @@ async function run(){
  check(linearNavigation(),"native device step has only Back and Continue buttons");
  check(permissionCalls===0,"OS permission prompts are never automatic");
  document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();await pause();await click("Continue");check(pairingNavigationCalls===1&&!document.querySelector(".onboarding-stage")&&read("alice","desktop:one")?.phase==="device","opt-in Continue opens real pairing settings without completing or losing the device step");dispatchEvent(new Event("metis:onboarding-open"));await pause();
- await click("Continue");for(let i=0;i<PRODUCT_TOUR.length;i++)await click("Continue");check(document.querySelector(".onboarding-tour h2")?.textContent==="Thanks for using Metis!","desktop webview receives the same thanks ending");await click("Continue");check(read("alice","desktop:one")?.phase==="done","native completion is stored for this user/installation");
+ await click("Continue");for(let i=0;i<PRODUCT_TOUR.length;i++)await click(i===PRODUCT_TOUR.length-1?"Finish":"Continue");check(!document.querySelector(".onboarding-tour"),"desktop webview finishes without a thanks scene");check(read("alice","desktop:one")?.phase==="done","native completion is stored for this user/installation");
  check(permissionCalls===0&&deviceCalls===0&&serverCalls===0,"Continue never prompts or changes system access");
  native("two");await mount("alice");check(!!document.querySelector(".onboarding-stage"),"another desktop gets an independent guide");
  await mount("bob");check(document.body.textContent?.includes("Welcome, bob"),"another user on this desktop gets their own guide");
@@ -235,13 +233,13 @@ async function run(){
  check(bootstrapCalls===2&&setupCompleteRequests===1&&setupFinished===1,"one valid submit creates one admin and immediately enters the UI without a provider step");
  check(document.querySelectorAll("input").length===0,"acknowledged creation clears credential fields");
  check(providerRequests===providerBeforeSetup&&adminRequests===adminBeforeSetup&&osRequests===osBeforeSetup,"setup never fetches providers, lists extra users or discovers OS users");
- await mountSetup();await fillAdmin();setupCompleteFailures=1;await click("Continue");await pause(150);
+ await mountSetup();await fillAdmin();setupCompleteFailures=1;await click("Continue");await until(()=>!!document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic completion error")&&document.querySelectorAll("input").length===0,"completion error after committed account scene");
  const createsBeforeRetry=bootstrapCalls,completesBeforeRetry=setupCompleteRequests;
  check(document.querySelectorAll("input").length===0&&document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic completion error"),"completion failure keeps the acknowledged admin instead of asking for credentials again");
- await click("Continue");check(bootstrapCalls===createsBeforeRetry&&setupCompleteRequests===completesBeforeRetry+1&&setupFinished===2,"completion retry never recreates an admin or resubmits secrets");
+ await click("Continue");await until(()=>setupFinished===2,"completion retry callback");check(bootstrapCalls===createsBeforeRetry&&setupCompleteRequests===completesBeforeRetry+1&&setupFinished===2,"completion retry never recreates an admin or resubmits secrets");
  sessionStorage.setItem("metis-setup-step","people");await mountSetup(true);
  check(document.querySelectorAll("input").length===0&&document.body.textContent?.includes("Your account is ready"),"existing incomplete installs resume directly at the authenticated completion action");
- const beforeResume=bootstrapCalls;await click("Continue");check(bootstrapCalls===beforeResume&&setupFinished===3,"resuming existing setup cannot create another account");
+ const beforeResume=bootstrapCalls;await click("Continue");await until(()=>setupFinished===3,"resume completion callback");check(bootstrapCalls===beforeResume&&setupFinished===3,"resuming existing setup cannot create another account");
  await mountSetup();await fillAdmin();bootstrapFailureStatus=409;await click("Continue");
  check(document.querySelectorAll("input").length===0&&document.body.textContent?.includes("Sign in to continue"),"an already-created account switches to sign-in recovery without another bootstrap");
  check(![...Object.keys(localStorage)].some(k=>(localStorage.getItem(k)||"").includes("synthetic-password")||(localStorage.getItem(k)||"").includes("synthetic-token")),"setup secrets never enter client onboarding storage");
@@ -256,7 +254,7 @@ async function run(){
  else if(view==="install")await click("Continue");
  else if(view==="server"){sessionStorage.removeItem("metis-setup-step");root.render(<SetupWizard open hasUsers={false} onFinished={()=>{}}/>);await pause(200);}
  else if(view==="native"){native("visual");await mount("Demo");await click("Continue");}
- else if(view==="tour"||view==="thanks"||view==="tour-empty"){if(view==="tour-empty")await mount("Demo-empty",false);await click("Continue");await click("Continue");if(view==="thanks")for(let i=0;i<PRODUCT_TOUR.length;i++)await click("Continue");}
+ else if(view==="tour"||view==="finish"||view==="tour-empty"){if(view==="tour-empty")await mount("Demo-empty",false);await click("Continue");await click("Continue");if(view==="finish")for(let i=0;i<PRODUCT_TOUR.length-1;i++)await click("Continue");}
  check(noOverflow(),"layout has no horizontal page overflow at "+innerWidth);
  document.body.dataset.complete="true";report.textContent=failures?results.filter(x=>x.startsWith("FAIL")).join("\n"):"PASS "+results.length+" onboarding assertions · "+innerWidth+"px";
  await originalFetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,height:innerHeight,view,results,nativeId,permissionCalls,deviceCalls,serverCalls})});
