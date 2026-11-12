@@ -103,7 +103,8 @@ async function run(){
  const stableEdge=document.querySelector(".onboarding-motion svg");
  button("Continue")!.click();await pause(25);
  check(document.querySelector(".onboarding-shell")?.getAttribute("data-phase")==="out"&&document.querySelector(".onboarding-shell")?.hasAttribute("inert"),"Continue fades the previous step and blocks repeated actions");
- await pause(150);
+ await pause(120);
+ for(let i=0;i<100&&document.querySelector(".onboarding-shell")?.getAttribute("data-phase")==="out";i++)await pause(10);
  check(document.querySelector(".onboarding-motion svg")===stableEdge,"step navigation keeps the same glow and dot controller");
  check(document.querySelector(".onboarding-shell")?.getAttribute("data-phase")==="in","the next step fades in after the previous step leaves");
  check(!!document.querySelector('[aria-label="Get the Metis app"]'),"web onboarding offers the desktop app");
