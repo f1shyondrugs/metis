@@ -67,12 +67,13 @@ window.fetch=async(input,init)=>{
  if(url==="/api/models"){if(mode==="models-pending")await new Promise<void>(resolve=>{releaseModels=resolve;});return Response.json({models});}
  if(url==="/api/preferences"){if(init?.method==="PATCH")preferenceParams=JSON.parse(String(init.body)).modelParamsByModel;return Response.json({settings:{modelId:"fixture/first",modelParamsByModel:preferenceParams,voiceInput:["text","error","options","tools","origin"].includes(mode)?{enabled:false}:{enabled:true,provider:"openai",connectionId:"fixture",modelId:"fixture",realtime,maxDurationSeconds:60}}});}
  if(url==="/api/chats"){created=JSON.parse(String(init?.body));return Response.json({chat:{id:fixtureChatId}});}
+ if(url.startsWith("/api/runs?")&&mode==="error"&&!submitted)return Response.json({job:null});
  if(url.startsWith("/api/runs?"))return Response.json({job:{id:"fixture-job",status:mode==="error"?"error":"completed",error:mode==="error"?"Fixture provider rejected the request.":undefined}});
  if(url==="/api/file-uploads")return Response.json({id:"fixture-upload-"+captured});
  if(url.startsWith("/api/file-uploads/"))return Response.json({id:"fixture-upload",name:"Monitor.png",mimeType:"image/png",size:32,kind:"image",offset:999999});
  if(url==="/api/chat"){submitted++;post=JSON.parse(String(init?.body));return Response.json({jobId:"fixture-job"});}
  if(url.startsWith("/api/chats/")&&init?.method==="PATCH")return Response.json({chat:JSON.parse(String(init.body))});
- if(url.startsWith("/api/chats/"))return Response.json({chat:{runStatus:mode==="error"?"running":"completed",messages:[{id:post?.messageId,role:"user",content:post?.message},{id:"fixture-answer",role:"assistant",content:"Both monitors are attached.",...(mode==="tools"?{parts:[
+ if(url.startsWith("/api/chats/"))return Response.json({chat:{runStatus:mode==="error"&&submitted>0?"running":"completed",messages:[{id:post?.messageId,role:"user",content:post?.message},{id:"fixture-answer",role:"assistant",content:"Both monitors are attached.",...(mode==="tools"?{parts:[
    {type:"thinking",content:"Inspecting the owned fixture directory",done:true,durationMs:2100},
    {type:"tool",id:"fixture-command",name:"execute_command",kind:"shell",source:"mcp",status:"completed",input:JSON.stringify({command:"pwd",target:"client:fixture-client"}),result:JSON.stringify({stdout:"C:\\Fixture",exitCode:0})},
    {type:"text",content:"Both monitors are attached."}
