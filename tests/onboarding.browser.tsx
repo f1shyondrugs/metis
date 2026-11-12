@@ -201,6 +201,7 @@ async function run(){
  check(bootstrapCalls===1&&setupCompleteRequests===0&&!!document.querySelector('[role="alert"]'),"rejected operator validation cannot finish setup");
  check(document.querySelectorAll("input").length===3,"rejected bootstrap preserves the account form for correction");
  button("Continue")!.click();button("Continue")!.click();await pause(260);
+ for(let i=0;i<100&&document.querySelectorAll("input").length;i++)await pause(20);
  check(bootstrapCalls===2&&setupCompleteRequests===1&&setupFinished===1,"one valid submit creates one admin and immediately enters the UI without a provider step");
  check(document.querySelectorAll("input").length===0,"acknowledged creation clears credential fields");
  check(providerRequests===providerBeforeSetup&&adminRequests===adminBeforeSetup&&osRequests===osBeforeSetup,"setup never fetches providers, lists extra users or discovers OS users");
