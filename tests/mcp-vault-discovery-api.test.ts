@@ -7,7 +7,7 @@ import path from "node:path";
 import os from "node:os";
 test("vault discovery supports older live engines and reprojects metadata only",async t=>{
  const root=mkdtempSync(path.join(os.tmpdir(),"metis-vault-index-"));
- Object.assign(process.env,{AI_CHAT_ROOT:root,CHAT_DATA_DIR:root,CHAT_DB_PATH:path.join(root,"chat.sqlite"),AI_CHAT_MCP_STATE_DIR:path.join(root,"state"),MCP_BEARER_TOKEN:"test-discovery-token",METIS_PROTECTED_LOGIN_MODE:"trusted-root",METIS_NATIVE_ISOLATION:"0",AI_CHAT_TEST_BYPASS_LEASE:"1",NODE_ENV:"test"});
+ Object.assign(process.env,{AI_CHAT_INTERNAL_ORIGIN:"http://127.0.0.1:1",AI_CHAT_ROOT:root,CHAT_DATA_DIR:root,CHAT_DB_PATH:path.join(root,"chat.sqlite"),AI_CHAT_MCP_STATE_DIR:path.join(root,"state"),MCP_BEARER_TOKEN:"test-discovery-token",METIS_PROTECTED_LOGIN_MODE:"trusted-root",METIS_NATIVE_ISOLATION:"0",AI_CHAT_TEST_BYPASS_LEASE:"1",NODE_ENV:"test"});
  mkdirSync(path.join(root,"state"));writeFileSync(path.join(root,"state","registry.json"),JSON.stringify({version:1,servers:[]}));
  const auth=await import("../lib/auth"),store=await import("../lib/db-store"),jobs=await import("../lib/db-jobs");
  const owner=auth.createUser("vault-discovery-owner","synthetic-account-password"),chat=store.createChat("Vault index",undefined,owner.id);

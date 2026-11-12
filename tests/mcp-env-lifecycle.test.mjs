@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 test('environment replacement preserves active calls and excludes application secrets from children',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'metis-mcp-lifecycle-'));
  const file=path.join(root,'server.mjs'),state=path.join(root,'state');fs.mkdirSync(state);
- Object.assign(process.env,{AI_CHAT_ROOT:root,AI_CHAT_MCP_STATE_DIR:state,AI_CHAT_SECRETS_KEY:'03'.repeat(32),MCP_BEARER_TOKEN:'synthetic-application-token'});
+ Object.assign(process.env,{AI_CHAT_INTERNAL_ORIGIN:"http://127.0.0.1:1",AI_CHAT_ROOT:root,AI_CHAT_MCP_STATE_DIR:state,AI_CHAT_SECRETS_KEY:'03'.repeat(32),MCP_BEARER_TOKEN:'synthetic-application-token'});
  const sdk=pathToFileURL(path.resolve('node_modules/@modelcontextprotocol/sdk/dist/esm/server/index.js')).href;
  const stdio=pathToFileURL(path.resolve('node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js')).href;
  const types=pathToFileURL(path.resolve('node_modules/@modelcontextprotocol/sdk/dist/esm/types.js')).href;

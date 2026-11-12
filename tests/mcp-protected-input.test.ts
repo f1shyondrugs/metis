@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 test("protected MCP requests preserve account/job/target binding and never store plaintext",async()=>{
  const root=mkdtempSync(path.join(os.tmpdir(),"metis-mcp-input-"));
- Object.assign(process.env,{AI_CHAT_ROOT:root,CHAT_DATA_DIR:path.join(root,"data"),AI_CHAT_MCP_STATE_DIR:path.join(root,"state"),AI_CHAT_SECRETS_KEY:"02".repeat(32)});
+ Object.assign(process.env,{AI_CHAT_INTERNAL_ORIGIN:"http://127.0.0.1:1",AI_CHAT_ROOT:root,CHAT_DATA_DIR:path.join(root,"data"),AI_CHAT_MCP_STATE_DIR:path.join(root,"state"),AI_CHAT_SECRETS_KEY:"02".repeat(32)});
  mkdirSync(path.join(root,"state"),{recursive:true});
  const entry={id:"icloud-test",ownerId:"owner-a",kind:"stdio",name:"Test calendar",command:"node",args:[],enabled:false,env:{EXISTING:"old-value"}};
  const registry=path.join(root,"state","registry.json");

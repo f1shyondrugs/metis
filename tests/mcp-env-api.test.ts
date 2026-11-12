@@ -8,7 +8,7 @@ import path from "node:path";
 test("environment API authenticates, scopes owners, returns keys only and rejects unsafe writes", async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "metis-mcp-env-"));
   const state = path.join(root, "mcp-state");
-  Object.assign(process.env, { AI_CHAT_ROOT: root, AI_CHAT_INSTALL_DIR: root, CHAT_DATA_DIR: root, CHAT_DB_PATH: path.join(root, "chat.sqlite"), AI_CHAT_MCP_STATE_DIR: state, METIS_AI_BOOTSTRAP_PASSWORD: "", METIS_AI_ADMIN_USERNAMES: "", CHAT_LEGACY_HEADER_AUTH: "false", AI_CHAT_SECRETS_KEY: "04".repeat(32) });
+  Object.assign(process.env, { AI_CHAT_INTERNAL_ORIGIN: "http://127.0.0.1:1", AI_CHAT_ROOT: root, AI_CHAT_INSTALL_DIR: root, CHAT_DATA_DIR: root, CHAT_DB_PATH: path.join(root, "chat.sqlite"), AI_CHAT_MCP_STATE_DIR: state, METIS_AI_BOOTSTRAP_PASSWORD: "", METIS_AI_ADMIN_USERNAMES: "", CHAT_LEGACY_HEADER_AUTH: "false", AI_CHAT_SECRETS_KEY: "04".repeat(32) });
   mkdirSync(state, { recursive: true });
   writeFileSync(path.join(state, "registry.json"), JSON.stringify({ version: 1, servers: [
     { id: "owned", name: "Owned", kind: "stdio", command: "echo", ownerId: "owner", env: { TOKEN: "secret-canary" }, enabled: false },

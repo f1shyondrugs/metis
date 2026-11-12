@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 test("protected MCP HTTP input enforces cookies, origin, current question and status-only transcript",async()=>{
  const root=mkdtempSync(path.join(os.tmpdir(),"metis-mcp-api-"));
- Object.assign(process.env,{AI_CHAT_ROOT:root,CHAT_DATA_DIR:root,CHAT_DB_PATH:path.join(root,"chat.sqlite"),AI_CHAT_MCP_STATE_DIR:path.join(root,"state"),AI_CHAT_SECRETS_KEY:"04".repeat(32)});
+ Object.assign(process.env,{AI_CHAT_INTERNAL_ORIGIN:"http://127.0.0.1:1",AI_CHAT_ROOT:root,CHAT_DATA_DIR:root,CHAT_DB_PATH:path.join(root,"chat.sqlite"),AI_CHAT_MCP_STATE_DIR:path.join(root,"state"),AI_CHAT_SECRETS_KEY:"04".repeat(32)});
  mkdirSync(path.join(root,"state"));writeFileSync(path.join(root,"state","registry.json"),JSON.stringify({version:1,servers:[]}));
  const auth=await import("../lib/auth"),store=await import("../lib/db-store"),jobs=await import("../lib/db-jobs"),questions=await import("../lib/db-questions");
  const protectedInput=await import("../lib/mcp-protected-input");
