@@ -10,6 +10,10 @@ import {ProviderSetupDialog} from "../components/provider-setup-dialog";
 import {onboardingStorageKey,PRODUCT_TOUR,suggestedAppPlatform,type TourTarget} from "../lib/client-onboarding";
 const params=new URLSearchParams(location.search),view=params.get("view")||"install";
 const originalFetch=window.fetch.bind(window);
+const originalMatchMedia=window.matchMedia.bind(window),motionMedia=new EventTarget();let reducedMotion=false;
+Object.defineProperties(motionMedia,{matches:{get:()=>reducedMotion},media:{value:"(prefers-reduced-motion: reduce)"}});
+window.matchMedia=query=>query==="(prefers-reduced-motion: reduce)"?motionMedia as MediaQueryList:originalMatchMedia(query);
+async function reduceMotion(value:boolean){reducedMotion=value;motionMedia.dispatchEvent(new Event("change"));await pause(40);}
 let failures=0,permissionCalls=0,deviceCalls=0,serverCalls=0,providerCalls=0,pairingNavigationCalls=0,setupFinished=0,setupCompleteRequests=0;
 let nativeId="",downloadFail=false,bootstrapCalls=0;
 const nav:TourTarget[]=[];
@@ -61,6 +65,8 @@ async function run(){
  for(const key of Object.keys(localStorage))if(key.startsWith("metis:onboarding:"))localStorage.removeItem(key);
  localStorage.removeItem(APPEARANCE_STORAGE_KEY);browser();await mount();
  check(getComputedStyle(document.documentElement).getPropertyValue("--background").trim()==="#000000","fresh theme is pure black");
+ const intro=document.querySelector<HTMLElement>(".onboarding-motion")!,introSvg=intro.querySelector("svg")!;
+ check(intro.dataset.onboardingReady==="true"&&intro.dataset.onboardingEntrance==="running"&&Number(getComputedStyle(introSvg).opacity)<1,"loaded page starts a real coordinated edge fade instead of popping in");
  root.render(<AppearanceProvider><AppearanceSettings/></AppearanceProvider>);await pause(180);
  const paper=document.querySelector<HTMLInputElement>('input[name="color-theme"][value="paper"]')!;paper.click();await pause();
  check(document.documentElement.dataset.surface==="paper","appearance picker applies a light preset");
@@ -82,12 +88,19 @@ async function run(){
  const wave=document.querySelector(".onboarding-motion mask path")!,before=wave.getAttribute("d");await pause(160);
  check(before!==wave.getAttribute("d"),"real dot/wave contour animates");
  check(document.querySelectorAll(".onboarding-motion svg").length===1,"one wave controller is mounted");
+ for(let i=0;i<80&&document.querySelector<HTMLElement>(".onboarding-motion")?.dataset.onboardingEntrance!=="done";i++)await pause(20);
  const motion=document.querySelector<SVGSVGElement>(".onboarding-motion svg")!;
+ check(document.querySelector<HTMLElement>(".onboarding-motion")?.dataset.onboardingEntrance==="done","edge entrance reaches its exact final state after page readiness");
  check(getComputedStyle(motion).color==="rgb(255, 255, 255)"&&getComputedStyle(motion).opacity==="1","onboarding dots use white at full opacity");
  const glow=motion.querySelector<SVGGElement>("[data-onboarding-glow]")!;
  check(!!glow&&getComputedStyle(glow).filter!=="none"&&Number(getComputedStyle(glow).opacity)>0&&motion.querySelector("feGaussianBlur")?.getAttribute("stdDeviation")==="8","soft white edge glow remains behind sharp dots");
  check(motion.querySelector('[data-onboarding-geometry]')?.getAttribute("stroke")==="none"&&motion.querySelectorAll(":scope > g > rect").length===1&&motion.querySelector(":scope > g > rect")?.getAttribute("fill")?.startsWith("url("),"dot layer has no perimeter stroke or hard solid border band");
- await click("Continue");
+ const stableEdge=document.querySelector(".onboarding-motion svg");
+ button("Continue")!.click();await pause(25);
+ check(document.querySelector(".onboarding-shell")?.getAttribute("data-phase")==="out"&&document.querySelector(".onboarding-shell")?.hasAttribute("inert"),"Continue fades the previous step and blocks repeated actions");
+ await pause(150);
+ check(document.querySelector(".onboarding-motion svg")===stableEdge,"step navigation keeps the same glow and dot controller");
+ check(document.querySelector(".onboarding-shell")?.getAttribute("data-phase")==="in","the next step fades in after the previous step leaves");
  check(!!document.querySelector('[aria-label="Get the Metis app"]'),"web onboarding offers the desktop app");
  check(document.querySelectorAll(".onboarding-platforms option:not([disabled])").length===5,"Windows macOS Linux iOS Android can all be selected");
  const expected=suggestedAppPlatform(navigator);
@@ -143,12 +156,30 @@ async function run(){
  browser();await mount("cross-tab");
  dispatchEvent(new StorageEvent("storage",{key:onboardingStorageKey("cross-tab"),newValue:JSON.stringify({version:1,phase:"done",tourIndex:0})}));await pause();
  check(!document.querySelector(".onboarding-stage"),"same-account client progress synchronizes across tabs");
+ browser();await mount("live-motion");button("Continue")!.click();await pause(25);await reduceMotion(true);
+ check(!!document.querySelector('[aria-label="Get the Metis app"]')&&document.querySelector(".onboarding-shell")?.getAttribute("data-phase")==="idle","live Reduce Motion cancels an in-flight step fade and shows the exact target");
+ check(document.querySelector<HTMLElement>(".onboarding-motion")?.dataset.onboardingEntrance==="done"&&document.querySelector("svg")?.getAnimations().length===0,"live Reduce Motion finishes the edge entrance immediately");
+ const reducedWave=document.querySelector(".onboarding-motion mask path")!.getAttribute("d");await pause(140);check(document.querySelector(".onboarding-motion mask path")!.getAttribute("d")===reducedWave,"Reduce Motion freezes wave geometry");
+ await click("Back");check(document.body.textContent?.includes("Welcome, live-motion"),"reduced-motion Back swaps immediately without a fade delay");await reduceMotion(false);
+ // Controlled asset readiness on this isolated fixture, never production browser settings.
+ const fontDescriptor=Object.getOwnPropertyDescriptor(document,"fonts");let finishFonts:()=>void=()=>{};
+ try{
+  Object.defineProperty(document,"fonts",{configurable:true,value:{ready:new Promise<void>(resolve=>{finishFonts=resolve;})}});
+  await mount("waiting-assets");
+  const waitingHost=document.querySelector<HTMLElement>(".onboarding-motion")!,waitingSvg=waitingHost.querySelector("svg")!;
+  check(waitingHost.dataset.onboardingEntrance==="pending"&&getComputedStyle(waitingSvg).opacity==="0"&&getComputedStyle(document.querySelector(".onboarding-shell")!).opacity==="0","initial scene and edge wait together for assets without flashing");
+  finishFonts();await pause(50);
+  check(waitingHost.dataset.onboardingReady==="true"&&waitingHost.dataset.onboardingEntrance==="running","settled assets release the coordinated content and edge entrance");
+  root.render(<div/>);await pause(750);
+  check(!document.querySelector(".onboarding-motion")&&waitingHost.dataset.onboardingEntrance===undefined,"leaving during entrance cancels animation and stale readiness callbacks");
+ }finally{if(fontDescriptor)Object.defineProperty(document,"fonts",fontDescriptor);else Reflect.deleteProperty(document,"fonts");}
  // Server first-run, with fake HTTP only: no account or real credential operation.
  sessionStorage.removeItem("metis-setup-step");
  root.render(<SetupWizard open hasUsers={false} onFinished={()=>{setupFinished++;}}/>);await pause(200);
  check(document.body.textContent?.includes("fresh Metis installation"),"fresh server is explicitly recognised in shared guided setup");
  await click("Continue");
  check(!!document.querySelector('input[aria-describedby="setup-token-help"]')&&document.querySelectorAll('input[type="password"]').length===2,"operator token and account password remain protected inputs");
+ check(document.activeElement?.getAttribute("autocomplete")==="username","the first account field receives focus after the step fade");
  await fill("Operator setup token","synthetic-token");await fill("Admin username","demo-admin");await fill("Password","synthetic-password");await click("Create admin");await pause(200);
  check(bootstrapCalls===1&&document.body.textContent?.includes("Admin"),"first admin setup uses the existing bootstrap action");
  await click("Continue");await pause(150);

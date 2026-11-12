@@ -28,6 +28,14 @@ The web server setup, sign-in, client guide and native launcher share the dot/wa
 
 The product tour uses a small non-modal card and actual app navigation callbacks for Chat, Projects, Notebooks, Workspace, Agent Hub and Settings. Explicit Continue/Back clicks use the existing navigation callback to show the next/previous feature. Rendering, reopening or resuming a card never navigates on its own. No action creates projects, sends messages or selects a device. Highlights follow visible in-app anchors and do not intercept workspace input. Escape pauses at the saved position; there is no extra Continue later button. Getting started in the account menu can resume or restart the introduction. Completing the tour does not overwrite user settings; the final button is still Continue.
 
+## Loading and step transitions
+
+The shared motion controller waits for page load and font readiness, with a bounded 1800ms fallback so a missing asset never traps the UI. Reduced Motion shows the final state immediately. The `metis:onboarding-ready` presentation event starts content and a 700ms opacity/scale edge entrance together; only then does the wave RAF run. Visibility changes and live Reduced Motion cancel the entrance, and unmount removes listeners/timers/animations.
+
+`OnboardingTransition` is painting state, not a second onboarding state machine. Its 110ms outgoing fade retains the old scene inert, then mounts the latest target for a 280ms entrance. Same-step typing and error updates remain immediate. Stable client stages keep one edge controller across Continue/Back. Server setup and tour cards use the same transition wrapper. A live motion-preference change commits the exact target immediately. Pending timers and old account content cannot reappear after unmount; keyboard focus is preserved/restored without stealing focus from an already focused new form.
+
+The native local domain launcher uses the same timing constants and readiness event. It makes the new scene interactive before focusing its URL input. A ready remote view still replaces the launcher immediately and disposes its motion controller. No authentication, bootstrap, pairing or system-permission action waits on an animation.
+
 ## Verification
 
 - `tests/client-onboarding.test.ts`: platform detection and per-account/client state parsing.

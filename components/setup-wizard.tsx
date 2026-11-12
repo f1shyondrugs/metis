@@ -210,7 +210,7 @@ export function SetupWizard({
   }
 
   return (
-    <OnboardingStage eyebrow="Metis · Server setup" title={step === "welcome" ? "Welcome to Metis" : step === "people" ? "Create your account" : step === "provider" ? "Connect a provider" : "Metis is ready"} description={step === "welcome" ? "A fresh Metis installation. Let’s set it up." : step === "people" ? "Your first account manages this server." : step === "provider" ? "Choose a provider, or add one later." : "Your workspace is ready."} progress={<OnboardingProgress steps={steps} index={stepIndex}/>} footer={stepIndex>0?<Button type="button" variant="ghost" disabled={busy} onClick={()=>goToStep(steps[Math.max(0,stepIndex-1)].id)}>Back</Button>:null}>
+    <OnboardingStage transitionKey={step} eyebrow="Metis · Server setup" title={step === "welcome" ? "Welcome to Metis" : step === "people" ? "Create your account" : step === "provider" ? "Connect a provider" : "Metis is ready"} description={step === "welcome" ? "A fresh Metis installation. Let’s set it up." : step === "people" ? "Your first account manages this server." : step === "provider" ? "Choose a provider, or add one later." : "Your workspace is ready."} progress={<OnboardingProgress steps={steps} index={stepIndex}/>} footer={stepIndex>0?<Button type="button" variant="ghost" disabled={busy} onClick={()=>goToStep(steps[Math.max(0,stepIndex-1)].id)}>Back</Button>:null}>
 
       {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
 

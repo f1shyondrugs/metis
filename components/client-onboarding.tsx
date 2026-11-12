@@ -3,7 +3,7 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import {ArrowLeft,ArrowRight,Check,MessageSquare,Folder,NotebookPen,Monitor,Settings,Puzzle,Shield} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Dialog,DialogContent,DialogTitle,DialogDescription} from "@/components/ui/dialog";
-import {OnboardingStage,OnboardingMotion,OnboardingProgress} from "@/components/onboarding-stage";
+import {OnboardingStage,OnboardingMotion,OnboardingProgress,OnboardingTransition} from "@/components/onboarding-stage";
 import {AppInstallOffer} from "@/components/app-install-offer";
 import {desktopBridge} from "@/lib/desktop-bridge";
 import {onboardingStorageKey,parseOnboardingState,PRODUCT_TOUR,type ClientOnboardingState,type TourTarget} from "@/lib/client-onboarding";
@@ -50,7 +50,7 @@ export function ClientOnboarding({userId,username,onNavigate,hasProvider,onPairD
  const advance=()=>{if(state.phase==="welcome")next();else if(native&&setupDevice&&onPairDevice){setSetupDevice(false);setPaused(true);onPairDevice();}else beginTour();};
  return <Dialog open onOpenChange={open=>{if(!open)setPaused(true);}}><DialogContent className="max-h-[100dvh] w-screen max-w-none gap-0 overflow-y-auto rounded-none border-0 p-0 sm:max-w-none data-open:animate-none data-closed:animate-none" showCloseButton={false}>
   <DialogTitle className="sr-only">Getting started with Metis</DialogTitle><DialogDescription className="sr-only">A guide for this account on this browser or desktop. You can continue later.</DialogDescription>
-  <OnboardingStage key={scope.key+state.phase} eyebrow={native?"Metis · This desktop":"Metis · This browser"} title={state.phase==="welcome"?"Welcome, "+username:state.phase==="device"?"Set up this desktop":"Get the app"} description={state.phase==="welcome"?"Your workspace. Your way.":state.phase==="device"?"Device access is optional. Chat works without it.":"Desktop Assistant, notifications and device access."}
+  <OnboardingStage key={scope.key} transitionKey={state.phase} eyebrow={native?"Metis · This desktop":"Metis · This browser"} title={state.phase==="welcome"?"Welcome, "+username:state.phase==="device"?"Set up this desktop":"Get the app"} description={state.phase==="welcome"?"Your workspace. Your way.":state.phase==="device"?"Device access is optional. Chat works without it.":"Desktop Assistant, notifications and device access."}
    progress={<OnboardingProgress steps={steps} index={index}/>} footer={<>
     {index>0?<Button variant="ghost" onClick={()=>save({...state,phase:"welcome"})}><ArrowLeft aria-hidden="true" className="size-4"/>Back</Button>:null}
     <Button onClick={advance}>Continue<ArrowRight aria-hidden="true" className="size-4"/></Button>
@@ -71,6 +71,7 @@ export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish}:{
  const item=PRODUCT_TOUR[index]||PRODUCT_TOUR[0],Icon=tourIcons[index]||MessageSquare;
  const [rect,setRect]=useState<{left:number;top:number;width:number;height:number}|null>(null);
  const [topAligned,setTopAligned]=useState(false);
+ const [ready,setReady]=useState(false),show=useCallback(()=>setReady(true),[]);
  useEffect(()=>{
   let frame=0,observer:ResizeObserver|undefined;
   const measure=()=>{
@@ -88,12 +89,12 @@ export function ProductTour({index,onIndex,onNavigate,onPause,onBack,onFinish}:{
   return ()=>{cancelAnimationFrame(frame);observer?.disconnect();mutations.disconnect();removeEventListener("resize",schedule);removeEventListener("scroll",schedule,true);removeEventListener("keydown",escape,true);};
  },[item.id,onPause]);
  return <><div className="onboarding-tour-highlight" aria-hidden="true" style={rect?rect:{display:"none"}}/>
-  <section className="onboarding-tour" style={topAligned?{top:16,bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingMotion/>
+  <section className="onboarding-tour" style={topAligned?{top:16,bottom:"auto"}:undefined} role="region" aria-label="Metis product tour"><OnboardingMotion onReady={show}/><OnboardingTransition step={item.id} ready={ready}>
    <p className="onboarding-eyebrow">Getting started · {index+1} of {PRODUCT_TOUR.length}</p><Icon className="mb-3 size-5 text-primary"/>
-   <h2 aria-live="polite" tabIndex={-1}>{item.label}</h2><p>{item.description}</p>
+   <h2 aria-live="polite" tabIndex={-1} data-onboarding-heading>{item.label}</h2><p>{item.description}</p>
    <div className="mt-5 flex items-center justify-between gap-3">
     <Button variant="ghost" onClick={()=>{if(index===0)onBack();else{onNavigate(PRODUCT_TOUR[index-1].id);onIndex(index-1);}}}><ArrowLeft className="size-4" aria-hidden="true"/>Back</Button>
     <Button onClick={()=>{if(index===PRODUCT_TOUR.length-1)onFinish();else{onNavigate(PRODUCT_TOUR[index+1].id);onIndex(index+1);}}}>Continue<ArrowRight className="size-4" aria-hidden="true"/></Button>
    </div>
-  </section></>;
+  </OnboardingTransition></section></>;
 }
