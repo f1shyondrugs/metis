@@ -15,6 +15,7 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 | [DEPLOY.md](./DEPLOY.md) | Deploy notes (secrets stay out of git) |
 | [WORKER.md](./WORKER.md) | Durable worker, concurrency, recovery |
 | [CPU-PARALLELISM.md](./CPU-PARALLELISM.md) | Per-core monitoring, current execution model and measured scaling recommendations |
+| [ICLOUD-CALENDAR-MANAGEMENT.md](./ICLOUD-CALENDAR-MANAGEMENT.md) | iCloud calendar colors, creation and atomic event moves preserving complete iCalendar resources |
 | [MCP-CREDENTIALS.md](./MCP-CREDENTIALS.md) | Protected MCP environment input, encrypted connection settings and session-preserving rollout |
 | [PROTECTED-LOGINS.md](./PROTECTED-LOGINS.md) | Protected credential forms, encrypted browser/console reuse and deployment requirements |
 | [NATIVE-RUNTIME-ISOLATION.md](./NATIVE-RUNTIME-ISOLATION.md) | Native provider isolation and protected file boundaries |
