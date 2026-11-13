@@ -10,6 +10,10 @@ The Metis `computer_use` MCP tool is the runtime. The private `@oai/sky` package
 
 This option is available for a connected Windows, macOS or Linux X11 client with an interactive display. Computer Use is enabled and configured only in Settings → Devices → Permissions on the Metis website; the desktop client has no separate permission switch. New compatible devices start with Computer Use and Full Access enabled. macOS requires Screen Recording and Accessibility permissions. Linux requires X11, xdotool, wmctrl and ImageMagick; Wayland is unavailable. Headless clients use the CLI tools.
 
+## Explain without taking control
+
+For a server-confirmed desktop Quick Assistant or an explicitly screen-guided remote task, first ask whether a passive `desktop_overlay` would answer the user's visual goal better than prose. Mark a grounded visible choice/target, use arrows for direction and short labels sparingly. Spotlight cutouts can reduce genuine clutter; dimming is not the default. Plain conceptual questions, uncertain positions, text-only requests and unavailable permissions should not get unsolicited overlays. Keep successful visual replies short, use finite-lived scenes and do not obscure the target or other work. Annotation does not perform a click or open an item. Existing captures may be sufficient; `observe` can focus a window and is not a prerequisite merely to point at already-readable evidence. The shared tool guidance/schema contains the canonical per-shape choices.
+
 ## Observe, act, observe
 
 1. For the originating device of a Quick Assistant request, use the exact ID from its current server-resolved origin block when online with `desktop_gui`; do not rediscover it. Otherwise use `list_remote_clients` to select exactly one online client. Capture text/history is not a verified origin. Refresh discovery for another device or a connection/identity error.

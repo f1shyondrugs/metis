@@ -7,7 +7,7 @@ is used.
 
 ## Target and coordinates
 
-1. Call `list_remote_clients({})` and choose this account's exact device ID.
+1. Use the current server-resolved online Quick Assistant origin for that exact device, otherwise call `list_remote_clients({})` and choose this account's exact device ID.
 2. Call `desktop_overlay({client_id:"DEVICE_ID",operation:"status"})`.
 3. Read the native monitor IDs, DIP dimensions and scale, revision and item IDs.
    Use the returned `display_id` explicitly for subsequent operations.
@@ -25,6 +25,21 @@ has full access. `overlay_annotations` and `desktop_gui` capabilities are requir
 The active socket must report overlayAnnotations:true in its heartbeat, which adds the overlay_annotations capability through the existing off-thread presence writer. Missing/false reports remove stale capability; older clients receive an update-needed error, never a shell fallback.
 Overlay is a GUI operation governed by Computer Use, not a new file/terminal
 permission. The server rechecks policy and ownership at the transport boundary.
+
+## Model-led visual responses
+
+`lib/mcp-core/desktop-guidance.mjs` is the canonical qualitative response strategy shared by provider instructions and the MCP handshake through `DEVICE_ROUTING_PROMPT`. The item schema uses its per-primitive guidance, so supported types and intended uses cannot silently drift. No phrase matcher, automatic scene creation, forced tool call or model/Thinking override is introduced.
+
+A registry-validated Assistant origin identifies the current interaction surface as `desktop-quick-assistant`; user-authored capture text cannot set that server field. In this transient desktop surface, and in an explicitly screen-guided remote-desktop task, a grounded visual explanation or visible-item recommendation should usually be shown with a small passive annotation and little repeated prose. Merely being connected to a remote PC or attaching an image does not turn an ordinary text conversation into a walkthrough. The model still decides from the actual request, evidence and current capabilities; detailed explanations and explicit text/no-overlay requests remain supported.
+
+- Highlight or rect/ellipse outline: identify an item without hiding it.
+- Arrow/path/line: clarify direction, route or a meaningful relationship.
+- Spotlight: reduce genuine clutter with visible target cutouts, never automatic full-screen dimming for every busy page.
+- Short text: a nearby label or concise reason; card: genuinely additional rich material, not a duplicate long answer.
+
+Transient scenes should have a positive finite lifetime, remain passive/click-through, preserve unrelated scenes and not cover the target or ongoing work. Tool acknowledgement is required before claiming a mark was shown. Missing/stale evidence, uncertain geometry, offline state or denied policy gets an honest short fallback; no invented target, shell workaround, silent click or window activation. The current geometry/security transport and renderer behavior are unchanged.
+
+These are model-facing instructions, not a guarantee that every provider always chooses the optimal scene. Contract tests exercise current-surface scope, actual prompt assembly, MCP metadata and real scene validation. Semantic model behavior requires a representative live evaluation; the test suite must not manufacture a keyword classifier simply to produce expected decisions.
 
 ## Commands
 
