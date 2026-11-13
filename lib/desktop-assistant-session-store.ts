@@ -45,7 +45,7 @@ export function saveAssistantSession(ownerId:string,deviceId:string,version:numb
    if(!next.chatId)throw new AssistantSessionError("Chat not found.",404);
    const chat=getChat(next.chatId,ownerId),message=chat?.queuedMessages?.find(item=>item.id===editQueueId);
    if(!message)throw new AssistantSessionError("This message has already left the queue. Your draft is preserved.",409);
-   next.draft={text:message.text,referenceText:message.referenceText,references:message.references,attachments:message.attachments};
+   next.draft={text:message.text,referenceText:message.referenceText,references:message.references,attachments:message.attachments,...(message.assistantDeviceId?{assistantDeviceId:message.assistantDeviceId}:{})};
    removeQueuedMessage(next.chatId,editQueueId,ownerId);
   }
   database().prepare("INSERT INTO desktop_assistant_sessions(owner_id,device_id,version,data) VALUES(?,?,?,?) ON CONFLICT(owner_id,device_id) DO UPDATE SET version=excluded.version,data=excluded.data").run(ownerId,deviceId,next.version,JSON.stringify(next));

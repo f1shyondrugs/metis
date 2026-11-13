@@ -71,7 +71,7 @@ window.fetch=async(input,init)=>{
  if(url.startsWith("/api/runs?"))return Response.json({job:{id:"fixture-job",status:mode==="error"?"error":"completed",error:mode==="error"?"Fixture provider rejected the request.":undefined}});
  if(url==="/api/file-uploads")return Response.json({id:"fixture-upload-"+captured});
  if(url.startsWith("/api/file-uploads/"))return Response.json({id:"fixture-upload",name:"Monitor.png",mimeType:"image/png",size:32,kind:"image",offset:999999});
- if(url==="/api/chat"){submitted++;post=JSON.parse(String(init?.body));return Response.json({jobId:"fixture-job"});}
+ if(url==="/api/chat"){submitted++;post=JSON.parse(String(init?.body));check(post?.assistantDeviceId===fixtureDeviceId,"Every Quick Assistant send includes its native device ID as structured routing metadata");return Response.json({jobId:"fixture-job"});}
  if(url.startsWith("/api/chats/")&&init?.method==="PATCH")return Response.json({chat:JSON.parse(String(init.body))});
  if(url.startsWith("/api/chats/"))return Response.json({chat:{runStatus:mode==="error"&&submitted>0?"running":"completed",messages:[{id:post?.messageId,role:"user",content:post?.message},{id:"fixture-answer",role:"assistant",content:"Both monitors are attached.",...(mode==="tools"?{parts:[
    {type:"thinking",content:"Inspecting the owned fixture directory",done:true,durationMs:2100},

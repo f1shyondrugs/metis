@@ -46,6 +46,16 @@ until removal is confirmed. Its original registered attachments, references and
 device context remain with the draft. Reorder, failed deletion rollback and
 Send now preserve canonical queue identities and permission checks.
 
+## Current-turn origin device
+
+Every Quick Assistant send includes a structured `assistantDeviceId` from the existing trusted native bridge, separately from screenshot/reference text. Queued items, queue-to-edit drafts, retries, Send now and automatic drain retain that ID with the original capture; a restored capture is not reassigned to whichever desktop happens to be open.
+
+Both provider-neutral prompts (including native Codex) and the Cursor runner resolve that ID afresh through `getRemoteClient(id, job.userId)`. Only this job actor's registered device may supply the name, hostname, OS, version, connection status, capabilities and policy summary. The ID is a routing hint, not a credential or hardware attestation. Foreign, missing, revoked or unauthenticated origins disclose no device metadata. Offline/stale records do not authorize commands or a guessed replacement. No credentials, network address or account identifier enter the block.
+
+The current server-resolved online origin replaces the model's initial `list_remote_clients` call only for that originating device. Other-device selection, explicit inventory requests, unavailable origins and connection/identity errors still use normal discovery. Monitor geometry and screenshot freshness remain separate checks; policy is still enforced at action time. Raw capture text and previous turns never qualify for the shortcut. Ordinary non-Assistant turns do not inherit an origin from chat history.
+
+This uses the existing desktop bridge; no native protocol/installer change is required. Web submission/queue code, fresh job prompt builders and the gateway/skill descriptions must be activated together. Source publication alone does not activate an existing renderer or gateway.
+
 ## Screen-first responses and image transport
 
 The assistant's capture context describes the user's intent and the available passive overlay tools. It asks the model to decide whether a short explanation, an annotation or real interaction is appropriate from meaning and visible evidence. There is no phrase matcher, automatic annotation trigger, forced tool call, model switch or Thinking override. Existing screenshots are first evidence; a fresh Computer Use observation may activate a window and is reserved for missing detail, stale evidence or actual interaction. Device ownership, permission checks, authoritative monitor geometry and freshness still apply.

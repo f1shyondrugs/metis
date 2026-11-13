@@ -1,3 +1,4 @@
+import { assistantOriginPrompt } from "@/lib/assistant-origin";
 import { modeById } from "@/lib/modes";
 import { memoryWorkingPrompt } from "@/lib/mcp-core/memory-instructions.mjs";
 import { SECURE_CREDENTIAL_INSTRUCTIONS } from "@/lib/mcp-core/credential-question-policy.mjs";
@@ -960,6 +961,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
       ]),
       "You can create a follow-up chat by outputting exactly one or more fenced blocks in this format:\n```chat title=\"Short title\"\nMessage to send in the new chat\n```\nThe block creates a new chat for the current user, sends the message there, and starts an agent run. Do not claim a chat was created without outputting this block.",
       METIS_SHARED_AGENT_CONTROL,
+      assistantOriginPrompt(job.userId, job.assistantDeviceId),
       subagentModelInstruction,
       `Your private AI workspace is:\n${agentCwd}\nUse this directory as the working directory for project files and commands. Do not use another user's workspace.`,
       ...(job.incognito || chat.incognito

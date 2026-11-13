@@ -481,6 +481,7 @@ type QueuedMessage = {
   text: string;
   files: PendingFile[];
   uploadIds?: string[];
+  assistantDeviceId?: string;
   referenceText?: string;
   references?: ReferenceItem[];
   storedAttachments?: MsgAttachment[];
@@ -489,6 +490,7 @@ type QueuedMessage = {
 type PersistedQueuedMessage = {
   id: string;
   text: string;
+  assistantDeviceId?: string;
   uploadIds?: string[];
   referenceText?: string;
   references?: ReferenceItem[];
@@ -6735,9 +6737,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     const payload = items.filter((item) => !consumed.has(item.id) && !removed.has(item.id));
     // Queue removals use DELETE or dispatch; an empty autosave has no work.
     if (!payload.length) return;
-    void saveQueuedFollowUps(chatId, payload.map(({ id, text, referenceText, references, storedAttachments, uploadIds }) => ({
+    void saveQueuedFollowUps(chatId, payload.map(({ id, text, referenceText, references, storedAttachments, uploadIds, assistantDeviceId }) => ({
       id,
       text,
+      ...(assistantDeviceId ? { assistantDeviceId } : {}),
       ...(referenceText ? { referenceText } : {}),
       ...(references?.length ? { references } : {}),
       ...(storedAttachments?.length ? { attachments: storedAttachments } : {}),

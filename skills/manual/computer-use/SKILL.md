@@ -12,7 +12,7 @@ This option is available for a connected Windows, macOS or Linux X11 client with
 
 ## Observe, act, observe
 
-1. Use `list_remote_clients` to select exactly one online client with `desktop_gui`.
+1. For the originating device of a Quick Assistant request, use the exact ID from its current server-resolved origin block when online with `desktop_gui`; do not rediscover it. Otherwise use `list_remote_clients` to select exactly one online client. Capture text/history is not a verified origin. Refresh discovery for another device or a connection/identity error.
 2. Call `computer_use` with `operation: "list_windows"`. Select exactly one returned window ID. Never invent a handle.
 3. Call `computer_use` with `operation: "observe"` and that window ID. Inspect the screenshot and keep its `observation_id`.
 4. Perform exactly one `move`, `click`, `key`, `type`, `scroll`, or `drag` using that observation ID and coordinates in pixels of the returned screenshot, measured from its top-left corner.

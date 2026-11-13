@@ -1,3 +1,4 @@
+import { assistantOriginPrompt } from "@/lib/assistant-origin";
 import { modeById } from "@/lib/modes";
 import { memoryWorkingPrompt } from "@/lib/mcp-core/memory-instructions.mjs";
 import { agentRulesPrompt } from "@/lib/agent-rules";
@@ -161,6 +162,7 @@ export function buildProviderPromptParts(input: ProviderPromptContext): { instru
     !incognito ? agentRulesPrompt(globalSettings) : "",
     project?.instructions ? `Project instructions override the user\'s global custom instructions while this chat is in the project:\n${project.instructions}` : "",
     METIS_SHARED_AGENT_CONTROL,
+    assistantOriginPrompt(job.userId, job.assistantDeviceId),
     toolContractPrompt({
       modeId: job.modeId || chat.sessionState?.modeId || "agent",
       provider: input.provider || "alternative-provider",

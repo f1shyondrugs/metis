@@ -60,7 +60,7 @@ export function DesktopAssistant() {
   const inputRef=useRef<HTMLTextAreaElement>(null),draft=useRef(""),revision=useRef(0),sending=useRef(false),live=useRef(true);
   const actionEpoch=useRef(0),sendRef=useRef<(automatic?:AutomaticSend)=>Promise<void>>(async()=>{});
   const autoCapture=useRef<{epoch:number;revision:number;manual:boolean;expected:string|null}|null>(null);
-  const pendingSubmission=useRef<(Selection&{chatId:string;messageId:string;message:string;referenceText:string;uploadIds:string[];storedAttachments?:AssistantDraft["attachments"];references?:AssistantDraft["references"];queued:boolean})|null>(null);
+  const pendingSubmission=useRef<(Selection&{chatId:string;messageId:string;message:string;referenceText:string;assistantDeviceId?:string;uploadIds:string[];storedAttachments?:AssistantDraft["attachments"];references?:AssistantDraft["references"];queued:boolean})|null>(null);
   const recording=useRef(false),lastWave=useRef(0),panel=useRef<HTMLElement>(null);
   const gesture=useCallback((value:string)=>{
     if(value==="start"&&!sending.current)setRequested(true);
@@ -285,7 +285,7 @@ export function DesktopAssistant() {
         }
         const screenUploads=await uploadAssistantScreens(capture?.monitors||[],invalid);
         const ids=screenUploads.ids;uploads.push(...screenUploads.tasks);
-        pendingSubmission.current={chatId:id!,messageId:createClientId(),message:text,referenceText:capture?desktopCaptureContext(capture):context.referenceText||"",uploadIds:ids,storedAttachments:context.attachments,references:context.references,queued:runActive.current||queue.length>0,...selection!};
+        pendingSubmission.current={chatId:id!,messageId:createClientId(),message:text,referenceText:capture?desktopCaptureContext(capture):context.referenceText||"",assistantDeviceId:capture?capture.device.clientId:context.assistantDeviceId,uploadIds:ids,storedAttachments:context.attachments,references:context.references,queued:runActive.current||queue.length>0,...selection!};
       }
       if(invalid())throw new Error("Message cancelled before submission. Your draft is preserved.");
       const submission=pendingSubmission.current;
@@ -293,8 +293,8 @@ export function DesktopAssistant() {
       let accepted:{jobId?:string;status?:string}|null=null;
       if(submission.queued){
         queueRevision.current++;
-        await saveQueuedFollowUps(submission.chatId,[...queue.filter(item=>item.id!==submission.messageId),{id:submission.messageId,text:submission.message,referenceText:submission.referenceText,uploadIds:submission.uploadIds,attachments:submission.storedAttachments,references:submission.references}]);
-        setQueue(current=>current.some(item=>item.id===submission.messageId)?current:[...current,{id:submission.messageId,text:submission.message,referenceText:submission.referenceText}]);
+        await saveQueuedFollowUps(submission.chatId,[...queue.filter(item=>item.id!==submission.messageId),{id:submission.messageId,text:submission.message,referenceText:submission.referenceText,assistantDeviceId:submission.assistantDeviceId,uploadIds:submission.uploadIds,attachments:submission.storedAttachments,references:submission.references}]);
+        setQueue(current=>current.some(item=>item.id===submission.messageId)?current:[...current,{id:submission.messageId,text:submission.message,referenceText:submission.referenceText,assistantDeviceId:submission.assistantDeviceId}]);
       }else{
         accepted=await json("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(submission)});
         if(typeof accepted?.jobId!=="string"||!accepted.jobId)throw new Error("The send result could not be confirmed. Retry the same message.");
@@ -356,7 +356,7 @@ export function DesktopAssistant() {
     if(!selection)return;
     void mutateQueue(async()=>{
       const accepted=await json("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-        chatId,messageId:message.id,message:message.text,referenceText:message.referenceText,references:message.references,
+        chatId,messageId:message.id,message:message.text,referenceText:message.referenceText,assistantDeviceId:message.assistantDeviceId,references:message.references,
         storedAttachments:message.attachments,sendQueuedNow:true,...selection,
       })});
       if(!accepted.jobId)throw new Error("Could not confirm the queued message.");

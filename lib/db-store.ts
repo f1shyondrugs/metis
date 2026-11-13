@@ -28,6 +28,7 @@ import type {
   WorkspaceItem,
 } from "@/lib/store";
 import { chatUploadDir, resolveUploadPath } from "@/lib/uploads";
+import { assistantOriginId } from "@/lib/desktop-assistant";
 import { BoundedSnapshotCache } from "@/lib/snapshot-cache";
 import { readChatVersion } from "@/lib/chat-version-index";
 import { RUNTIME_MODES } from "@/lib/runtime-mode";
@@ -645,6 +646,7 @@ export function updateChat(
       id: string;
       text: string;
       referenceText?: string;
+      assistantDeviceId?: string;
       references?: ChatMessage["references"];
         attachments?: ChatMessage["attachments"];
       }> | null;
@@ -709,6 +711,7 @@ export function updateChat(
         .map((item) => ({
           id: item.id.slice(0, 200),
           text: item.text.slice(0, 100_000),
+          ...(assistantOriginId(item.assistantDeviceId) ? { assistantDeviceId: assistantOriginId(item.assistantDeviceId) } : {}),
           ...(typeof item.referenceText === "string" && item.referenceText.trim()
             ? { referenceText: item.referenceText.slice(0, 100_000) }
             : {}),
@@ -1106,6 +1109,7 @@ export function claimQueuedMessageInTransaction(chatId: string, ownerId?: string
         ? `Attached ${message.attachments.length} file${message.attachments.length === 1 ? "" : "s"}`
         : ""),
       ...(message.referenceText ? { referenceText: message.referenceText } : {}),
+      ...(message.assistantDeviceId ? { assistantDeviceId: message.assistantDeviceId } : {}),
       ...(message.references?.length ? { references: message.references } : {}),
       ...(message.attachments?.length ? { attachments: message.attachments } : {}),
       createdAt: now(),

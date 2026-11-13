@@ -316,6 +316,7 @@ export function drainNextQueuedMessage(chatId: string, userId?: string) {
       message: message.text.trim() || (message.attachments?.length ? `(see attachments)` : ""),
       messageId: message.id,
       ...(message.referenceText ? { referenceText: message.referenceText } : {}),
+      ...(message.assistantDeviceId ? { assistantDeviceId: message.assistantDeviceId } : {}),
       ...(message.references?.length ? { references: message.references } : {}),
       ...(message.attachments?.length ? { attachments: message.attachments } : {}),
       ...(chat.agentId ? { agentId: chat.agentId } : {}),

@@ -73,6 +73,7 @@ export type ChatMessage = {
   content: string;
   errorMessage?: string;
   referenceText?: string;
+  assistantDeviceId?: string;
   thinking?: string;
   tools?: ToolPart[];
   parts?: MessagePart[];
@@ -491,6 +492,7 @@ export type Chat = {
     id: string;
     text: string;
     referenceText?: string;
+    assistantDeviceId?: string;
     references?: ChatMessage["references"];
     attachments?: ChatMessage["attachments"];
   }>;
@@ -798,6 +800,7 @@ export function updateChat(
       id: string;
       text: string;
       referenceText?: string;
+      assistantDeviceId?: string;
       references?: ChatMessage["references"];
     attachments?: ChatMessage["attachments"];
     }> | null;

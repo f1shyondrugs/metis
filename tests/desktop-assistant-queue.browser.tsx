@@ -10,7 +10,7 @@ const models=[{id:"fixture/recent",providerId:"fixture",displayName:"Recent mode
 localStorage.setItem("metis-ai_model","fixture/recent");
 let session:AssistantSession={version:0,chatId:"fixture-chat",draft:{text:""},panelSize:{width:360,height:320}};
 const screen={id:"original-screen",name:"Screen.png",mimeType:"image/png",size:12,kind:"image" as const,storedName:"Screen.png"};
-let queue:AssistantQueuedMessage[]=[{id:"q-first",text:"First queued prompt",referenceText:"Original monitor positions",attachments:[screen]},{id:"q-second",text:"Second queued prompt"}];
+let queue:AssistantQueuedMessage[]=[{id:"q-first",text:"First queued prompt",referenceText:"Original monitor positions",assistantDeviceId:"original-client",attachments:[screen]},{id:"q-second",text:"Second queued prompt",assistantDeviceId:"second-client"}];
 let captures=0,sent:Record<string,unknown>|null=null,failRemove=false;
 const nativeFetch=fetch.bind(window);
 const initialMessages=[{id:"user",role:"user",content:"Initial question"},{id:"reply",role:"assistant",content:"I am working on your request."}];
@@ -30,7 +30,7 @@ window.fetch=async(input,init)=>{
    if(body.editQueueId){
     const item=queue.find(item=>item.id===body.editQueueId)!;
     queue=queue.filter(item=>item.id!==body.editQueueId);
-    session={...session,draft:{text:item.text,attachments:item.attachments,referenceText:item.referenceText}};
+    session={...session,draft:{text:item.text,attachments:item.attachments,referenceText:item.referenceText,assistantDeviceId:item.assistantDeviceId}};
    }
    const patch=body.patch;
    session={...session,version:session.version+1,chatId:patch.chatId??session.chatId,panelSize:patch.panelSize??session.panelSize,draft:{...(patch.clearContext?{}:session.draft),text:patch.draftText??session.draft.text}};
@@ -73,6 +73,7 @@ async function run(){
  document.querySelector<HTMLButtonElement>('[aria-label="Queue message with all monitors"]')!.click();
  await until(()=>queue.some(item=>item.text.includes("follow-up"))&&input.value==="");
  check(captures===1,"Queued message captures screens once at queue time, not on restore");
+ check(queue.find(item=>item.text.includes("follow-up"))?.assistantDeviceId==="fixture-client","Fresh queue capture retains the current native device ID");
  check(sent===null,"A running agent receives the canonical server queue, not a competing chat run");
  await until(()=>document.querySelector('[aria-label="Queued message 3"]'));
  await until(()=>!document.querySelector<HTMLButtonElement>('[aria-label="Move queued message 2 up"]')!.disabled);
@@ -86,14 +87,17 @@ async function run(){
  await until(()=>session.draft.attachments?.[0].id==="original-screen");
  type("Edited queued prompt\nWith another line");await until(()=>session.draft.text.includes("another line"));
  check(session.draft.referenceText==="Original monitor positions","Edited draft keeps original device context on the server");
+ check(session.draft.assistantDeviceId==="original-client","Editing preserves original capture device instead of replacing it with the current client");
  const resize=document.querySelector<HTMLButtonElement>('[aria-label="Resize conversation"]')!;
- resize.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowLeft",bubbles:true}));await until(()=>session.panelSize.width===380);
- resize.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true}));await until(()=>session.panelSize.height===340);
+ const widthAfterResize=Math.round(document.querySelector<HTMLElement>(".assistant-conversation")!.getBoundingClientRect().width+20);
+ resize.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowLeft",bubbles:true}));await until(()=>session.panelSize.width===widthAfterResize);
+ const heightBeforeResize=Math.round(document.querySelector<HTMLElement>(".assistant-conversation")!.getBoundingClientRect().height);
+ resize.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true}));await until(()=>session.panelSize.height===heightBeforeResize+20);
  check(true,"Keyboard resize persists both dimensions on the server");
  root.unmount();await pause();root=createRoot(document.getElementById("root")!);root.render(<DesktopAssistant/>);
  await until(()=>document.querySelector<HTMLTextAreaElement>("textarea")?.value===session.draft.text&&document.querySelector('[aria-label="Queued message 2"]'));
  check(document.querySelector<HTMLTextAreaElement>("textarea")!.value.includes("another line"),"A fresh renderer restores the server draft and chat identity");
- check(document.querySelector<HTMLElement>(".assistant-conversation")!.style.width.includes("380px"),"A fresh renderer restores saved panel size without localStorage");
+ check(parseFloat(document.querySelector<HTMLElement>(".assistant-conversation")!.style.width)===Math.min(session.panelSize.width,innerWidth-32),"A fresh renderer restores saved panel size without localStorage, clamped to this viewport");
  check(document.body.textContent?.includes("attached file(s) retained"),"Queued attachment context survives renderer restart");
  await pause(400);
  const rect=document.querySelector<HTMLElement>(".assistant-conversation")!.getBoundingClientRect(),compose=document.querySelector<HTMLElement>(".assistant-compose")!.getBoundingClientRect();
@@ -108,6 +112,7 @@ async function run(){
  const sendNow=[...document.querySelectorAll<HTMLButtonElement>(".assistant-queue button")].find(button=>button.textContent?.includes("Send now"))!;
  sendNow.click();await until(()=>sent?.sendQueuedNow===true);
  check(sent?.chatId==="fixture-chat"&&sent?.messageId==="q-second","Send now uses the normal Metis endpoint and same saved queued identity");
+ check(sent?.assistantDeviceId==="second-client","Send now keeps the queued item origin, not the currently open desktop");
  await nativeFetch("/result",{method:"POST",body:JSON.stringify({mode:"queue",width:innerWidth,height:innerHeight,checks,passed:true})});
 }
 run().catch(async error=>{document.body.dataset.failed=String(error);await nativeFetch("/result",{method:"POST",body:JSON.stringify({mode:"queue",width:innerWidth,height:innerHeight,checks,passed:false,error:String(error)})});});
