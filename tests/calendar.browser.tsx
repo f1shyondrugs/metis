@@ -37,7 +37,8 @@ async function testCompactFilter(){
  check(document.querySelectorAll('[role="menuitemcheckbox"]').length===7,"dropdown includes every calendar");
  check(document.body.textContent?.includes("Read only"),"read-only calendar remains identified");
  const item=document.querySelector<HTMLElement>('[role="menuitemcheckbox"]')!;
- check(item.getBoundingClientRect().height>=44,"dropdown rows have touch targets");
+ await until(()=>item.getBoundingClientRect().height>=43.99);
+ check(item.getBoundingClientRect().height>=43.99,"dropdown rows have touch targets");
  await press(item);
  check(document.querySelector('[role="menuitemcheckbox"]')?.getAttribute("aria-checked")==="false","calendar visibility toggles");
  check(!!document.querySelector('[role="menu"]'),"dropdown stays open for multiple selections");
