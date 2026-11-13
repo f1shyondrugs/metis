@@ -16,13 +16,13 @@ const require=createRequire(import.meta.url),{build}=createRequire(require.resol
 await build({entryPoints:["tests/calendar.browser.tsx"],outdir:output,entryNames:"app",bundle:true,platform:"browser",format:"esm",splitting:true,jsx:"automatic",define:{"process.env.NODE_ENV":'"production"',"process.env":"{}"},loader:{".woff2":"dataurl",".woff":"dataurl",".ttf":"dataurl"}});
 // Render the actual three sidebar buttons with only app-state callbacks removed.
 const shell=ts.createSourceFile("app-shell.tsx",fs.readFileSync("components/app-shell.tsx","utf8"),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-const sidebar=[];
-function collect(node){if(ts.isJsxElement(node)&&node.openingElement.tagName.getText(shell)==="button"&&[">Notebooks</span>",">Calendar</span>",">Automations</span>"].some(label=>node.getText(shell).includes(label))){
+const sidebar=[];let sidebarNavClass="";
+function collect(node){if(ts.isVariableDeclaration(node)&&node.name.getText(shell)==="SIDEBAR_NAV_ITEM_CLASS")sidebarNavClass=node.initializer.getText(shell);if(ts.isJsxElement(node)&&node.openingElement.tagName.getText(shell)==="button"&&[">Notebooks</span>",">Calendar</span>",">Automations</span>"].some(label=>node.getText(shell).includes(label))){
  const opening=ts.factory.updateJsxOpeningElement(node.openingElement,node.openingElement.tagName,node.openingElement.typeArguments,ts.factory.createJsxAttributes(node.openingElement.attributes.properties.filter(a=>!ts.isJsxAttribute(a)||a.name.getText(shell)!=="onClick")));
  sidebar.push(ts.createPrinter().printNode(ts.EmitHint.Unspecified,ts.factory.updateJsxElement(node,opening,node.children,node.closingElement),shell));
 }ts.forEachChild(node,collect);}collect(shell);
-if(sidebar.length!==3)throw Error("Expected three real sidebar buttons");
-await build({stdin:{contents:'import React from "react";import {createRoot} from "react-dom/client";import {NotebookPen,CalendarClock} from "lucide-react";import {cn} from "./lib/utils";const notesOpen=false,automationsOpen=false,accountView=null;createRoot(document.getElementById("root")).render(<div className="space-y-0.5 p-2 text-foreground">'+sidebar.join("")+'</div>);',loader:"tsx",resolveDir:process.cwd()},outfile:output+"/sidebar.js",bundle:true,platform:"browser",format:"esm",jsx:"automatic",define:{"process.env.NODE_ENV":'"production"'}});
+if(sidebar.length!==3||!sidebarNavClass)throw Error("Expected three real sidebar buttons and shared styling");
+await build({stdin:{contents:'import React from "react";import {createRoot} from "react-dom/client";import {NotebookPen,CalendarClock,CalendarDays} from "lucide-react";import {cn} from "./lib/utils";const SIDEBAR_NAV_ITEM_CLASS='+sidebarNavClass+';const notesOpen=false,automationsOpen=false,accountView=new URLSearchParams(location.search).get("active");createRoot(document.getElementById("root")).render(<div className="relative z-0 shrink-0 px-2 pb-1 pt-3 text-foreground">'+sidebar.join("")+'</div>);',loader:"tsx",resolveDir:process.cwd()},outfile:output+"/sidebar.js",bundle:true,platform:"browser",format:"esm",jsx:"automatic",define:{"process.env.NODE_ENV":'"production"'}});
 const css=await postcss([tailwind()]).process(fs.readFileSync("app/globals.css","utf8"),{from:"app/globals.css"});fs.writeFileSync(output+"/theme.css",css.css);
 const server=http.createServer(async(req,res)=>{
  const url=new URL(req.url,"http://127.0.0.1:3282");
@@ -32,7 +32,7 @@ const server=http.createServer(async(req,res)=>{
   const response=await api[req.method==="POST"?"POST":"GET"](request);res.writeHead(response.status,{"Content-Type":"application/json"});res.end(await response.text());return;
  }
  if(url.pathname==="/report"&&req.method==="POST"){let b="";for await(const part of req)b+=part;const r=JSON.parse(b);fs.writeFileSync(output+"/result-"+r.width+".json",JSON.stringify(r,null,2));res.end("saved");return;}
- if(url.pathname==="/sidebar"){res.setHeader("Content-Type","text/html");res.end('<html><link rel="stylesheet" href="/theme.css"><body style="margin:0"><div id="root"></div><script type="module" src="/sidebar.js"></script></body></html>');return;}
+ if(url.pathname==="/sidebar"){res.setHeader("Content-Type","text/html");res.end('<html class="dark"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/theme.css"><body class="bg-background text-foreground" style="margin:0"><div id="root"></div><script type="module" src="/sidebar.js"></script></body></html>');return;}
  if(url.pathname==="/"){res.setHeader("Content-Type","text/html");res.end('<html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Metis Calendar test</title><link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/app.css"><body><div id="root"></div><script type="module" src="/app.js"></script></body></html>');return;}
  const name=path.basename(url.pathname),file=path.join(output,name);if(!/^[a-zA-Z0-9_.-]+\.(?:js|css)$/.test(name)||!fs.existsSync(file)){res.writeHead(404).end();return;}
  res.setHeader("Content-Type",name.endsWith(".js")?"text/javascript":"text/css");res.setHeader("Cache-Control","no-store");res.end(fs.readFileSync(file));

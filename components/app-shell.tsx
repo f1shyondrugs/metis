@@ -74,6 +74,7 @@ import {
   Repeat2,
   Telescope,
   CalendarClock,
+  CalendarDays,
   Monitor,
   Users,
   ArrowLeft,
@@ -327,6 +328,8 @@ import {
   workspaceCrowdsSidebar,
   workspaceWidthAfterReopeningSidebar,
 } from "@/lib/workspace-layout";
+
+const SIDEBAR_NAV_ITEM_CLASS = "m-0 flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors";
 
 const CalendarPanel = dynamic(() => import("@/components/calendar/calendar-panel").then(mod => mod.CalendarPanel), {ssr:false});
 const AutomationsPanel = dynamic(() => import("@/components/automations-panel").then((mod) => mod.AutomationsPanel));
@@ -9733,7 +9736,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         <button
           type="button"
           className={cn(
-            "flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",
+            SIDEBAR_NAV_ITEM_CLASS,
             notesOpen
               ? "text-foreground"
               : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground",
@@ -9749,13 +9752,23 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           <NotebookPen className="size-3.5 shrink-0 opacity-60" />
           <span data-onboarding-target="notebooks" className="min-w-0 truncate">Notebooks</span>
         </button>
-        <button type="button" className={cn("flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",accountView==="calendar"?"text-foreground":"text-muted-foreground hover:bg-white/[0.03] hover:text-foreground")} onClick={()=>{persistActiveSnapshot();setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setAccountView("calendar");setMobileNavOpen(false);navigateChat("calendar");}}>
-          <CalendarClock className="size-3.5 shrink-0 opacity-60"/><span className="min-w-0 truncate">Calendar</span>
+        <button
+          type="button"
+          className={cn(
+            SIDEBAR_NAV_ITEM_CLASS,
+            accountView === "calendar"
+              ? "text-foreground"
+              : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground",
+          )}
+          onClick={()=>{persistActiveSnapshot();setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setAccountView("calendar");setMobileNavOpen(false);navigateChat("calendar");}}
+        >
+          <CalendarDays aria-hidden="true" className="size-3.5 shrink-0 opacity-60" />
+          <span className="min-w-0 truncate">Calendar</span>
         </button>
         <button
           type="button"
           className={cn(
-            "flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",
+            SIDEBAR_NAV_ITEM_CLASS,
             automationsOpen
               ? "text-foreground"
               : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground",

@@ -60,6 +60,16 @@ async function testCompactFilter(){
  const buttons=[...frame.contentDocument!.querySelectorAll("button")],rects=buttons.map(b=>b.getBoundingClientRect());
  check(rects.every(r=>r.height===rects[0].height),"real sidebar buttons have identical heights");
  check(Math.abs((rects[1].top-rects[0].bottom)-(rects[2].top-rects[1].bottom))<1,"real sidebar vertical gaps are uniform");
+ const icons=buttons.map(b=>b.querySelector("svg")!.getBoundingClientRect()),labels=buttons.map(b=>b.querySelector("span")!.getBoundingClientRect());
+ check(icons.every(r=>r.left===icons[0].left),"sidebar icons share the same left edge");
+ check(labels.every(r=>r.left===labels[0].left),"sidebar labels share the same left edge");
+ const styles=buttons.map(b=>frame.contentWindow!.getComputedStyle(b));
+ check(styles.every(s=>s.marginLeft==="0px"&&s.marginRight==="0px"&&s.paddingLeft===styles[0].paddingLeft),"sidebar items have zero margins and identical left padding");
+ check(!!buttons[1].querySelector(".lucide-calendar-days")&&!!buttons[2].querySelector(".lucide-calendar-clock"),"Calendar has its own day-grid icon, distinct from Automations");
+ frame.src="/sidebar?active=calendar";
+ await until(()=>frame.contentDocument?.querySelectorAll("button").length===3&&new URL(frame.contentWindow!.location.href).searchParams.get("active")==="calendar");
+ const activeButtons=[...frame.contentDocument!.querySelectorAll("button")];
+ check(activeButtons.every(b=>b.querySelector("svg")!.getBoundingClientRect().left===icons[0].left&&b.querySelector("span")!.getBoundingClientRect().left===labels[0].left),"active Calendar preserves icon and label alignment");
  frame.remove();
 }
 async function run(){
