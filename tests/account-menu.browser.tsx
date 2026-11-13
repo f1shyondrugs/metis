@@ -30,6 +30,9 @@ async function run(){
  check(menu().querySelectorAll('[role="separator"]').length===3,"exact desktop group separators");
  check(!!app.querySelector('[aria-label="App update available"]'),"app update indicator preserved");
  check(!!control("Notifications")?.querySelector('[aria-label="Unread notifications"]'),"notification indicator preserved");
+ const dots=[app.querySelector<HTMLElement>('[aria-label="App update available"]')!,control("Notifications")!.querySelector<HTMLElement>('[aria-label="Unread notifications"]')!,control("Settings")!.querySelector<HTMLElement>('[aria-label="Update available"]')!];
+ check(dots.every(e=>{const r=e.getBoundingClientRect();return r.width===8&&r.height===8;}),"all menu indicators are identical 8px circles");
+ check(Math.max(...dots.map(e=>e.getBoundingClientRect().right))-Math.min(...dots.map(e=>e.getBoundingClientRect().right))<1,"menu indicators share the same right alignment");
  check([...menu().querySelectorAll<HTMLElement>('[role="menuitem"]')].every(e=>e.getBoundingClientRect().height>=44),"touch targets remain 44px");
  const rect=menu().getBoundingClientRect();
  check(rect.left>=0&&rect.right<=innerWidth&&rect.top>=0&&rect.bottom<=innerHeight,"menu fits viewport");

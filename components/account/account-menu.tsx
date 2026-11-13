@@ -51,13 +51,13 @@ export function AccountMenu({profile,username,updateAvailable,onSettings,onProfi
       <div className="truncate px-2 py-2 text-xs text-muted-foreground">{username}</div>
       <DropdownMenuSeparator />
       {desktop?<>
-        <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={()=>setAppSettingsOpen(true)}><Monitor /> App settings{appUpdateAvailable?<span className="ml-auto size-2 rounded-full bg-primary" aria-label="App update available"/>:null}</DropdownMenuItem>
+        <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={()=>setAppSettingsOpen(true)}><Monitor /> App settings{appUpdateAvailable?<span className="ml-auto size-2 shrink-0 rounded-full bg-primary" aria-label="App update available"/>:null}</DropdownMenuItem>
         <DropdownMenuSeparator />
       </>:null}
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onProfile}><UserRound /> Profile</DropdownMenuItem>
-      {onNotifications ? <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onNotifications}><Bell /> Notifications{unreadCount > 0 ? <span className="ml-auto size-2 rounded-full bg-destructive" aria-label="Unread notifications" /> : null}</DropdownMenuItem> : null}
+      {onNotifications ? <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onNotifications}><Bell /> Notifications{unreadCount > 0 ? <span className="ml-auto size-2 shrink-0 rounded-full bg-destructive" aria-label="Unread notifications" /> : null}</DropdownMenuItem> : null}
       {onAgentHub ? <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onAgentHub}><Puzzle /> Agent Hub</DropdownMenuItem> : null}
-      <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onSettings}><Settings /> Settings{updateAvailable ? <span className="ml-auto size-1.5 rounded-full bg-primary" /> : null}</DropdownMenuItem>
+      <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onSettings}><Settings /> Settings{updateAvailable ? <span className="ml-auto size-2 shrink-0 rounded-full bg-primary" aria-label="Update available" /> : null}</DropdownMenuItem>
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onUsage}><ChartNoAxesCombined /> Usage</DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onLogout}><LogOut /> Logout</DropdownMenuItem>
