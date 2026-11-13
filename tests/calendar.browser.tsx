@@ -1,5 +1,7 @@
 import React from "react";import {createRoot} from "react-dom/client";
 import {CalendarPanel} from "../components/calendar/calendar-panel";
+import {CalendarFilter} from "../components/calendar/calendar-filter";
+import type {CalendarGroup} from "../lib/calendar/types";
 import {applyAppearanceTheme,createDefaultAppearanceState,getSelectedTheme} from "../lib/appearance-storage";
 const results:string[]=[];const wait=(ms=180)=>new Promise(r=>setTimeout(r,ms));const check=(ok:unknown,label:string)=>results.push((ok?"PASS ":"FAIL ")+label);
 applyAppearanceTheme(document.documentElement,getSelectedTheme(createDefaultAppearanceState()),"midnight");
@@ -12,10 +14,54 @@ window.fetch=async(input,init)=>{
 };
 createRoot(document.getElementById("root")!).render(<main style={{height:"100dvh"}} className="flex min-w-0 bg-background text-foreground"><CalendarPanel/></main>);
 const button=(label:string)=>[...document.querySelectorAll<HTMLButtonElement>("button")].find(e=>e.textContent?.trim()===label||e.getAttribute("aria-label")===label);
-async function press(e:HTMLElement|undefined|null){if(!e)throw Error("Missing control");e.click();await wait();}
+async function press(e:HTMLElement|undefined|null){if(!e)throw Error("Missing control");if(e.getAttribute("aria-haspopup")==="menu"){e.focus();e.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));}else e.click();await wait();}
 function fill(e:HTMLInputElement|HTMLTextAreaElement,value:string){const p=e instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,"value")!.set!.call(e,value);e.dispatchEvent(new Event("input",{bubbles:true}));}
 async function until(predicate:()=>boolean){for(let i=0;i<100&&!predicate();i++)await wait(50);if(!predicate())throw Error("Timed out waiting for UI");}
+async function testCompactFilter(){
+ const host=document.createElement("div");host.style.cssText="position:fixed;inset:0;z-index:100;background:var(--background);padding:16px";document.body.append(host);
+ const root=createRoot(host);
+ const groups=["Metis","Arbeit","Ferien","Privat","Skibidi","Erinnerungen","Klassenarbeiten"].map((name,i)=>({id:"filter-"+i,name,color:"#6387cc",readOnly:i===6} as CalendarGroup));
+ let setWidth:(n:number)=>void=()=>{},setGroups:(c:CalendarGroup[])=>void=()=>{};
+ function Harness(){
+  const [width,widthState]=React.useState(190),[calendars,groupState]=React.useState(groups),[hidden,setHidden]=React.useState<string[]>([]);
+  setWidth=widthState;setGroups=groupState;
+  return <div style={{width,maxWidth:"100%"}}><CalendarFilter calendars={calendars} hidden={hidden} onToggle={(id,on)=>setHidden(v=>on?v.filter(x=>x!==id):[...v,id])}/></div>;
+ }
+ root.render(<Harness/>);
+ await until(()=>!!host.querySelector('[data-calendar-filter="dropdown"]'));
+ check(!!button("Choose calendars"),"overflow calendars collapse into a dropdown");
+ check(host.getBoundingClientRect().width<=innerWidth,"compact filter fits viewport");
+ await press(button("Choose calendars"));
+ await until(()=>document.querySelectorAll('[role="menuitemcheckbox"]').length===7);
+ check(document.querySelectorAll('[role="menuitemcheckbox"]').length===7,"dropdown includes every calendar");
+ check(document.body.textContent?.includes("Read only"),"read-only calendar remains identified");
+ const item=document.querySelector<HTMLElement>('[role="menuitemcheckbox"]')!;
+ check(item.getBoundingClientRect().height>=44,"dropdown rows have touch targets");
+ await press(item);
+ check(document.querySelector('[role="menuitemcheckbox"]')?.getAttribute("aria-checked")==="false","calendar visibility toggles");
+ check(!!document.querySelector('[role="menu"]'),"dropdown stays open for multiple selections");
+ document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await wait();
+ check(!document.querySelector('[role="menu"]'),"Escape closes calendar dropdown");
+ check(document.activeElement===button("Choose calendars"),"focus returns to calendar trigger");
+ setGroups([groups[0]]);setWidth(300);
+ await until(()=>!!host.querySelector('[data-calendar-filter="inline"]'));
+ check(host.querySelector<HTMLInputElement>('input:not([disabled])')?.checked===false,"visibility survives switching to inline");
+ setGroups(groups);
+ await until(()=>!!host.querySelector('[data-calendar-filter="dropdown"]'));
+ setWidth(1600);
+ await wait();
+ if(innerWidth>=1200){check(!!host.querySelector('[data-calendar-filter="inline"]'),"widening restores a single inline row");}
+ else check(!!host.querySelector('[data-calendar-filter="dropdown"]'),"available width, not device count, controls collapse");
+ root.unmount();host.remove();
+ const frame=document.createElement("iframe");frame.src="/sidebar";frame.style.cssText="position:fixed;left:0;top:0;width:260px;height:180px";document.body.append(frame);
+ await until(()=>frame.contentDocument?.querySelectorAll("button").length===3);
+ const buttons=[...frame.contentDocument!.querySelectorAll("button")],rects=buttons.map(b=>b.getBoundingClientRect());
+ check(rects.every(r=>r.height===rects[0].height),"real sidebar buttons have identical heights");
+ check(Math.abs((rects[1].top-rects[0].bottom)-(rects[2].top-rects[1].bottom))<1,"real sidebar vertical gaps are uniform");
+ frame.remove();
+}
 async function run(){
+ await testCompactFilter();
  await until(()=>!!document.querySelector(".fc-dayGridMonth-view")&&!!button("New event")&&!document.body.textContent?.includes("Loading calendar"));
  check(document.querySelectorAll(".fc-col-header-cell").length===7,"month view has seven day columns");
  check(!!document.querySelector('[aria-label="Calendar"]'),"named calendar region");

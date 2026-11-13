@@ -9749,7 +9749,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           <NotebookPen className="size-3.5 shrink-0 opacity-60" />
           <span data-onboarding-target="notebooks" className="min-w-0 truncate">Notebooks</span>
         </button>
-        <button type="button" className={cn("flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",accountView==="calendar"?"text-foreground":"text-muted-foreground hover:bg-white/[0.03] hover:text-foreground")} onClick={()=>{persistActiveSnapshot();setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setAccountView("calendar");setMobileNavOpen(false);navigateChat("calendar");}}>
+        <button type="button" className={cn("flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",accountView==="calendar"?"text-foreground":"text-muted-foreground hover:bg-white/[0.03] hover:text-foreground")} onClick={()=>{persistActiveSnapshot();setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setAccountView("calendar");setMobileNavOpen(false);navigateChat("calendar");}}>
           <CalendarClock className="size-3.5 shrink-0 opacity-60"/><span className="min-w-0 truncate">Calendar</span>
         </button>
         <button

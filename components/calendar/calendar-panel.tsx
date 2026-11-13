@@ -11,6 +11,7 @@ import {Input} from "@/components/ui/input";
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription,DialogFooter} from "@/components/ui/dialog";
 import {ConfirmDialog} from "@/components/confirm-dialog";
 import {CalendarConflict} from "./calendar-conflict";
+import {CalendarFilter} from "./calendar-filter";
 import {CalendarConnections,calendarAction} from "./calendar-connections";
 import {createClientId} from "@/lib/client-id";
 import type {CalendarConnection,CalendarEvent,CalendarGroup,CalendarOccurrence,EventInput} from "@/lib/calendar/types";
@@ -84,10 +85,9 @@ export function CalendarPanel(){
   </header>
   {error?<div role="alert" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-sm text-destructive">{error}<Button variant="ghost" size="action" onClick={refresh}>Retry</Button></div>:null}
   {!data&&!error?<p role="status" className="px-4 pt-3 text-sm text-muted-foreground">Loading calendar…</p>:null}
-  {data?<div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-2">
-   {data.calendars.map(c=><label key={c.id} className="flex min-h-8 max-w-full items-center gap-2 text-xs"><input type="checkbox" checked={!hidden.includes(c.id)} onChange={e=>setHidden(v=>e.target.checked?v.filter(id=>id!==c.id):[...v,c.id])}/><span className="size-2 shrink-0 rounded-full" style={{backgroundColor:c.color}}/><span className="max-w-44 truncate" title={c.name}>{c.name}{c.readOnly?" · Read only":""}</span></label>)}
-   {!data.connections.some(c=>c.enabled)?<Button variant="ghost" size="action" className="ml-auto hidden text-xs sm:inline-flex" onClick={()=>setConnections(true)}>Connect iCloud or Google</Button>:<span className="ml-auto text-xs text-muted-foreground">{data.connections.some(c=>c.enabled&&c.error)?"Sync needs attention":data.connections.some(c=>c.enabled&&c.status!=="ready")?"Waiting for first sync":"Native sync enabled"}</span>}
-  </div>:null}
+  {data?<CalendarFilter calendars={data.calendars} hidden={hidden} onToggle={(id,visible)=>setHidden(v=>visible?v.filter(value=>value!==id):[...new Set([...v,id])])}>
+   {!data.connections.some(c=>c.enabled)?<Button variant="ghost" size="action" className="hidden text-xs sm:inline-flex" onClick={()=>setConnections(true)}>Connect iCloud or Google</Button>:<span>{data.connections.some(c=>c.enabled&&c.error)?"Sync needs attention":data.connections.some(c=>c.enabled&&c.status!=="ready")?"Waiting for first sync":"Native sync enabled"}</span>}
+  </CalendarFilter>:null}
   {data&&!error&&data.events.length===0?<p role="status" className="px-4 pt-2 text-xs text-muted-foreground">No events in this period.</p>:null}
   {data?.conflicts.length?<div role="status" className="border-b border-border px-4 py-2 text-sm">{data.conflicts.length} sync conflict{data.conflicts.length===1?"":"s"}. No version was overwritten.{data.conflicts.map(c=><div key={c.id} className="mt-2 flex flex-wrap items-center gap-2"><span>{c.calendarName}</span><Button variant="outline" size="action" onClick={()=>setConflictId(c.id)}>Review conflict</Button></div>)}</div>:null}
   <div className="min-h-0 flex-1 overflow-auto p-2 sm:p-4"><div className={view==="timeGridWeek"?"min-w-[620px] h-full":"h-full min-w-0"}>
