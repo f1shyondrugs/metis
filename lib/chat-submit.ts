@@ -1,3 +1,4 @@
+import { rememberAssistantOrigin } from "@/lib/assistant-origin-store";
 import { assistantOriginId } from "@/lib/desktop-assistant";
 import { materializeUploads } from "@/lib/file-upload-store";
 import { getAuthenticatedUser, isAuthenticated } from "@/lib/auth";
@@ -241,6 +242,7 @@ export async function submitChat(req: Request) {
       }, {
         interruptActiveRun: sendQueuedNow,
         beforeInsert: () => {
+          rememberAssistantOrigin(ownerId,chatId,messageId,assistantDeviceId);
           if (storedAttachments.length) stored.push(...storedAttachments);
           if (attachments.length) {
             stored.push(...saveAttachments(chatId, attachments, ownerId).stored);

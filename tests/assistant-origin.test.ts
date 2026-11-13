@@ -95,6 +95,23 @@ test("queue persistence, automatic drain and session queue-to-edit retain the or
  saved=sessions.saveAssistantSession("owner",id,saved.version,{clearContext:true});
  assert.ok(!saved.draft.assistantDeviceId);
 });
+test("an old supervisor may drop the field without losing the message-scoped device handoff",async()=>{
+ online();const chat=store.createChat("Legacy supervisor",undefined,"owner");
+ store.updateChat(chat.id,{queuedMessages:[{id:"legacy-q",text:"queued",assistantDeviceId:id}]},"owner");
+ // This is the older supervisor's effective output: consume queue, persist only known fields.
+ store.updateChat(chat.id,{queuedMessages:null},"owner");
+ const legacy=jobs.enqueueJob({chatId:chat.id,userId:"owner",messageId:"legacy-q",message:"queued"});
+ assert.equal(legacy.assistantDeviceId,undefined);
+ const block=prompt.buildProviderPromptParts({job:legacy}).instructions;
+ assert.ok(block.includes('"client_id":"'+id+'"'));
+ const {storedAssistantOrigin,rememberAssistantOrigin}=await import("../lib/assistant-origin-store");
+ assert.equal(storedAssistantOrigin("other",chat.id,"legacy-q"),undefined);
+ assert.equal(storedAssistantOrigin("owner",chat.id,"another-message"),undefined);
+ rememberAssistantOrigin("other",chat.id,"legacy-q",foreign);
+ assert.equal(storedAssistantOrigin("owner",chat.id,"legacy-q"),id,"first accepted binding cannot be replaced");
+ assert.equal(storedAssistantOrigin("other",chat.id,"legacy-q"),undefined);
+ assert.ok(!prompt.buildProviderPromptParts({job:job(chat.id,{messageId:"new-turn"})}).instructions.includes('"client_id":"'+id+'"'));
+});
 test("the real ordinary-chat queue autosave preserves Assistant origin during reorder/save",async()=>{
  const ts=await import("typescript"),fs=await import("node:fs"),vm=await import("node:vm");
  const source=ts.createSourceFile("app-shell.tsx",fs.readFileSync("components/app-shell.tsx","utf8"),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);

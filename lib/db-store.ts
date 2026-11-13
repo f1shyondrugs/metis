@@ -28,6 +28,7 @@ import type {
   WorkspaceItem,
 } from "@/lib/store";
 import { chatUploadDir, resolveUploadPath } from "@/lib/uploads";
+import { rememberAssistantOrigin } from "@/lib/assistant-origin-store";
 import { assistantOriginId } from "@/lib/desktop-assistant";
 import { BoundedSnapshotCache } from "@/lib/snapshot-cache";
 import { readChatVersion } from "@/lib/chat-version-index";
@@ -706,6 +707,9 @@ export function updateChat(
     else if (patch.modelParams) next.modelParams = patch.modelParams;
     if (patch.queuedMessages === null) delete next.queuedMessages;
     else if (patch.queuedMessages) {
+      for (const item of patch.queuedMessages) {
+        if(item && typeof item.id === "string")rememberAssistantOrigin(ownerId,id,item.id.slice(0,200),item.assistantDeviceId);
+      }
       const queued = patch.queuedMessages
         .filter((item) => item && typeof item.id === "string" && typeof item.text === "string")
         .map((item) => ({

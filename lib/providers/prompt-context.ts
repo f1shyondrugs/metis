@@ -162,7 +162,7 @@ export function buildProviderPromptParts(input: ProviderPromptContext): { instru
     !incognito ? agentRulesPrompt(globalSettings) : "",
     project?.instructions ? `Project instructions override the user\'s global custom instructions while this chat is in the project:\n${project.instructions}` : "",
     METIS_SHARED_AGENT_CONTROL,
-    assistantOriginPrompt(job.userId, job.assistantDeviceId),
+    assistantOriginPrompt(job.userId, job.assistantDeviceId, job),
     toolContractPrompt({
       modeId: job.modeId || chat.sessionState?.modeId || "agent",
       provider: input.provider || "alternative-provider",
