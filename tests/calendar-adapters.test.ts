@@ -55,6 +55,11 @@ test("iCloud discovery, privileges and MKCALENDAR use valid DAV namespaces",asyn
   const u=String(input),body=String(init?.body||""),method=String(init?.method||"GET").toUpperCase();
   assert.ok(u.startsWith("https://caldav.icloud.com")||u.startsWith("https://p01-caldav.icloud.com/"));
   assert.ok(!body.includes("apple:calendar-color"),"never emit an undeclared XML prefix");
+  assert.ok(!new Headers(init?.headers).get("authorization")?.includes(","),"one case-insensitive Authorization header, never duplicate Basic credentials");
+  if(method==="REPORT"){
+   if(body.includes("calendar-multiget")){assert.ok(!body.includes("<d:href>https:"),"CalDAV multiget hrefs are validated resource paths");return multi(url+"item.ics",'<d:getetag>"apple-1"</d:getetag><c:calendar-data><![CDATA['+raw+']]></c:calendar-data>');}
+   const r=multi(url+"item.ics",'<d:getetag>"apple-1"</d:getetag>');return new Response((await r.text()).replace("</d:multistatus>","<d:sync-token>apple-token</d:sync-token></d:multistatus>"),{status:207,headers:{"Content-Type":"application/xml"}});
+  }
   if(method==="MKCALENDAR"){assert.ok(body.includes("xmlns:ca="));assert.ok(body.includes("ca:calendar-color"));assert.ok(body.includes("Counterpart"));created=true;return new Response(null,{status:201});}
   if(body.includes("current-user-principal"))return multi(u,'<d:current-user-principal><d:href>'+principal+'</d:href></d:current-user-principal>');
   if(body.includes("calendar-home-set"))return multi(principal,'<c:calendar-home-set><d:href>'+home+'</d:href></c:calendar-home-set>');
@@ -64,5 +69,6 @@ test("iCloud discovery, privileges and MKCALENDAR use valid DAV namespaces",asyn
  });
  const adapter=await adapterModule.createCalendarAdapter(owner,apple.id),calendars=await adapter.calendars();assert.equal(calendars.length,1);assert.equal(calendars[0].writable,true);assert.equal(calendars[0].color,"#AABBCC");
  await adapter.createCalendar("Counterpart","#123456");assert.equal(created,true);
+ const pulled=await adapter.pull(calendars[0],"");assert.equal(pulled.objects.length,1);assert.equal(pulled.objects[0].ics,raw);
 });
 test.after(()=>{global.fetch=nativeFetch;fs.rmSync(dir,{recursive:true,force:true});});

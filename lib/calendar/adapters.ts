@@ -34,14 +34,15 @@ export async function createCalendarAdapter(owner:string,id:string):Promise<Cale
   let url=typeof input==="string"?input:input instanceof URL?input.href:input.url;
   for(let redirects=0;redirects<4;redirects++){
    allowedCalendarUrl(provider,url);
-   const response=await fetch(url,{...init,headers:{...Object.fromEntries(new Headers(init?.headers)),Authorization:authorization},redirect:"manual",signal:AbortSignal.timeout(30000)});
+   const headers=new Headers(init?.headers);headers.set("Authorization",authorization);
+   const response=await fetch(url,{...init,headers,redirect:"manual",signal:AbortSignal.timeout(30000)});
    if([301,302,307,308].includes(response.status)){const location=response.headers.get("location");if(!location)throw new CalendarError("Invalid calendar redirect.",502);url=new URL(location,url).href;continue;}
    if(response.status===401||response.status===429)throw safeError(response.status);
    if(response.status===403&&String(init?.method).toUpperCase()!=="REPORT")throw safeError(403);
    const parts:Uint8Array[]=[];let size=0;const reader=response.body?.getReader();if(reader){try{for(;;){const r=await reader.read();if(r.done)break;size+=r.value.length;if(size>MAX_BODY){await reader.cancel();throw new CalendarError("Calendar response exceeds the import limit.",413);}parts.push(r.value);}}finally{reader.releaseLock();}}const data=Buffer.concat(parts);
    if(response.status===207&&String(init?.method).toUpperCase()==="REPORT")reportBody=data.toString("utf8");
    if(response.status===403){if(data.toString("utf8").includes("valid-sync-token"))throw new CalendarError("Calendar sync token expired.",409,"token_expired");throw safeError(403);}
-   return new Response(response.status===204||response.status===304?null:data,{status:response.status,headers:response.headers});
+   const result=new Response([204,205,304].includes(response.status)?null:data,{status:response.status,statusText:response.statusText,headers:response.headers});Object.defineProperty(result,"url",{value:url});return result;
   }
   throw new CalendarError("Too many calendar redirects.",502);
  };
@@ -86,7 +87,7 @@ export async function createCalendarAdapter(owner:string,id:string):Promise<Cale
    if(rows.length>10000)throw new CalendarError("Calendar import limit reached. No partial sync was applied.",413);
    const objects:RemoteObject[]=[],missing:string[]=[];
    for(const r of rows){const url=remoteObjectUrl(provider,calendar,r.href!);if(r.status===404){objects.push({id:url,etag:"",deleted:true});continue;}const data=textValue(r.props?.calendarData),etag=textValue(r.props?.getetag);if(data&&etag)objects.push({id:url,etag,ics:data});else missing.push(url);}
-   for(let i=0;i<missing.length;i+=100){const found=await calendarMultiGet({url:calendar.url,objectUrls:missing.slice(i,i+100),props:{"d:getetag":{},"c:calendar-data":{}},depth:"1",fetch:remoteFetch});for(const r of found){if(!r.ok)throw new CalendarError("Calendar changed during import. Retry sync.",409);const ics=textValue(r.props?.calendarData),etag=textValue(r.props?.getetag);if(!ics||!etag||!r.href)throw new CalendarError("Incomplete calendar item.",502);objects.push({id:remoteObjectUrl(provider,calendar,r.href),etag,ics});}if(found.length!==missing.slice(i,i+100).length)throw new CalendarError("Incomplete calendar import.",502);}
+   for(let i=0;i<missing.length;i+=100){const found=await calendarMultiGet({url:calendar.url,objectUrls:missing.slice(i,i+100).map(url=>new URL(url).pathname),props:{"d:getetag":{},"c:calendar-data":{}},depth:"1",fetch:remoteFetch});for(const r of found){if(!r.ok)throw new CalendarError("Calendar changed during import. Retry sync.",409);const ics=textValue(r.props?.calendarData),etag=textValue(r.props?.getetag);if(!ics||!etag||!r.href)throw new CalendarError("Incomplete calendar item.",502);objects.push({id:remoteObjectUrl(provider,calendar,r.href),etag,ics});}if(found.length!==missing.slice(i,i+100).length)throw new CalendarError("Incomplete calendar import.",502);}
    return {objects,token:nextToken,full:!token};
   },
   async put(calendar,id,ics,etag){
