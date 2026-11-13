@@ -583,6 +583,8 @@ server.on("upgrade", async (request, socket, head) => {
 });
 
 const stopNotificationObserver = startNotificationObserver();
+const {startCalendarSyncWorker}=await importServerModule("./lib/calendar-sync-thread.ts");
+const stopCalendarSync=startCalendarSyncWorker();
 server.listen(port, host, () => {
   const publicUrl = process.env.AI_CHAT_PUBLIC_URL?.trim() || `http://${host}:${port}`;
   console.log(`AI Chat listening on ${publicUrl} (bound to ${host}:${port})`);
@@ -593,6 +595,7 @@ const shutdown = (signal) => {
   if (shuttingDown) return;
   shuttingDown = true;
   stopNotificationObserver();
+  void stopCalendarSync();
   console.log(`[server] ${signal} received; shutting down`);
 
   // WebSocket/SSE clients can otherwise keep the process alive until systemd's

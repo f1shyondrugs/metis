@@ -328,6 +328,7 @@ import {
   workspaceWidthAfterReopeningSidebar,
 } from "@/lib/workspace-layout";
 
+const CalendarPanel = dynamic(() => import("@/components/calendar/calendar-panel").then(mod => mod.CalendarPanel), {ssr:false});
 const AutomationsPanel = dynamic(() => import("@/components/automations-panel").then((mod) => mod.AutomationsPanel));
 const CommandPalette = dynamic(() => import("@/components/command-palette").then((mod) => mod.CommandPalette));
 const NotesVoid = dynamic(() => import("@/components/notes-void").then((mod) => mod.NotesVoid));
@@ -4983,7 +4984,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     if (routeChatId !== currentUrl.get("c") || routeView !== currentUrl.get("view")) return;
     const current = activeChatIdRef.current;
     const routeProjectId = parseProjectRouteId(routeChatId);
-    if (routeChatId === "automations" || routeView === "automations") {
+    if (routeChatId === "calendar") {
+      persistActiveSnapshot();setAccountView("calendar");setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setMobileNavOpen(false);
+    } else if (routeChatId === "automations" || routeView === "automations") {
       setAccountView(null);
       setAutomationsOpen(true);
       setNotesOpen(false);
@@ -9746,6 +9749,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           <NotebookPen className="size-3.5 shrink-0 opacity-60" />
           <span data-onboarding-target="notebooks" className="min-w-0 truncate">Notebooks</span>
         </button>
+        <button type="button" className={cn("flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",accountView==="calendar"?"text-foreground":"text-muted-foreground hover:bg-white/[0.03] hover:text-foreground")} onClick={()=>{persistActiveSnapshot();setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setAccountView("calendar");setMobileNavOpen(false);navigateChat("calendar");}}>
+          <CalendarClock className="size-3.5 shrink-0 opacity-60"/><span className="min-w-0 truncate">Calendar</span>
+        </button>
         <button
           type="button"
           className={cn(
@@ -10313,8 +10319,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         enabled={!accountView && !notesOpen && !automationsOpen && !projectHomeId && !settingsOpen && !providerSetupRequired && !loadingChatId}
         onFiles={addPendingFiles}
         className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        {accountView && (!settingsOpen || isMobileSettings) ? <AccountPanel view={accountView} onClose={() => setAccountView(null)} onOpenNav={() => setMobileNavOpen(true)} profile={accountProfile} onProfileChange={setAccountProfile} profileError={accountProfileError} onRetry={retryAccountProfile} onNotificationsChanged={() => void refreshNotificationInbox()} onOpenProject={(id) => {setAccountView(null);openProjectHome(id);}} onOpenChat={(id)=>{setAccountView(null);void loadChat(id);}}>
-          {accountView === "agent-hub" ? <AgentHub isHostAdmin={Boolean(status?.isHostAdmin)} onModesChanged={() => void loadModes()} onTrySkill={(skill) => {
+        {accountView && (!settingsOpen || isMobileSettings) ? <AccountPanel view={accountView} onClose={() => {if(accountView==="calendar")navigateChat(activeChatIdRef.current);setAccountView(null);}} onOpenNav={() => setMobileNavOpen(true)} profile={accountProfile} onProfileChange={setAccountProfile} profileError={accountProfileError} onRetry={retryAccountProfile} onNotificationsChanged={() => void refreshNotificationInbox()} onOpenProject={(id) => {setAccountView(null);openProjectHome(id);}} onOpenChat={(id)=>{setAccountView(null);void loadChat(id);}}>
+          {accountView === "calendar" ? <CalendarPanel/> : accountView === "agent-hub" ? <AgentHub isHostAdmin={Boolean(status?.isHostAdmin)} onModesChanged={() => void loadModes()} onTrySkill={(skill) => {
         setAccountView(null); setNotesOpen(false); setAutomationsOpen(false); setProjectHomeId(null);
         if (skill.id === DEEP_RESEARCH_MODE_ID) { void selectMode(DEEP_RESEARCH_MODE_ID).catch(() => toast.error("Could not save agent mode")); return; }
         setInput(current => [current.trim(), skill.id === "skill-creator" ? "Use the skill-creator skill to help me create a new skill. " : "Use the " + skill.title + " skill. "].filter(Boolean).join("\n\n"));

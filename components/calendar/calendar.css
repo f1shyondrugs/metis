@@ -1,0 +1,15 @@
+.metis-calendar{--fc-border-color:var(--border);--fc-page-bg-color:var(--background);--fc-neutral-bg-color:var(--muted);--fc-list-event-hover-bg-color:var(--muted);--fc-today-bg-color:color-mix(in srgb,var(--primary) 5%,transparent);--fc-event-border-color:var(--primary);--fc-event-bg-color:var(--primary);--fc-event-text-color:var(--primary-foreground);--fc-small-font-size:.8em}
+.metis-calendar .fc{font-family:inherit;font-size:12px}
+.metis-calendar .fc th{font-weight:500;color:var(--muted-foreground)}
+.metis-calendar .fc .fc-scrollgrid{border-radius:8px}
+.metis-calendar .fc .fc-col-header-cell-cushion{padding:10px 2px}
+.metis-calendar .fc .fc-daygrid-day-number{display:flex;align-items:center;justify-content:center;min-width:28px;min-height:28px;margin:3px;padding:3px}
+.metis-calendar .fc .fc-day-today .fc-daygrid-day-number{background:var(--primary);color:var(--primary-foreground);border-radius:50%}
+.metis-calendar .fc .fc-event{border:0;border-radius:4px;padding:2px 4px;cursor:pointer;min-height:24px}
+.metis-calendar .fc .fc-daygrid-event-harness{margin-bottom:3px}
+.metis-calendar .fc .fc-event-title{overflow:hidden;text-overflow:ellipsis}
+.metis-calendar .fc .fc-daygrid-more-link{padding:4px}
+.metis-calendar .fc .fc-timegrid-slot{height:30px}
+.metis-calendar .fc .fc-popover{background:var(--popover);color:var(--popover-foreground);border-color:var(--border)}
+.metis-calendar .fc a:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+@media(max-width:639px){.metis-calendar .fc .fc-daygrid-day-number{margin:1px;min-width:24px;min-height:24px}.metis-calendar .fc .fc-event{padding:2px;min-height:22px}.metis-calendar .fc .fc-event-time{display:none}}
