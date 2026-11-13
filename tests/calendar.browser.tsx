@@ -98,4 +98,8 @@ async function run(){
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await wait();
  await fetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,results})});
 }
-if(!new URLSearchParams(location.search).has("manual"))run().catch(async e=>{results.push("FAIL "+String(e));await fetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,results})});});
+const params=new URLSearchParams(location.search);
+const start=()=>run().catch(async e=>{results.push("FAIL "+String(e));await fetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,results})});});
+if(params.has("wait")){
+ const launch=document.createElement("button");launch.textContent="Run UI checks";launch.style.cssText="position:fixed;bottom:0;right:0;z-index:9999";launch.onclick=()=>{launch.remove();void start();};document.body.append(launch);
+}else if(!params.has("manual"))void start();
