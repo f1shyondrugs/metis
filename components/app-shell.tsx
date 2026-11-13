@@ -10160,16 +10160,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       <DesktopFileDrop />
       {status?.userId ? <ClientOnboarding key={status.userId} userId={status.userId} username={status.username || username}
         hasProvider={Boolean(status.providers?.some(provider=>provider.enabled&&provider.hasSecret))}
-        onConnectProvider={()=>setProviderSetupOpen(true)}
         onPairDevice={()=>{setSettingsTab("devices");setSettingsSectionRequest("settings-remote-clients");openAccountPage("settings");}}
-        onNavigate={target=>{
-          if(target==="chat"){setAccountView(null);openDraft();}
-          else if(target==="projects"){setDesktopSidebarOpen(true);setMobileNavOpen(true);setSidebarAllProjects(true);}
-          else if(target==="notebooks"){setAccountView(null);setWorkspaceOpen(false);setNotesOpen(true);setFocusedNoteId(null);navigateChat("notes");setMobileNavOpen(false);}
-          else if(target==="tools"){setAccountView(null);setNotesOpen(false);setAutomationsOpen(false);setWorkspaceMounted(true);setWorkspaceOpen(true);}
-          else if(target==="agents")openAccountPage("agent-hub");
-          else {setSettingsTab("general");openAccountPage("settings");}
-        }}/> : null}
+        /> : null}
       <UploadTray />
       <UpdateStatusProbe
         isHostAdmin={Boolean(status?.isHostAdmin)}

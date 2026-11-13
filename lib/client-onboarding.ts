@@ -1,5 +1,5 @@
 export type AppPlatform="windows"|"macos"|"linux"|"ios"|"android";
-export type OnboardingPhase="welcome"|"app"|"device"|"tour"|"done";
+export type OnboardingPhase="welcome"|"app"|"device"|"done";
 export type ClientOnboardingState={version:1;phase:OnboardingPhase;tourIndex:number};
 export const PRODUCT_TOUR=[
  {id:"chat",label:"Chat",description:"Choose a model. Add files, voice or context with @.",action:"Open chat"},
@@ -21,6 +21,6 @@ export function suggestedAppPlatform(input:{userAgent?:string;platform?:string;m
 }
 export function onboardingStorageKey(userId:string,clientId="browser"){return "metis:onboarding:v1:"+encodeURIComponent(userId)+":"+encodeURIComponent(clientId);}
 export function parseOnboardingState(raw:string|null):ClientOnboardingState{
- try{const state=JSON.parse(raw||"null");if(state?.version===1&&["welcome","app","device","tour","done"].includes(state.phase)&&Number.isInteger(state.tourIndex)&&state.tourIndex>=0&&state.tourIndex<PRODUCT_TOUR.length)return {version:1,phase:state.phase,tourIndex:state.tourIndex};}catch{}
+ try{const state=JSON.parse(raw||"null");if(state?.version===1&&["welcome","app","device","tour","done"].includes(state.phase)&&Number.isInteger(state.tourIndex)&&state.tourIndex>=0&&state.tourIndex<PRODUCT_TOUR.length)return state.phase==="tour"?{version:1,phase:"done",tourIndex:0}:{version:1,phase:state.phase,tourIndex:state.tourIndex};}catch{}
  return {version:1,phase:"welcome",tourIndex:0};
 }

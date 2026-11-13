@@ -7,7 +7,7 @@ publish releases.
 ## v1.0.27 — 2026-11-12
 
 - Give full-screen onboarding a longer coordinated dot entrance and bounded spatial wave feedback on pointer presses, with immediate Reduced Motion behavior.
-- Finish the guided tour on its last real Settings step with Finish; remove the separate thank-you scene.
+- Remove the small workspace tour cards and target highlights. Finish the full-screen introduction directly after the app/device step, and treat saved legacy tour steps as completed without replaying onboarding or changing the current workspace.
 - Preserve existing account, pairing, settings, draft and navigation authority; animation never gates authentication or permission actions.
 
 ## v1.0.26 — 2026-11-12

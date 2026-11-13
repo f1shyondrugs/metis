@@ -19,9 +19,10 @@ test("completion is scoped to an account and client, not a global legacy flag",(
  assert.notEqual(onboardingStorageKey("a:b","c"),onboardingStorageKey("a","b:c"));
 });
 test("resume records accept only current bounded steps and do not persist credentials",()=>{
- for(const phase of ["welcome","app","device","tour","done"])assert.equal(parseOnboardingState(JSON.stringify({version:1,phase,tourIndex:2})).phase,phase);
+ for(const phase of ["welcome","app","device","done"])assert.equal(parseOnboardingState(JSON.stringify({version:1,phase,tourIndex:2})).phase,phase);
  for(const raw of [null,"broken","null",'{"version":2,"phase":"done","tourIndex":0}','{"version":1,"phase":"tour","tourIndex":999}','{"version":1,"phase":"tour","tourIndex":-1}'])assert.equal(parseOnboardingState(raw).phase,"welcome");
- assert.equal(PRODUCT_TOUR.length,6);
+ assert.equal(PRODUCT_TOUR.length,6); // Bounds for legacy v1 records only.
+ for(let tourIndex=0;tourIndex<6;tourIndex++)assert.deepEqual(parseOnboardingState(JSON.stringify({version:1,phase:"tour",tourIndex})),{version:1,phase:"done",tourIndex:0});
  assert.deepEqual(Object.keys(parseOnboardingState(JSON.stringify({version:1,phase:"done",tourIndex:0,password:"discard"}))).sort(),["phase","tourIndex","version"]);
 });
 test("production wiring uses authenticated stable user ID and native bridge, not UA app branding",()=>{
