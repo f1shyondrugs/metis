@@ -28,10 +28,11 @@ async function testCompactFilter(){
   return <div style={{width,maxWidth:"100%"}}><CalendarFilter calendars={calendars} hidden={hidden} onToggle={(id,on)=>setHidden(v=>on?v.filter(x=>x!==id):[...v,id])}/></div>;
  }
  root.render(<Harness/>);
+ const trigger=()=>host.querySelector<HTMLButtonElement>('[aria-label="Choose calendars"]');
  await until(()=>!!host.querySelector('[data-calendar-filter="dropdown"]'));
- check(!!button("Choose calendars"),"overflow calendars collapse into a dropdown");
+ check(!!trigger(),"overflow calendars collapse into a dropdown");
  check(host.getBoundingClientRect().width<=innerWidth,"compact filter fits viewport");
- await press(button("Choose calendars"));
+ await press(trigger());
  await until(()=>document.querySelectorAll('[role="menuitemcheckbox"]').length===7);
  check(document.querySelectorAll('[role="menuitemcheckbox"]').length===7,"dropdown includes every calendar");
  check(document.body.textContent?.includes("Read only"),"read-only calendar remains identified");
@@ -42,7 +43,7 @@ async function testCompactFilter(){
  check(!!document.querySelector('[role="menu"]'),"dropdown stays open for multiple selections");
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await wait();
  check(!document.querySelector('[role="menu"]'),"Escape closes calendar dropdown");
- check(document.activeElement===button("Choose calendars"),"focus returns to calendar trigger");
+ check(document.activeElement===trigger(),"focus returns to calendar trigger");
  setGroups([groups[0]]);setWidth(300);
  await until(()=>!!host.querySelector('[data-calendar-filter="inline"]'));
  check(host.querySelector<HTMLInputElement>('input:not([disabled])')?.checked===false,"visibility survives switching to inline");
