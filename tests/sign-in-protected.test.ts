@@ -75,7 +75,7 @@ test("actual React sign-in: protected preparation, JSON POST login and private s
  });
  await t.test("GET and foreign destinations remain unsafe; unrestricted exports stay unavailable",async()=>{
   for(const url of ["/get","/unsafe"]){
-   await assert.rejects(call("prepare",{url:"https://portal.test"+url},false,url),error=>error instanceof Error&&"code"in error&&error.code==="unsafe_target");
+   await assert.rejects(call("prepare",{url:"https://portal.test"+url},false,"negative-"+url.slice(1)),error=>error instanceof Error&&"code"in error&&error.code==="unsafe_target");
   }
   for(const action of ["download","batch","upload_file"]){
    await assert.rejects(call("action",{action}),error=>error instanceof Error&&"code"in error&&error.code==="protected_action_unavailable");
