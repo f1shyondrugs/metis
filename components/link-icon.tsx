@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ClipboardList, LayoutDashboard, FileText, Workflow, CircleDot, Globe, Terminal, Brain, MessageSquare, File, Link2, Mail, Users } from "lucide-react";
 import { parseInternalLink } from "@/lib/internal-link";
 import { parseReferenceLink } from "@/lib/reference-link";
 import { parseWorkspaceFileLink } from "@/lib/workspace-file-link";
 import { isFileUrl } from "@/lib/file-types";
 import { NoteIcon } from "@/components/notes/note-icon";
+import { WebsiteIcon } from "@/components/website-icon";
+import { sourceFaviconUrl } from "@/lib/message-sources";
 import { usePublicMarkdownShare } from "@/components/public-markdown-context";
 import { cn } from "@/lib/utils";
 
@@ -28,8 +30,8 @@ function loadNoteIcon(id: string) {
 }
 
 /** Display only: never changes the destination, label or saved Markdown. */
-export function LinkIcon({ href = "", kind, id, icon, className }: {
-  href?: string; kind?: string; id?: string; icon?: string | null; className?: string;
+export function LinkIcon({ href = "", kind, id, icon, className, fallback }: {
+  href?: string; kind?: string; id?: string; icon?: string | null; className?: string; fallback?: ReactNode;
 }) {
   const share = usePublicMarkdownShare();
   const target = parseInternalLink(href) || parseReferenceLink(href);
@@ -50,8 +52,9 @@ export function LinkIcon({ href = "", kind, id, icon, className }: {
     return () => { current = false; observer.disconnect(); };
   }, [noteId, share, icon]);
   const Icon = resolvedKind === "mail" ? Mail : icons[resolvedKind as keyof typeof icons] || Link2;
+  const favicon = resolvedKind === "browser" && !target ? sourceFaviconUrl(href) : undefined;
   return <span ref={host} aria-hidden="true" data-link-icon-kind={resolvedKind}
     className={cn("mr-1 inline-flex size-[1em] shrink-0 items-center justify-center align-[-0.15em] leading-none", className)}>
-    {resolvedKind === "note" ? <NoteIcon value={icon !== undefined ? icon : share && noteId ? share.noteIcons?.[noteId] ?? null : loaded && loaded.id === noteId ? loaded.icon : null} className="size-full" /> : <Icon className="size-full" />}
+    {resolvedKind === "note" ? <NoteIcon value={icon !== undefined ? icon : share && noteId ? share.noteIcons?.[noteId] ?? null : loaded && loaded.id === noteId ? loaded.icon : null} className="size-full" /> : favicon ? <WebsiteIcon src={favicon} className="size-full" fallback={fallback ?? <Icon className="size-full" />} /> : fallback ?? <Icon className="size-full" />}
   </span>;
 }

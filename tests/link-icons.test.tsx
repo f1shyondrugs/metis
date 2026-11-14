@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Schema } from "@tiptap/pm/model";
 import { LinkIcon } from "../components/link-icon";
 import { linkIconDecorations } from "../lib/notes-link-icons";
+import { WebsiteIcon } from "../components/website-icon";
 Object.assign(globalThis, { React });
 
 test("link icons cover internal references, web, files and custom note glyphs", () => {
@@ -19,6 +20,21 @@ test("link icons cover internal references, web, files and custom note glyphs", 
   assert.match(html, /lucide-rocket/);
   assert.match(html, /#ef4444/);
   assert.match(renderToStaticMarkup(<LinkIcon href="note://a" icon="🦁"/>), /🦁/);
+});
+
+test("website links request only the origin favicon and retain their original fallback", () => {
+  const html = renderToStaticMarkup(<LinkIcon href="https://example.com/docs?q=private#section" />);
+  assert.match(html, /src="https:\/\/example.com\/favicon.ico"/);
+  assert.doesNotMatch(html, /private|section/);
+  assert.match(html, /lucide-globe/);
+  assert.match(html, /referrerPolicy="no-referrer"/);
+  assert.match(html, /loading="lazy"/);
+  const custom = renderToStaticMarkup(<WebsiteIcon src="https://example.com/favicon.ico" fallback={<span>original</span>} />);
+  assert.match(custom, /original/);
+  assert.doesNotMatch(custom, /lucide-globe/);
+  for (const href of ["note://a", "workspace://plan/a", "mailto:help@example.com", "metis://reference/browser/a", "javascript:alert(1)", "#heading"]) {
+    assert.doesNotMatch(renderToStaticMarkup(<LinkIcon href={href} />), /<img\b/);
+  }
 });
 
 test("editor icons group formatting runs without entering document content", () => {

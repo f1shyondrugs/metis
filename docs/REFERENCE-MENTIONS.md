@@ -27,6 +27,24 @@ the metadata already attached to the saved reference; terminal snapshots or
 other raw content are not included in hover cards. These metadata cards are
 not a live permission or existence check. Destination APIs retain access checks.
 Public-share rendering remains inert and cannot inherit private navigation.
+
+HTTP(S) link icons in chat, citations, the shared Notes/Canvas/Plan editor,
+browser references and profile links use the destination origin’s `/favicon.ico`.
+Images load lazily without a referrer. Until loaded, or if missing, blocked or
+invalid, the existing icon remains. Transparent favicons replace rather than
+overlay that icon. Internal Metis destinations keep their type/note icons;
+this display-only behavior never edits Markdown, labels or link navigation.
+No third-party favicon service or per-link server-side page fetch is involved.
+Sites that only advertise a nonstandard icon path currently retain the fallback.
+
+Favicon browser regression: run `node tests/favicon-links.preview.mjs` and open
+`http://127.0.0.1:3278` with the in-app browser. The isolated fixture uses only
+synthetic local assets and saves reports under `output/favicon-links-ui`.
+It covers successful transparent images, missing/invalid images, source changes,
+editor serialization/undo, navigation, citations and browser references. Some
+automated browser environments reject `/favicon.ico` requests; reports distinguish
+that fallback path from successful image decoding rather than treating them as
+successful website-icon loads.
 Unknown labels, emails and partial label matches never gain a reference target.
 
 Owners: `lib/reference-query.ts`, `components/reference-picker.tsx`,

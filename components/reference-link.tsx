@@ -16,7 +16,7 @@ const labels = {file:"File",canvas:"Canvas",plan:"Plan",note:"Note",issue:"Issue
 export function ReferencePreviewContent({reference}:{reference:ReferenceResult}) {
   return <div data-reference-preview={reference.kind}>
     <div className="flex items-start gap-2">
-      <LinkIcon kind={reference.kind} id={reference.id} className="mt-0.5 !mr-0 !size-4 text-muted-foreground"/>
+      <LinkIcon href={reference.kind === "browser" ? reference.path : undefined} kind={reference.kind} id={reference.id} className="mt-0.5 !mr-0 !size-4 text-muted-foreground"/>
       <div className="min-w-0">
         <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{labels[reference.kind]}</div>
         <div className="mt-0.5 line-clamp-2 break-words text-xs font-medium">{reference.label}</div>
@@ -51,7 +51,7 @@ export function ReferenceLink({reference,children,className}:{
       onAuxClick={event=>{
         if(!webHref && event.button===1){event.preventDefault();window.dispatchEvent(new CustomEvent("ai-chat:open-reference",{detail:reference}));}
       }}>
-      <LinkIcon href={href}/>{children || "@"+reference.label}
+      <LinkIcon href={browserHref || href}/>{children || "@"+reference.label}
     </a>
   </HoverPreview>;
 }

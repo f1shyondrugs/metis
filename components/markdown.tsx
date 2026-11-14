@@ -140,7 +140,7 @@ function MarkdownLink({
       {!sourceTitle && <LinkIcon href={href} />}
       {sourceTitle ? (
         <>
-          <Link2 className="size-3 shrink-0" aria-hidden="true" />
+          <LinkIcon href={href} className="!mr-0 !size-3" fallback={<Link2 className="size-full" />} />
           {sourceTitle}
         </>
       ) : children}

@@ -2,6 +2,9 @@
 
 import { useContext, useEffect, useState, type ReactNode } from "react";
 import { HoverPreview } from "@/components/hover-preview";
+import { LinkIcon } from "@/components/link-icon";
+import { WebsiteIcon } from "@/components/website-icon";
+import { sourceFaviconUrl } from "@/lib/message-sources";
 import { InternalLinkPreviewChat, InternalLinkPreviewContent } from "@/components/internal-link-preview";
 import { parseInternalLink } from "@/lib/internal-link";
 import { parseReferenceLink } from "@/lib/reference-link";
@@ -46,10 +49,7 @@ function WebPreview({ href }: { href: string }) {
             <span className="text-xs text-muted-foreground">Loading link…</span>
           ) : (
             <span className="flex gap-2.5">
-              {preview?.favicon ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={preview.favicon} alt="" className="mt-0.5 size-4 shrink-0 rounded-sm" />
-              ) : null}
+              <WebsiteIcon src={preview?.favicon || sourceFaviconUrl(href)} className="mt-0.5 size-4" fallback={<LinkIcon href={href} className="!mr-0 !size-full" kind="link" />} />
               <span className="min-w-0">
                 {preview?.image ? (
                   // eslint-disable-next-line @next/next/no-img-element

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Check, Copy, Crop, ExternalLink, Link2, Pencil, Plus, Share2, Trash2 } from "lucide-react";
+import { LinkIcon } from "@/components/link-icon";
 import { ImageFramingDialog } from "@/components/image-framing-dialog";
 import { BannerUpload } from "@/components/banner-upload";
 import { BannerHeader } from "@/components/banner-image";
@@ -81,7 +82,7 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
         <h2 className="break-words text-xl font-semibold tracking-tight">{profile.displayName}</h2>
         {profile.handle?<p className="mt-1 break-all text-sm text-muted-foreground">@{profile.handle}</p>:null}
         <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">{profile.bio || "Add a bio to make this profile yours."}</p>
-        <div className="mt-5 space-y-2">{profile.links.map((link,index)=><a key={index} href={link.url} target="_blank" rel="noopener noreferrer" className="flex min-h-8 items-center gap-2 text-sm hover:underline"><Link2 className="size-3.5 shrink-0 text-muted-foreground"/><span className="truncate">{link.label}</span><ExternalLink className="ml-auto size-3 text-muted-foreground" /></a>)}</div>
+        <div className="mt-5 space-y-2">{profile.links.map((link,index)=><a key={index} href={link.url} target="_blank" rel="noopener noreferrer" className="flex min-h-8 items-center gap-2 text-sm hover:underline"><LinkIcon href={link.url} className="!mr-0 !size-3.5 text-muted-foreground" fallback={<Link2 className="size-full" />}/><span className="truncate">{link.label}</span><ExternalLink className="ml-auto size-3 text-muted-foreground" /></a>)}</div>
       </div>
       <div className="min-w-0 space-y-6">
         {editing ? <form onSubmit={event=>{event.preventDefault();void save(draft);}} className="space-y-5 rounded-xl border border-border/60 p-5">
