@@ -764,7 +764,6 @@ export function AutomationsPanel({
       <aside className="automation-list-pane automation-scroll" aria-label="Automations">
         <header className="automation-list-header">
           <div className="automation-list-title-row">
-            <h2>Automations</h2>
             <button
               type="button"
               className="automation-create-button"
@@ -776,7 +775,6 @@ export function AutomationsPanel({
               <Plus aria-hidden="true" />
             </button>
           </div>
-          <p>Recurring agent work, with its history and browser state intact.</p>
         </header>
 
         {loadError ? (

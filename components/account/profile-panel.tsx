@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Check, Copy, Crop, ExternalLink, Link2, Pencil, Plus, Share2, Trash2 } from "lucide-react";
+import { LinkIcon } from "@/components/link-icon";
 import { ImageFramingDialog } from "@/components/image-framing-dialog";
 import { BannerUpload } from "@/components/banner-upload";
 import { BannerHeader } from "@/components/banner-image";
@@ -71,9 +72,7 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
     catch{toast.error("Copy the profile link from the field below.");}
   }
   return <div className="space-y-8">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Profile</h1><p className="mt-2 text-sm text-muted-foreground">A little about you, and what you build.</p></div>
-      {!editing ? <Button variant="outline" className="h-11 gap-2" onClick={()=>{setDraft(profile);setHandleError("");setEditing(true);}}><Pencil className="size-4" /> Edit profile</Button>:null}
-    </div>
+    {!editing ? <div className="flex justify-end"><Button variant="outline" className="h-11 gap-2" onClick={()=>{setDraft(profile);setHandleError("");setEditing(true);}}><Pencil className="size-4" /> Edit profile</Button></div>:null}
     <BannerHeader value={editing ? draft.banner : profile.banner} alt="Profile banner" bannerClassName="aspect-[4/1] w-full rounded-xl" gapClassName="mt-8">
     <div className="grid items-start gap-8 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10">
       <div className="min-w-0">
@@ -81,7 +80,7 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
         <h2 className="break-words text-xl font-semibold tracking-tight">{profile.displayName}</h2>
         {profile.handle?<p className="mt-1 break-all text-sm text-muted-foreground">@{profile.handle}</p>:null}
         <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">{profile.bio || "Add a bio to make this profile yours."}</p>
-        <div className="mt-5 space-y-2">{profile.links.map((link,index)=><a key={index} href={link.url} target="_blank" rel="noopener noreferrer" className="flex min-h-8 items-center gap-2 text-sm hover:underline"><Link2 className="size-3.5 shrink-0 text-muted-foreground"/><span className="truncate">{link.label}</span><ExternalLink className="ml-auto size-3 text-muted-foreground" /></a>)}</div>
+        <div className="mt-5 space-y-2">{profile.links.map((link,index)=><a key={index} href={link.url} target="_blank" rel="noopener noreferrer" className="flex min-h-8 items-center gap-2 text-sm hover:underline"><LinkIcon href={link.url} className="!mr-0 !size-3.5 text-muted-foreground" fallback={<Link2 className="size-full" />}/><span className="truncate">{link.label}</span><ExternalLink className="ml-auto size-3 text-muted-foreground" /></a>)}</div>
       </div>
       <div className="min-w-0 space-y-6">
         {editing ? <form onSubmit={event=>{event.preventDefault();void save(draft);}} className="space-y-5 rounded-xl border border-border/60 p-5">

@@ -5,7 +5,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import {DateTime} from "luxon";
-import {ChevronLeft,ChevronRight,Plus,Link,RefreshCw,CalendarDays} from "lucide-react";
+import {ChevronLeft,ChevronRight,Plus,Link,RefreshCw} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription,DialogFooter} from "@/components/ui/dialog";
@@ -72,8 +72,7 @@ export function CalendarPanel(){
  function newEvent(start=new Date(),allDay=false){const end=allDay?DateTime.fromJSDate(start).plus({days:1}).toJSDate():new Date(start.getTime()+3600000);setEvent({start:allDay?start.toLocaleDateString("en-CA"):start.toISOString(),end:allDay?end.toLocaleDateString("en-CA"):end.toISOString(),allDay});}
  return <section className="metis-calendar flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Calendar">
   <header className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-3 sm:px-5">
-   <CalendarDays className="size-5 shrink-0 text-muted-foreground"/><h1 className="mr-auto text-base font-semibold">Calendar</h1>
-   <Button variant="ghost" size="icon-action" aria-label="Sync calendars" disabled={busy} onClick={()=>void sync()}><RefreshCw className={busy?"size-4 animate-spin motion-reduce:animate-none":"size-4"}/></Button>
+   <Button variant="ghost" size="icon-action" className="ml-auto" aria-label="Sync calendars" disabled={busy} onClick={()=>void sync()}><RefreshCw className={busy?"size-4 animate-spin motion-reduce:animate-none":"size-4"}/></Button>
    <Button variant="outline" size="action" aria-label="Connections" onClick={()=>setConnections(true)}><Link className="size-4"/><span className="hidden sm:inline">Connections</span><span className="sr-only sm:hidden">Connections</span></Button>
    <Button size="action" onClick={()=>newEvent()} disabled={!data?.calendars.some(c=>!c.readOnly)}><Plus className="size-4"/>New event</Button>
    <div className="flex w-full flex-wrap items-center gap-1 pt-1">

@@ -10411,9 +10411,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               {sidebarProjects.find((project) => project.id === projectHomeId)?.name || "Project"}
             </p>
           ) : automationsOpen || notesOpen ? (
-            <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={automationsOpen ? "Automations" : "Notebooks"}>
+            <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={automationsOpen ? "Automations" : "Notebooks"}>
               {automationsOpen ? "Automations" : "Notebooks"}
-            </p>
+            </h1>
           ) : isAgentChat && activeChatId && activeProjectId ? (
             <ProjectAgentChatHeader key={activeChatId} projectId={activeProjectId} chatId={activeChatId} fallbackTitle={chatTitle} onOpenTeam={() => { setWorkspaceTab("team"); setWorkspaceMounted(true); setWorkspaceOpen(true); }} />
           ) : !isDraft && !isEmpty ? (

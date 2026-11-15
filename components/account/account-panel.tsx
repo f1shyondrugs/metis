@@ -25,7 +25,7 @@ export function AccountPanel({view,onClose,onOpenNav,profile,onProfileChange,pro
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 px-3.5 md:h-12 md:px-4">
       <Button variant="ghost" size="icon" className="size-11 md:hidden" onClick={onOpenNav} aria-label="Open sidebar"><Menu className="size-4"/></Button>
       <Button type="button" variant="ghost" size="icon" className="size-11 shrink-0 text-muted-foreground md:size-8" onClick={onClose} aria-label="Back to chat" title="Back to chat"><ArrowLeft aria-hidden="true" className="size-4"/></Button>
-      <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={ACCOUNT_TITLES[view]}>{ACCOUNT_TITLES[view]}</p>
+      <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={ACCOUNT_TITLES[view]}>{ACCOUNT_TITLES[view]}</h1>
     </header>
     {managementPage ? <main data-onboarding-target={view==="agent-hub"?"agents":"settings"} aria-label={view === "agent-hub" ? "Agent Hub" : "Settings"} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main> : <main className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-[1100px] px-5 py-8 sm:px-8 sm:py-10 lg:px-12">

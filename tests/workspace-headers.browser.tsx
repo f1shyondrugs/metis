@@ -17,7 +17,7 @@ export function runHeaderFixture({AccountHeader,CalendarHeader,PrimaryHeader}:{A
     try{
      for(let i=0;i<views.length;i++){
       setView(views[i]);await wait();
-      const header=document.querySelector("header")!,title=header.querySelector("p")!,rect=header.getBoundingClientRect();
+      const header=document.querySelector("header")!,title=header.querySelector("h1, p")!,rect=header.getBoundingClientRect();
       check(views[i]==="project"?title.textContent!.includes("A very long project"):title.textContent!.trim()===names[i],"current title: "+names[i]);
       check(rect.height===(innerWidth>=768?48:56),"single compact row: "+names[i]);
       check(header.scrollWidth<=header.clientWidth,"header fits: "+names[i]);

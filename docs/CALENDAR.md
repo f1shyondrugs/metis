@@ -13,7 +13,10 @@ handling and browser streams stay inactive while Calendar is shown. The compact
 workspace header names the current destination (Calendar, Notebooks or
 Automations). Account headers likewise show their page name beside an icon-only
 Back to chat button, with an accessible label and tooltip; desktop headers share
-the 48px height and mobile headers retain 44px touch targets.
+the 48px height and mobile headers retain 44px touch targets. The workspace title
+is the page's single visible h1: panels do not repeat the area name or add a
+generic introductory tagline. Action toolbars, period labels, subsection
+headings, user-authored content and necessary state/error/help text remain.
 
 ## Connections and mapping
 

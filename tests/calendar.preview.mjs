@@ -2,6 +2,7 @@
 import fs from "node:fs";import os from "node:os";import path from "node:path";import http from "node:http";import {createRequire} from "node:module";
 import ts from "typescript";
 import {calendarNavigationHarnessSource} from "./calendar-navigation-harness.mjs";
+import {workspaceHeadersSource} from "./workspace-headers-harness.mjs";
 import postcss from "postcss";import tailwind from "@tailwindcss/postcss";import {importWorkerModule} from "../lib/worker-module.mjs";
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),"metis-calendar-ui-"));
 Object.assign(process.env,{AI_CHAT_ROOT:temp,CHAT_DATA_DIR:temp,CHAT_DB_PATH:path.join(temp,"chat.sqlite"),PORT:"3282",AI_CHAT_SECRETS_KEY:Buffer.alloc(32,8).toString("hex")});
@@ -25,6 +26,7 @@ function collect(node){if(ts.isVariableDeclaration(node)&&node.name.getText(shel
 }ts.forEachChild(node,collect);}collect(shell);
 if(sidebar.length!==3||!sidebarNavClass)throw Error("Expected three real sidebar buttons and shared styling");
 await build({stdin:{contents:'import React from "react";import {createRoot} from "react-dom/client";import {NotebookPen,CalendarClock,CalendarDays} from "lucide-react";import {cn} from "./lib/utils";const SIDEBAR_NAV_ITEM_CLASS='+sidebarNavClass+';const notesOpen=false,automationsOpen=false,calendarOpen=new URLSearchParams(location.search).get("active")==="calendar";createRoot(document.getElementById("root")).render(<div className="relative z-0 shrink-0 px-2 pb-1 pt-3 text-foreground">'+sidebar.join("")+'</div>);',loader:"tsx",resolveDir:process.cwd()},outfile:output+"/sidebar.js",bundle:true,platform:"browser",format:"esm",jsx:"automatic",define:{"process.env.NODE_ENV":'"production"'}});
+await build({stdin:{contents:workspaceHeadersSource()+'\nimport {runSingleTitleFixture} from "./tests/single-workspace-title.browser";runSingleTitleFixture(PrimaryHeader);',loader:"tsx",resolveDir:process.cwd()},outfile:output+"/single-title.js",bundle:true,platform:"browser",format:"esm",jsx:"automatic",loader:{".woff2":"dataurl",".woff":"dataurl",".ttf":"dataurl"},define:{"process.env.NODE_ENV":'"production"',"process.env":"{}"}});
 const css=await postcss([tailwind()]).process(fs.readFileSync("app/globals.css","utf8"),{from:"app/globals.css"});fs.writeFileSync(output+"/theme.css",css.css);
 const server=http.createServer(async(req,res)=>{
  const url=new URL(req.url,"http://127.0.0.1:3282");
@@ -33,6 +35,8 @@ const server=http.createServer(async(req,res)=>{
   const request=new Request(url,{method:req.method,headers,...(req.method==="POST"?{body}:{})});
   const response=await api[req.method==="POST"?"POST":"GET"](request);res.writeHead(response.status,{"Content-Type":"application/json"});res.end(await response.text());return;
  }
+ if(url.pathname==="/single-title-report"&&req.method==="POST"){let b="";for await(const part of req)b+=part;const r=JSON.parse(b);fs.writeFileSync(output+"/single-title-result-"+r.width+".json",JSON.stringify(r,null,2));res.end("saved");return;}
+ if(url.pathname==="/single-title"){res.setHeader("Content-Type","text/html; charset=utf-8");res.end('<html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Single workspace title – isolated full panels</title><link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/single-title.css"><body><div id="root"></div><script>addEventListener("error",e=>{document.getElementById("root").textContent=String(e.message);});addEventListener("unhandledrejection",e=>{document.getElementById("root").textContent=String(e.reason);});</script><script type="module" src="/single-title.js"></script></body></html>');return;}
  if(url.pathname==="/routing-report"&&req.method==="POST"){let b="";for await(const part of req)b+=part;const r=JSON.parse(b);fs.writeFileSync(output+"/routing-result-"+r.width+".json",JSON.stringify(r,null,2));res.end("saved");return;}
  if(url.pathname==="/report"&&req.method==="POST"){let b="";for await(const part of req)b+=part;const r=JSON.parse(b);fs.writeFileSync(output+"/result-"+r.width+".json",JSON.stringify(r,null,2));res.end("saved");return;}
  if(url.pathname==="/sidebar"){res.setHeader("Content-Type","text/html");res.end('<html class="dark"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/theme.css"><body class="bg-background text-foreground" style="margin:0"><div id="root"></div><script type="module" src="/sidebar.js"></script></body></html>');return;}

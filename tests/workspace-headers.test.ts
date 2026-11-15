@@ -15,7 +15,7 @@ function render(name:string,props:Record<string,unknown>){return renderToStaticM
 test("every account destination names the current page beside an icon-only accessible back button",()=>{
  for(const [view,title] of Object.entries({profile:"Profile","agent-hub":"Agent Hub",settings:"Settings",usage:"Usage",notifications:"Notifications"})){
   const html=render("AccountHeader",{view});
-  assert.ok(html.includes(">"+title+"</p>"),title);
+  assert.ok(html.includes(">"+title+"</h1>"),title);
   assert.match(html,/aria-label="Back to chat" title="Back to chat"/);
   assert.ok(!html.includes(">Back to chat<"));
   assert.ok(html.includes('type="button"'));
@@ -25,7 +25,7 @@ test("every account destination names the current page beside an icon-only acces
 test("Calendar, Notebooks and Automations show their titles without inserting another header row",()=>{
  for(const [component,props,title] of [["CalendarHeader",{},"Calendar"],["PrimaryHeader",{section:"notes"},"Notebooks"],["PrimaryHeader",{section:"automations"},"Automations"]] as const){
   const html=render(component,props);
-  assert.ok(html.includes(">"+title+"</p>")||html.includes(">\n              "+title),title);
+  assert.ok(html.includes(">"+title+"</h1>")||html.includes(">\n              "+title),title);
   assert.equal((html.match(/<header/g)||[]).length,1);
   assert.ok(html.includes('aria-label="Open sidebar"'));
   assert.ok(html.includes('aria-label="Hide sidebar"'));

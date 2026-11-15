@@ -82,9 +82,8 @@ export function NotificationsPanel({ onOpenProject, onOpenChat, onNotificationsC
     } finally { setBusy(null); }
   }
 
-  return <section className="mx-auto max-w-2xl [&_button]:min-h-11 sm:[&_button]:min-h-9" aria-labelledby="notifications-heading">
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-      <h1 id="notifications-heading" className="text-2xl font-semibold tracking-tight">Notifications</h1>
+  return <section className="mx-auto max-w-2xl [&_button]:min-h-11 sm:[&_button]:min-h-9" aria-label="Notifications">
+    <div className="mb-6 flex flex-wrap items-center justify-end gap-3">
       <Button variant="outline" disabled={loading || busy !== null || !notifications.some(item => !item.readAt)} onClick={() => void markRead()}>Mark all as read</Button>
     </div>
     {error ? <div role="alert" className="mb-4 text-sm text-destructive"><p>{error}</p><Button variant="ghost" disabled={busy !== null} onClick={() => void load()}>Try again</Button></div> : null}
