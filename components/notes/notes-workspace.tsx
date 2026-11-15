@@ -5,16 +5,14 @@ import {useNotebookPresence} from "./use-notebook-presence";
 import {NotebookPresenceBar,NotebookFollowFrame,ParticipantButton} from "./notebook-presence-bar";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import Image from "next/image";
-import { ChevronDown, ChevronRight, FileText, FolderOpen, Plus, Search, MoreHorizontal, ArrowUp, ArrowDown, PanelLeft, Upload, Download, Star, Clock, Trash2, Pin, Copy, Move, Settings2, FilePlus2, ListTodo, Loader2, RotateCcw, Share2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Plus, Search, MoreHorizontal, ArrowUp, ArrowDown, PanelLeft, Upload, Download, Star, Clock, Trash2, Pin, Copy, Move, Settings2, FilePlus2, ListTodo, Loader2, RotateCcw, Share2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { NotePinDialog } from "@/components/note-pin-dialog";
 import { NoteShareDialog } from "./note-share-dialog";
-import { ProjectIconGlyph } from "@/components/project-avatar";
-import { projectLogoSrc } from "@/lib/project-constants";
+import { NotebookProjectIcon } from "./notebook-project-icon";
 import type { Project } from "@/lib/store";
 import { NotesSpellcheckMenu, useNotesSpellcheck } from "./spellcheck-menu";
 import { findNotesSection, scrollNotesSection } from "@/lib/notes-section-navigation";
@@ -75,7 +73,8 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
   const notes = useMemo(() => cache[scopeKey(projectId)] || [], [cache, projectId]);
   const selected = notes.find(note => note.id === selectedId) || null;
   const activeNotes = notes.filter(note => !note.archived);
-  const containerName = projectId ? projects.find(project => project.id === projectId)?.name || "Project" : "No Project";
+  const containerProject = projectId ? projects.find(project => project.id === projectId) : null;
+  const containerName = projectId ? containerProject?.name || "Project" : "No Project";
 
   const load = useCallback(async (container: string | null, background = false) => {
     const serial = ++loadSerial.current;
@@ -449,13 +448,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
         {[{ id: null, name: "No Project" }, ...projects].map(project => {
           const active = projectId === project.id;
           return <div key={scopeKey(project.id)} role="treeitem" aria-expanded={active}>
-            <button type="button" className={cn("mt-1 flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm", active ? "font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50")} aria-label={"Open " + project.name + " file tree"} aria-pressed={active} onClick={() => void switchContainer(project.id)} onDragOver={event => event.preventDefault()} onDrop={event => drop(event, project.id, null)}>{active ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}{project.id ? project.logoStoredName ? (
-              <Image src={projectLogoSrc(project.id, project.updatedAt)} alt="" width={16} height={16} unoptimized className="size-4 shrink-0 rounded-sm object-cover" />
-            ) : (
-              <span className="inline-flex size-4 shrink-0" style={{ color: project.color }}>
-                <ProjectIconGlyph icon={project.icon} className="size-4" />
-              </span>
-            ) : <FolderOpen className="size-4 shrink-0" />}<span className="truncate">{project.name}</span></button>
+            <button type="button" className={cn("mt-1 flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm", active ? "font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50")} aria-label={"Open " + project.name + " file tree"} aria-pressed={active} onClick={() => void switchContainer(project.id)} onDragOver={event => event.preventDefault()} onDrop={event => drop(event, project.id, null)}>{active ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}<NotebookProjectIcon project={project.id ? project : null}/><span className="truncate">{project.name}</span></button>
             {active && <div role="group" className="ml-3 border-l border-border/60 pl-1">
               {loading ? <div role="status" className="flex items-center gap-2 px-3 py-5 text-xs text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />Loading files…</div> : baseTree.length ? baseTree.map(node => nodeView(node)) : <div className="px-3 py-5 text-xs leading-relaxed text-muted-foreground">{query ? "No files match your search." : mode === "trash" ? "Trash is empty." : mode === "favorites" ? "Star a file to keep it here." : mode === "recent" ? "Open a file to find it here later." : "No files yet. Create your first Markdown file."}</div>}
             </div>}
@@ -472,7 +465,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
       <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-3 sm:px-5">
         <Button variant="ghost" size="icon" aria-label="Open file browser" className={cn("size-9", !embedded && "lg:hidden")} onClick={() => setSidebar(true)}><PanelLeft className="size-4" /></Button>
         <div className="min-w-0 flex-1 overflow-hidden text-sm text-muted-foreground">
-          <button className="max-w-[150px] truncate align-middle hover:text-foreground" onClick={() => { void flush().then(ok => { if (ok) setSelectedId(null); }); }}>{containerName}</button>
+          <button type="button" title={containerName} className="inline-flex max-w-[150px] min-w-0 items-center gap-2 align-middle hover:text-foreground" onClick={() => { void flush().then(ok => { if (ok) setSelectedId(null); }); }}><NotebookProjectIcon project={containerProject}/><span className="truncate">{containerName}</span></button>
           {crumbs.map((note, index) => <span key={note.id}><ChevronRight className="mx-1 inline size-3 align-middle" /><button className={cn("max-w-[160px] truncate align-middle hover:text-foreground", index === crumbs.length - 1 && "text-foreground")} onClick={() => void openNote(note.id)}>{label(note)}</button></span>)}
         </div>
         {selected && !selected.archived && <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs" aria-label="Share note tree" onClick={()=>{void flush().then(ok=>{if(ok)setShareNote(selected);});}}><Share2 className="size-3.5"/><span className="hidden sm:inline">Share</span></Button>}
@@ -484,7 +477,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
           <DropdownMenuItem asChild><a href={"/api/notes/" + selected.id + "/export"} download><Download className="size-4" />Download Markdown</a></DropdownMenuItem>
         </DropdownMenuContent></DropdownMenu>}
       </header>
-      <NotebookPresenceBar peers={presence.peers} self={presence.self} connected={presence.connected} status={editorStatus?.noteId===selectedId?editorStatus.label:undefined} notice={presence.notice} following={presence.following} onFollow={presence.follow} onStop={stopFollowing} onReconnect={presence.reconnect}/>
+      <NotebookPresenceBar noteId={selectedId} peers={presence.sessions} self={presence.self} connected={presence.connected} status={editorStatus?.noteId===selectedId?editorStatus.label:undefined} notice={presence.notice} following={presence.following} onFollow={presence.follow} onStop={stopFollowing} onReconnect={presence.reconnect}/>
       {error && <div role="alert" className="flex shrink-0 items-center gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"><span className="min-w-0 flex-1">{error}</span><Button variant="outline" size="sm" onClick={() => void load(projectId)}>Retry</Button><Button variant="ghost" size="icon" className="size-7" aria-label="Dismiss error" onClick={() => setError("")}><X className="size-3.5" /></Button></div>}
       {working && <div role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground"><Loader2 className="size-3 animate-spin" />Saving changes…</div>}
       {selected?.kind==="issuebook"&&!selected.archived && ownerId ? <div data-note-page-scroll className="min-h-0 flex-1 overflow-y-auto">

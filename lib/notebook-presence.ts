@@ -40,6 +40,11 @@ export class NotebookFollowNavigation {
   return ()=>this.location!==null&&this.version===version;
  }
 }
+/** Filter sessions to the document before deduplicating accounts across tabs/devices. */
+export function notebookDocumentPeers(peers:NotebookPeer[],selfId:string|null|undefined,noteId:string|null|undefined){
+ if(!selfId||!noteId)return [];
+ return uniqueNotebookPeers(peers.filter(peer=>peer.note.id===noteId),selfId);
+}
 export function uniqueNotebookPeers(peers:NotebookPeer[],selfId:string){
  const users=new Map<string,NotebookPeer>();
  for(const peer of peers)if(peer.user.id!==selfId&&!users.has(peer.user.id))users.set(peer.user.id,peer);

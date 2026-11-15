@@ -1,6 +1,8 @@
 # Notebook presence and following
 
-The notebook header keeps Live editing status and account avatars outside the document scroll container. Participants are also marked beside their current file in the active file tree. The header includes visible participants in other accessible notebooks, even when they are reading a different note.
+The notebook header shows Live editing status and account avatars only when another distinct account is present in the currently open document. It stays absent for solo use, the file-tree overview and participants in other notes; the same account in several tabs/devices counts once. Filter sessions by document before deduplicating accounts, so another tab in a different note cannot hide a matching participant. Presence transport stays active while the bar is hidden, allowing it to appear/disappear as people arrive or leave. Recovery notices and explicit Retry after an authentication rejection remain available independently of the participant row; document save/conflict status stays in NoteDocument. File-tree participant markers and authorized cross-note following remain available.
+
+The project breadcrumb and notebook tree reuse NotebookProjectIcon for the saved colored glyph or uploaded project logo, with a folder fallback for No Project. No project name or brand-specific icon is hardcoded.
 
 Hover, click or keyboard-open an avatar to see the saved profile image, display name, account username and current note. Follow starts location following for that notebook window, including authorized note changes, normalized scroll position and short click markers. Profile colors come from the saved image/crop; GIF color uses its first frame. Avatar framing and animated image bytes are retained.
 
