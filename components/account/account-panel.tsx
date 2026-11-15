@@ -8,6 +8,13 @@ import { NotificationsPanel } from "@/components/account/notifications-panel";
 import type { AccountProfile } from "@/lib/account-types";
 
 export type AccountView = "profile" | "agent-hub" | "settings" | "usage" | "notifications";
+const ACCOUNT_TITLES: Record<AccountView, string> = {
+  profile: "Profile",
+  "agent-hub": "Agent Hub",
+  settings: "Settings",
+  usage: "Usage",
+  notifications: "Notifications",
+};
 export function AccountPanel({view,onClose,onOpenNav,profile,onProfileChange,profileError,onRetry,children,onOpenProject,onOpenChat,onNotificationsChanged}: {
   onOpenProject?:(id:string)=>void;onOpenChat?:(id:string)=>void;onNotificationsChanged?:()=>void;
   view:AccountView;onClose:()=>void;onOpenNav:()=>void;
@@ -15,9 +22,10 @@ export function AccountPanel({view,onClose,onOpenNav,profile,onProfileChange,pro
 }) {
   const managementPage = view === "agent-hub" || view === "settings";
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 px-3 sm:px-5">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 px-3.5 md:h-12 md:px-4">
       <Button variant="ghost" size="icon" className="size-11 md:hidden" onClick={onOpenNav} aria-label="Open sidebar"><Menu className="size-4"/></Button>
-      <Button variant="ghost" className="h-11 gap-2 px-2 text-muted-foreground" onClick={onClose} aria-label="Back to chat"><ArrowLeft className="size-4"/><span>Back to chat</span></Button>
+      <Button type="button" variant="ghost" size="icon" className="size-11 shrink-0 text-muted-foreground md:size-8" onClick={onClose} aria-label="Back to chat" title="Back to chat"><ArrowLeft aria-hidden="true" className="size-4"/></Button>
+      <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={ACCOUNT_TITLES[view]}>{ACCOUNT_TITLES[view]}</p>
     </header>
     {managementPage ? <main data-onboarding-target={view==="agent-hub"?"agents":"settings"} aria-label={view === "agent-hub" ? "Agent Hub" : "Settings"} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main> : <main className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-[1100px] px-5 py-8 sm:px-8 sm:py-10 lg:px-12">

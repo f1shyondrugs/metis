@@ -19,6 +19,7 @@ export function CalendarWorkspace({ onOpenSidebar, onToggleSidebar, sidebarOpen 
         aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"} title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}>
         <PanelLeft className="size-4" />
       </Button>
+      <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title="Calendar">Calendar</p>
     </header>
     <main aria-label="Calendar" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <CalendarPanel />

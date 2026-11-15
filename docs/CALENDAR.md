@@ -9,7 +9,11 @@ Calendar is a primary workspace at `/?c=calendar`, alongside `/?c=notes` and
 sidebar selection, including direct links, reloads and Back/Forward. Account
 page dismissal cannot close it or load `calendar` as a chat ID. The last chat
 and its saved snapshot remain available when returning; chat composer, drop
-handling and browser streams stay inactive while Calendar is shown.
+handling and browser streams stay inactive while Calendar is shown. The compact
+workspace header names the current destination (Calendar, Notebooks or
+Automations). Account headers likewise show their page name beside an icon-only
+Back to chat button, with an accessible label and tooltip; desktop headers share
+the 48px height and mobile headers retain 44px touch targets.
 
 ## Connections and mapping
 

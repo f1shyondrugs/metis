@@ -10410,11 +10410,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             <p className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-center text-sm font-medium text-foreground md:text-left">
               {sidebarProjects.find((project) => project.id === projectHomeId)?.name || "Project"}
             </p>
-          ) : automationsOpen ? (
-            <div className="min-w-0 flex-1" aria-hidden="true" />
-          ) : notesOpen ? (
-            <p className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-center text-sm font-medium text-foreground md:text-left">
-              Notebooks
+          ) : automationsOpen || notesOpen ? (
+            <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={automationsOpen ? "Automations" : "Notebooks"}>
+              {automationsOpen ? "Automations" : "Notebooks"}
             </p>
           ) : isAgentChat && activeChatId && activeProjectId ? (
             <ProjectAgentChatHeader key={activeChatId} projectId={activeProjectId} chatId={activeChatId} fallbackTitle={chatTitle} onOpenTeam={() => { setWorkspaceTab("team"); setWorkspaceMounted(true); setWorkspaceOpen(true); }} />
