@@ -2,6 +2,15 @@
 
 Calendar is an authenticated, account-owned page between Notebooks and Automations. It provides month/week views, calendar filters, event creation/editing/deletion, all-day events, recurring series and native connection settings. Public shares and Incognito do not expose calendar tools.
 
+## Navigation
+
+Calendar is a primary workspace at `/?c=calendar`, alongside `/?c=notes` and
+`/?c=automations`, not an account subpage. The URL determines visibility and
+sidebar selection, including direct links, reloads and Back/Forward. Account
+page dismissal cannot close it or load `calendar` as a chat ID. The last chat
+and its saved snapshot remain available when returning; chat composer, drop
+handling and browser streams stay inactive while Calendar is shown.
+
 ## Connections and mapping
 
 The owner explicitly connects iCloud with an app-specific password or Google with OAuth. Secrets are encrypted at rest and target/account-bound, never returned by calendar APIs or agent tools. Disconnect clears saved credentials and stops sync without deleting local or remote events.

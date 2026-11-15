@@ -2,42 +2,50 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import ts from "typescript";
+import {calendarNavigationHarnessSource} from "./calendar-navigation-harness.mjs";
 import {METIS_SHARED_AGENT_CONTROL} from "../lib/agent-control";
 const source=fs.readFileSync(new URL("../components/app-shell.tsx",import.meta.url),"utf8");
-const file=ts.createSourceFile("app-shell.tsx",source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-let open="",close="",effect="";
-function visit(n:ts.Node){
- if(ts.isJsxElement(n)&&n.openingElement.tagName.getText(file)==="button"&&n.openingElement.getText(file).includes('navigateChat("calendar")')){
-  const a=n.openingElement.attributes.properties.find(a=>ts.isJsxAttribute(a)&&a.name.getText(file)==="onClick") as ts.JsxAttribute;open=(a.initializer as ts.JsxExpression).expression!.getText(file);
+function harness(initial="/?c=calendar"){
+ const history=[new URL(initial,"https://fixture")];let index=0;
+ const window={get location(){return history[index];},history:{
+  pushState(_state:unknown,_title:string,url:string){history.splice(index+1);history.push(new URL(url,"https://fixture"));index++;},
+  replaceState(_state:unknown,_title:string,url:string){history[index]=new URL(url,"https://fixture");},
+ }};
+ const create=vm.runInNewContext(calendarNavigationHarnessSource()+";createCalendarNavigationHarness",{URLSearchParams});
+ const h=create(window);h.reconcile();
+ return {h,url:()=>window.location.search,back(){index=Math.max(0,index-1);h.reconcile();},forward(){index=Math.min(history.length-1,index+1);h.reconcile();}};
+}
+test("calendar direct link and reload derive the primary workspace from the URL, not account state",()=>{
+ for(let reload=0;reload<2;reload++){
+  const {h,url}=harness();
+  assert.equal(h.calendarOpen,true);assert.equal(h.state.accountView,null);assert.equal(url(),"?c=calendar");
+  assert.equal(h.chatId,"fixture-chat","keep the last chat and its snapshot available");
+  assert.equal(h.state.loads.length,0,"never load the reserved calendar route as a chat");
+  for(const key of ["notesOpen","automationsOpen","workspaceOpen","mobileNavOpen"])assert.equal(h.state[key],false);
  }
- if(ts.isJsxOpeningElement(n)&&n.tagName.getText(file)==="AccountPanel"){
-  const a=n.attributes.properties.find(a=>ts.isJsxAttribute(a)&&a.name.getText(file)==="onClose") as ts.JsxAttribute;close=(a.initializer as ts.JsxExpression).expression!.getText(file);
- }
- if(ts.isCallExpression(n)&&n.expression.getText(file)==="useEffect"&&n.arguments[0]?.getText(file).includes("const routeProjectId = parseProjectRouteId(routeChatId)"))effect=n.arguments[0].getText(file);
- ts.forEachChild(n,visit);
-}visit(file);
-test("actual sidebar calendar callback, route reconciliation and Back preserve active chat",()=>{
- assert.ok(open&&close&&effect);
- const code=ts.transpileModule(`(()=>{
- let url=new URL('http://fixture/?c=original-chat'),routeChatId='original-chat',routeView=null,accountView=null;
- const state={notesOpen:true,automationsOpen:true,workspaceOpen:true,mobileNavOpen:true};
- const activeChatIdRef={current:'original-chat'},authed=true,activeChatIncognito=false,suppressNotesRouteRef={current:false},draftProjectIdRef={current:null};
- const window={get location(){return url;}};
- const setAccountView=v=>{accountView=v;},setNotesOpen=v=>{state.notesOpen=v;},setAutomationsOpen=v=>{state.automationsOpen=v;},setWorkspaceOpen=v=>{state.workspaceOpen=v;},setMobileNavOpen=v=>{state.mobileNavOpen=v;};
- const persistActiveSnapshot=()=>{},parseProjectRouteId=()=>null,setActiveChatId=()=>{throw Error('Calendar must not switch the active chat');};
- const navigateChat=id=>{url=new URL('http://fixture/?c='+id);};
- const enter=${open},back=${close},apply=${effect};
- enter();routeChatId=url.searchParams.get('c');apply();
- const entered={...state,accountView,chat:activeChatIdRef.current,url:url.search};back();
- return {entered,accountView,back:url.search};
- })()`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
- const result=vm.runInNewContext(code,{URL,URLSearchParams});
- assert.equal(result.entered.accountView,"calendar");assert.equal(result.entered.chat,"original-chat");assert.equal(result.entered.url,"?c=calendar");
- for(const key of ["notesOpen","automationsOpen","workspaceOpen","mobileNavOpen"])assert.equal(result.entered[key],false);
- assert.equal(result.back,"?c=original-chat");assert.equal(result.accountView,null);
 });
-test("sidebar order and shared native calendar policy are consistent",()=>{
- assert.ok(source.indexOf(">Notebooks</span>")<source.indexOf("<CalendarClock"));assert.ok(source.indexOf("<CalendarClock")<source.indexOf(">Automations</span>"));
- assert.ok(METIS_SHARED_AGENT_CONTROL.includes("Native calendar:"));assert.ok(METIS_SHARED_AGENT_CONTROL.includes("not proof that remote synchronization finished"));
+test("real calendar, notes and automations callbacks cooperate with route reconciliation and history",()=>{
+ const {h,url,back,forward}=harness("/?c=fixture-chat");
+ h.openCalendar();assert.equal(url(),"?c=calendar");assert.equal(h.calendarOpen,true);assert.equal(h.state.accountView,null);
+ h.openNotes();assert.equal(url(),"?c=notes");assert.equal(h.calendarOpen,false);assert.equal(h.state.notesOpen,true);
+ back();assert.equal(url(),"?c=calendar");assert.equal(h.calendarOpen,true);assert.equal(h.state.notesOpen,false);
+ forward();assert.equal(url(),"?c=notes");assert.equal(h.calendarOpen,false);
+ h.openAutomations();assert.equal(h.calendarOpen,false);assert.equal(h.state.automationsOpen,true);
+ h.openCalendar();assert.equal(h.calendarOpen,true);assert.equal(h.state.automationsOpen,false);
+ assert.ok(!h.state.loads.includes("calendar"));
+});
+test("calendar to the same chat, another chat and new draft retains correct destinations",()=>{
+ const {h,url}=harness();
+ h.openChat("fixture-chat");assert.equal(url(),"?c=fixture-chat");assert.equal(h.calendarOpen,false);assert.equal(h.state.loads.length,0);
+ h.openCalendar();h.openChat("another-chat");assert.equal(h.chatId,"another-chat");assert.equal(h.calendarOpen,false);
+ h.openCalendar();h.openDraft();assert.equal(url(),"");assert.equal(h.calendarOpen,false);assert.equal(h.chatId,null);
+});
+test("calendar remains outside account pages and preserves native policy and sidebar order",()=>{
+ const account=fs.readFileSync(new URL("../components/account/account-panel.tsx",import.meta.url),"utf8");
+ assert.ok(!account.includes('"calendar"'));
+ assert.ok(source.includes("</AccountPanel> : calendarOpen ? <CalendarWorkspace"));
+ assert.ok(source.indexOf(">Notebooks</span>")<source.indexOf(">Calendar</span>"));
+ assert.ok(source.indexOf(">Calendar</span>")<source.indexOf(">Automations</span>"));
+ assert.ok(METIS_SHARED_AGENT_CONTROL.includes("Native calendar:"));
+ assert.ok(METIS_SHARED_AGENT_CONTROL.includes("not proof that remote synchronization finished"));
 });

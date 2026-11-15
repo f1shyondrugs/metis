@@ -331,7 +331,7 @@ import {
 
 const SIDEBAR_NAV_ITEM_CLASS = "m-0 flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors";
 
-const CalendarPanel = dynamic(() => import("@/components/calendar/calendar-panel").then(mod => mod.CalendarPanel), {ssr:false});
+const CalendarWorkspace = dynamic(() => import("@/components/calendar/calendar-workspace").then(mod => mod.CalendarWorkspace), {ssr:false});
 const AutomationsPanel = dynamic(() => import("@/components/automations-panel").then((mod) => mod.AutomationsPanel));
 const CommandPalette = dynamic(() => import("@/components/command-palette").then((mod) => mod.CommandPalette));
 const NotesVoid = dynamic(() => import("@/components/notes-void").then((mod) => mod.NotesVoid));
@@ -1580,6 +1580,7 @@ function paintVoiceWaveform(root: HTMLDivElement | null, level: number) {
 export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const searchParams = useSearchParams();
   const routeChatId = searchParams.get("c");
+  const calendarOpen = routeChatId === "calendar";
   const routeView = searchParams.get("view");
   const [authed, setAuthed] = useState<boolean | null>(null);
   const authedRef = useRef<boolean | null>(null);
@@ -2797,7 +2798,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     if (!voiceRecording && voiceState === "idle") return;
     resetVoiceComposer();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- drop a stale waveform after view/chat changes
-  }, [activeChatId, automationsOpen, notesOpen]);
+  }, [activeChatId, automationsOpen, notesOpen, calendarOpen]);
 
   const liveMessageMotion = useLiveMessageMotion(activeChatId, messages, Boolean(loadingChatId));
   const isDraft = !activeChatId;
@@ -3268,7 +3269,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }
 
   const browserStreamVisible = workspaceOpen && workspaceMounted && workspaceTab === "browser" &&
-    !accountView && !notesOpen && !automationsOpen && !projectHomeId && browserDocumentVisible;
+    !accountView && !calendarOpen && !notesOpen && !automationsOpen && !projectHomeId && browserDocumentVisible;
 
   useEffect(() => {
     if (!browserStreamVisible || !browserEnabled || !activeChatId || loadingChatId) return;
@@ -3421,7 +3422,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const browserAutoRevealStateRef = useRef({workspaceOpen,workspaceTab,hasWorkspaceDocument:false,activeRun:activeBrowserAgentRun,blocked:false});
   browserAutoRevealStateRef.current = {
     workspaceOpen,workspaceTab,hasWorkspaceDocument:Boolean(activeWorkspace && activeWorkspace.type === workspaceTab),activeRun:activeBrowserAgentRun,
-    blocked:Boolean(accountView || notesOpen || automationsOpen || projectHomeId || loadingChatId || workspaceFullscreen),
+    blocked:Boolean(accountView || calendarOpen || notesOpen || automationsOpen || projectHomeId || loadingChatId || workspaceFullscreen),
   };
   useEffect(() => {
     if (typeof window === "undefined" || !browserEnabled || !activeChatId) return;
@@ -4733,7 +4734,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }, { root, threshold: 0 });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [accountView, activeChatId, paneKey, loadingChatId, isEmpty, notesOpen, automationsOpen, projectHomeId, hasEarlierMessages, showScrollDown, earlierMessagesError]);
+  }, [accountView, calendarOpen, activeChatId, paneKey, loadingChatId, isEmpty, notesOpen, automationsOpen, projectHomeId, hasEarlierMessages, showScrollDown, earlierMessagesError]);
 
   // Older pages are fetched only when the reader scrolls up or requests them.
 
@@ -4988,7 +4989,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     const current = activeChatIdRef.current;
     const routeProjectId = parseProjectRouteId(routeChatId);
     if (routeChatId === "calendar") {
-      persistActiveSnapshot();setAccountView("calendar");setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setMobileNavOpen(false);
+      persistActiveSnapshot();setAccountView(null);setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setMobileNavOpen(false);
     } else if (routeChatId === "automations" || routeView === "automations") {
       setAccountView(null);
       setAutomationsOpen(true);
@@ -5901,7 +5902,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       if (pinFrame) window.cancelAnimationFrame(pinFrame);
       if (userScrollInputTimerRef.current) window.clearTimeout(userScrollInputTimerRef.current);
     };
-  }, [accountView, activeChatId, paneKey, loadingChatId, isEmpty, notesOpen, automationsOpen, projectHomeId]);
+  }, [accountView, calendarOpen, activeChatId, paneKey, loadingChatId, isEmpty, notesOpen, automationsOpen, projectHomeId]);
 
   useLayoutEffect(() => {
     const el = messagesScrollRef.current;
@@ -9711,7 +9712,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           type="button"
           className={cn(
             "flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors",
-            isDraft && !notesOpen && !automationsOpen && !projectHomeId
+            isDraft && !calendarOpen && !notesOpen && !automationsOpen && !projectHomeId
               ? "text-primary"
               : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground",
           )}
@@ -9756,11 +9757,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           type="button"
           className={cn(
             SIDEBAR_NAV_ITEM_CLASS,
-            accountView === "calendar"
+            calendarOpen
               ? "text-foreground"
               : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground",
           )}
-          onClick={()=>{persistActiveSnapshot();setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setAccountView("calendar");setMobileNavOpen(false);navigateChat("calendar");}}
+          onClick={()=>{persistActiveSnapshot();setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setAccountView(null);setMobileNavOpen(false);navigateChat("calendar");}}
         >
           <CalendarDays aria-hidden="true" className="size-3.5 shrink-0 opacity-60" />
           <span className="min-w-0 truncate">Calendar</span>
@@ -9805,7 +9806,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           ) : (
             <ProjectNav
               chats={chats.map(chat => ({ ...chat, unread: unreadChatIds.includes(chat.id), ...(chat.id === activeChatId && busy ? { runStatus: pendingQuestion || pendingApproval ? "waiting_input" : "running", pendingQuestion: pendingQuestion ?? chat.pendingQuestion, pendingApproval: pendingApproval ?? chat.pendingApproval } : {}) }))}
-              activeChatId={documentVisible && !notesOpen && !automationsOpen && !projectHomeId ? activeChatId : null}
+              activeChatId={documentVisible && !calendarOpen && !notesOpen && !automationsOpen && !projectHomeId ? activeChatId : null}
               activeProjectId={sidebarProjectId}
               notesOpen={notesOpen}
               renderAgentActions={renderProjectAgentActions}
@@ -10329,17 +10330,17 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       </div>
 
       <ChatFileDropZone
-        enabled={!accountView && !notesOpen && !automationsOpen && !projectHomeId && !settingsOpen && !providerSetupRequired && !loadingChatId}
+        enabled={!accountView && !calendarOpen && !notesOpen && !automationsOpen && !projectHomeId && !settingsOpen && !providerSetupRequired && !loadingChatId}
         onFiles={addPendingFiles}
         className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        {accountView && (!settingsOpen || isMobileSettings) ? <AccountPanel view={accountView} onClose={() => {if(accountView==="calendar")navigateChat(activeChatIdRef.current);setAccountView(null);}} onOpenNav={() => setMobileNavOpen(true)} profile={accountProfile} onProfileChange={setAccountProfile} profileError={accountProfileError} onRetry={retryAccountProfile} onNotificationsChanged={() => void refreshNotificationInbox()} onOpenProject={(id) => {setAccountView(null);openProjectHome(id);}} onOpenChat={(id)=>{setAccountView(null);void loadChat(id);}}>
-          {accountView === "calendar" ? <CalendarPanel/> : accountView === "agent-hub" ? <AgentHub isHostAdmin={Boolean(status?.isHostAdmin)} onModesChanged={() => void loadModes()} onTrySkill={(skill) => {
+        {accountView && (!settingsOpen || isMobileSettings) ? <AccountPanel view={accountView} onClose={() => setAccountView(null)} onOpenNav={() => setMobileNavOpen(true)} profile={accountProfile} onProfileChange={setAccountProfile} profileError={accountProfileError} onRetry={retryAccountProfile} onNotificationsChanged={() => void refreshNotificationInbox()} onOpenProject={(id) => {setAccountView(null);openProjectHome(id);}} onOpenChat={(id)=>{setAccountView(null);void loadChat(id);}}>
+          {accountView === "agent-hub" ? <AgentHub isHostAdmin={Boolean(status?.isHostAdmin)} onModesChanged={() => void loadModes()} onTrySkill={(skill) => {
         setAccountView(null); setNotesOpen(false); setAutomationsOpen(false); setProjectHomeId(null);
         if (skill.id === DEEP_RESEARCH_MODE_ID) { void selectMode(DEEP_RESEARCH_MODE_ID).catch(() => toast.error("Could not save agent mode")); return; }
         setInput(current => [current.trim(), skill.id === "skill-creator" ? "Use the skill-creator skill to help me create a new skill. " : "Use the " + skill.title + " skill. "].filter(Boolean).join("\n\n"));
         setComposerSyncNonce(current => current + 1);
       }} /> : accountView === "settings" ? settingsPanel : null}
-        </AccountPanel> : <>
+        </AccountPanel> : calendarOpen ? <CalendarWorkspace onOpenSidebar={() => setMobileNavOpen(true)} onToggleSidebar={toggleDesktopSidebar} sidebarOpen={desktopSidebarOpen}/> : <>
         {/* Thin top bar */}
         <header className="relative z-20 flex h-14 shrink-0 items-center gap-2.5 border-b border-border/55 bg-background px-3.5 md:h-12 md:gap-2 md:px-4">
           <Button
