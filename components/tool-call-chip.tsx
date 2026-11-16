@@ -278,7 +278,8 @@ export const ToolCallChip = memo(function ToolCallChip({
   const isCommand = resolvedKind === "shell";
   const expanded = userOpen;
   useEffect(() => {
-    if (!expanded || !payloadUrl || loadedOutput?.url === payloadUrl) return;
+    if (!expanded) { setLoadedOutput(null); setOutputError(""); return; }
+    if (!payloadUrl || loadedOutput?.url === payloadUrl) return;
     const controller = new AbortController();
     setOutputError("");
     void loadToolPayload(payloadUrl, controller.signal).then(full => {
@@ -562,8 +563,8 @@ export const ToolCallGroup = memo(function ToolCallGroup({
  {preparingTool ? <ToolPreparationDetails name={preparingTool.name} kind={preparingTool.kind} source={preparingTool.source} characters={!groupOpen ? preparingTool.inputChars : undefined}/> : <span className="truncate">{groupTitle}</span>}
  </button>
  <div key="entries" id={entriesId} className="flex flex-col">
- {combinedThinking?.text || combinedThinking?.done === false ? (
- <div hidden={!groupOpen} className="mt-1 pl-4">
+ {groupOpen && (combinedThinking?.text || combinedThinking?.done === false) ? (
+ <div className="mt-1 pl-4">
  <ThinkingBlock
  key="thinking"
  text={combinedThinking.text || "…"}
@@ -575,7 +576,7 @@ export const ToolCallGroup = memo(function ToolCallGroup({
  ) : null}
  {entries.map((tool, index) => (
  <ArrivalFade key={toolReactKey(tool, index)} bornAt={toolBornAt(tool)}>
-   <div hidden={!groupOpen} className="mt-1 pl-4">{renderTool(tool, true)}</div>
+   {groupOpen ? <div className="mt-1 pl-4">{renderTool(tool, true)}</div> : null}
    <ToolCallPreview inline tool={tool} workspaces={workspaces}
      onOpenWorkspace={() => openWorkspace(tool)}
      onBuildPlan={(plan, options) => buildToolPlan(tool, plan, options)}

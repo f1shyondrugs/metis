@@ -20,20 +20,23 @@ test("every tool kind retains a compact row in input order without inventing car
   const tools=kinds.map((kind,index)=>({id:String(index),name:kind+" operation",kind,status:"completed"}));
   const html=renderToStaticMarkup(<Group tools={tools}/>);
   assert.equal((html.match(/data-tool-call-group=/g)||[]).length,1);
-  assert.equal((html.match(/data-tool-call-row=/g)||[]).length,kinds.length);
+  assert.equal((html.match(/data-tool-call-row=/g)||[]).length,0);
+  const expanded=renderToStaticMarkup(<Group tools={tools} autoExpand/>);
+  assert.equal((expanded.match(/data-tool-call-row=/g)||[]).length,kinds.length);
   assert.match(html,/aria-expanded="false"/);
-  assert.match(html,/hidden=""/);
-  const rendered=[...html.matchAll(/data-tool-kind="([^"]+)"/g)].map(match=>match[1]);
+  const rendered=[...expanded.matchAll(/data-tool-kind="([^"]+)"/g)].map(match=>match[1]);
   assert.deepEqual(rendered,kinds);
   assert.doesNotMatch(html,/Task checklist|Memory details|Build with/);
 });
 
 test("a single wrapped write_todos call follows the same collapsed path",()=>{
   const html=renderToStaticMarkup(<Group tools={[{id:"task",name:"call_mcp_tool",status:"completed",input:JSON.stringify({toolName:"write_todos",arguments:{todos:[{content:"Check layout",status:"pending"}]}})}]}/>);
-  assert.match(html,/data-tool-kind="todo"/);
-  assert.match(html,/Updated tasks/);
+  assert.doesNotMatch(html,/data-tool-call-row=/);
   assert.match(html,/aria-expanded="false"/);
-  assert.match(html,/0\/1 completed/);
+  const expanded=renderToStaticMarkup(<Group autoExpand tools={[{id:"task",name:"call_mcp_tool",status:"completed",input:JSON.stringify({toolName:"write_todos",arguments:{todos:[{content:"Check layout",status:"pending"}]}})}]}/>);
+  assert.match(expanded,/Updated tasks/);
+  assert.match(html,/aria-expanded="false"/);
+  assert.doesNotMatch(html,/0\/1 completed/);
   assert.doesNotMatch(html,/Task checklist/);
 });
 
@@ -49,15 +52,14 @@ test("task preview preserves full content, completion and an empty checklist",()
 });
 
 test("failed calls remain visible and failed workspace results offer no success preview",()=>{
-  const html=renderToStaticMarkup(<Group tools={[{id:"failed",name:"create_plan",kind:"plan",status:"failed",input:JSON.stringify({content:"Draft"})}]}/>);
+  const html=renderToStaticMarkup(<Group autoExpand tools={[{id:"failed",name:"create_plan",kind:"plan",status:"failed",input:JSON.stringify({content:"Draft"})}]}/>);
   assert.match(html,/Failed/);
   assert.match(html,/data-tool-kind="plan"/);
   const failed=renderToStaticMarkup(<Preview tool={{name:"create_plan",kind:"plan",status:"completed",input:JSON.stringify({content:"Draft"}),result:JSON.stringify({isError:true,error:"Conflict"})}}/>);
   assert.equal(failed,"");
 });
 
-// Server rendering keeps hidden activity rows in the markup. Inspect the actual
-// visible tree so a card inside a collapsed ancestor cannot satisfy these tests.
+// Inspect the visible saved artifacts independently of the activity controls.
 function visibleMarkup(html: string): string {
   const stack: boolean[] = [];
   let hidden = false;
@@ -221,7 +223,9 @@ test("list, delete, note, task and automation calls keep their compact presentat
     { id: "automation", name: "create_automation", kind: "automation", status: "completed", result: JSON.stringify({ automation: { id: "timer", name: "Normal timer", prompt: "Check" } }) },
   ];
   const html = renderToStaticMarkup(<Group tools={tools} />);
-  assert.equal((html.match(/data-tool-call-row=/g) || []).length, tools.length);
+  assert.equal((html.match(/data-tool-call-row=/g) || []).length, 0);
+  const expanded=renderToStaticMarkup(<Group tools={tools} autoExpand/>);
+  assert.equal((expanded.match(/data-tool-call-row=/g) || []).length, tools.length);
   assert.doesNotMatch(visibleMarkup(html), /Memory details|Listed fact|Deleted content|Normal note|Normal task|Normal timer/);
 });
 

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { ViewportMedia } from "@/components/viewport-media";
 import { StickyActions } from "@/components/ui/sticky-actions";
 import { Download, File, Maximize, Pencil, X } from "lucide-react";
 import { flushSync } from "react-dom";
@@ -50,8 +51,8 @@ export function FileEmbed({ file, onChange, onRemove, className = "", resizable 
     <div className="min-h-0 flex-1 overflow-auto" style={{minHeight:kind === "audio" ? 60:120}}>
       {kind === "image" ?
         <div inert={previewOnly || undefined} className="h-full max-h-[70dvh] min-h-32"><ImageSurface key={file.url} src={file.url} alt={file.name} loading="lazy"/></div>
-        : kind === "video" ? <video src={file.url} controls={!previewOnly} playsInline preload="metadata" aria-label={file.name} className="h-full max-h-[70vh] w-full object-contain" onError={()=>setError("This video format cannot be played by your browser. Download the original file.")}/>
-        : kind === "audio" ? <audio src={file.url} controls={!previewOnly} preload="metadata" aria-label={file.name} className="w-full px-2 py-4" onError={()=>setError("This audio format cannot be played by your browser. Download the original file.")}/>
+        : kind === "video" ? <ViewportMedia key={file.url} kind="video" src={file.url} controls={!previewOnly} name={file.name} className="h-full max-h-[70vh] w-full object-contain" onError={()=>setError("This video format cannot be played by your browser. Download the original file.")}/>
+        : kind === "audio" ? <ViewportMedia key={file.url} kind="audio" src={file.url} controls={!previewOnly} name={file.name} className="w-full px-2 py-4" onError={()=>setError("This audio format cannot be played by your browser. Download the original file.")}/>
         : kind === "pdf" ? <iframe src={file.url} title={file.name} tabIndex={previewOnly ? -1 : undefined} className="h-full min-h-64 w-full border-0" />
         : kind === "text" || kind === "office" ? editing ?
           <div className="flex h-full min-h-52 flex-col gap-2 bg-background p-2 text-foreground">
