@@ -39,6 +39,7 @@ import { normalizeMath, splitStreamingMath } from "@/lib/math";
 import { protectMathTablePipes, remarkMathTablePipes } from "@/lib/markdown-math-tables";
 import { LinkIcon } from "@/components/link-icon";
 import { LinkPreview } from "@/components/link-preview";
+import { useNotebookLink } from "@/components/use-notebook-link";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { GraphBoard } from "@/components/graph-board";
 import rehypeStreamingText from "@/lib/rehype-streaming-text";
@@ -66,6 +67,7 @@ function MarkdownLink({
 }: AnchorHTMLAttributes<HTMLAnchorElement>) {
   const fileLocation = parseWorkspaceFileLink(href);
   const isWebUrl = Boolean(href && /^https?:\/\//i.test(href));
+  const notebook=useNotebookLink(href);
   const [hovered, setHovered] = useState(false);
   const [modifierHeld, setModifierHeld] = useState(false);
   useEffect(() => {
@@ -85,13 +87,15 @@ function MarkdownLink({
   }, [hovered]);
   if (fileLocation || (href && isFileUrl(href))) return <FileLink {...props} href={href}>{children}</FileLink>;
   const isSubagentUrl = Boolean(href && /^subagent:\/\//i.test(href));
-  const internalTarget = parseInternalLink(href);
+  const internalTarget = parseInternalLink(href) || (notebook?.type==="note"?{kind:"note" as const,id:notebook.id,blockId:notebook.blockId}:null);
   const navigation = internalTarget ? internalLinkNavigation(internalTarget) : null;
   const sourceTitle = markdownSourceTitle(children);
   const link = (
     <a
       {...props}
-      href={navigation?.href || href}
+      href={notebook ? href : navigation?.href || href}
+      target={notebook?.type==="share"?"_blank":props.target}
+      rel={notebook?.type==="share"?"noopener noreferrer":props.rel}
       data-source-citation={sourceTitle ? "" : undefined}
       className={cn(
         props.className,
@@ -99,6 +103,8 @@ function MarkdownLink({
       )}
       title={props.title}
       onClick={(event) => {
+        if(notebook&&(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey))return;
+        if(notebook?.type==="share")return;
         if(href?.startsWith("#")){const id=decodeNotesSection(href);if(!id){event.preventDefault();return;}const target=findNotesSection(event.currentTarget.closest(".markdown-body") || event.currentTarget.closest("article") || document,id);if(target){event.preventDefault();scrollNotesSection(target);return;}}
         const reference=parseReferenceLink(href);
         if(reference){event.preventDefault();event.stopPropagation();window.dispatchEvent(new CustomEvent("ai-chat:open-reference",{detail:reference}));return;}
@@ -140,7 +146,7 @@ function MarkdownLink({
       {!sourceTitle && <LinkIcon href={href} />}
       {sourceTitle ? (
         <>
-          <Link2 className="size-3 shrink-0" aria-hidden="true" />
+          <LinkIcon href={href} className="!mr-0 !size-3" fallback={<Link2 className="size-full" />} />
           {sourceTitle}
         </>
       ) : children}

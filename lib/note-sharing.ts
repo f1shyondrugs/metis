@@ -9,7 +9,8 @@ import { fileResponse } from "@/lib/file-response";
 import { effectiveFileMime } from "@/lib/file-types";
 import { officePreviewResponse } from "@/lib/office-preview";
 import { config } from "@/lib/config";
-import { noteDescendantIds } from "@/lib/notes-tree";
+import { noteDescendantIds, noteDisplayTitle } from "@/lib/notes-tree";
+import {boundedPreviewText,documentPreviewSummary} from "@/lib/document-preview";
 import type { NoteShareLink, PublicNoteShare, PublicSharedAsset, PublicSharedNote } from "@/lib/note-share-types";
 import { getNote, listNotes, normalizeNoteTodos } from "@/lib/shared-context";
 import { getDatabase, transaction } from "@/lib/sqlite";
@@ -184,6 +185,13 @@ export function getSharedNoteAccess(token: string, credential?: string): "not_fo
   const scope = sharedScope(token);
   return !scope ? "not_found" : canView(scope.share, credential) ? "ok" : "password_required";
 }
+/** Bounded metadata from the very same live grant/tree as the public reader; never resolve assets. */
+export function getSharedNotePreview(token:string,credential?:string,noteId?:string){
+ const scope=sharedScope(token);if(!scope||!canView(scope.share,credential))return null;
+ const note=scope.notes.find(note=>note.id===(noteId||scope.root.id));if(!note)return null;
+ return {title:boundedPreviewText(noteDisplayTitle(note.title),200)||"Shared notebook",description:documentPreviewSummary(note.content).description,icon:note.icon||null};
+}
+
 /** A signed, expiring viewer grant tied to this link and current access configuration. */
 export function unlockSharedNote(token: string, password: string): string | null {
   const scope = sharedScope(token);
