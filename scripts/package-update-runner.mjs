@@ -5,7 +5,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
-import { activatePackage, downloadVerified, packageAssetName, atomicJson, acquireUpdateLock } from "./package-update-core.mjs";
+import { activatePackage, downloadVerified, packageAssetName, atomicJson, acquireUpdateLock, snapshotDatabase } from "./package-update-core.mjs";
 import { pruneManagedReleases } from "../public/install/release-retention.mjs";
 const run=promisify(execFile);
 const {values}=parseArgs({options:{"install-dir":{type:"string"},"data-dir":{type:"string"},tag:{type:"string"},"service-name":{type:"string"},repo:{type:"string"}}});
@@ -41,15 +41,7 @@ const manager={
   },
   async snapshot(){
     const database=process.env.CHAT_DB_PATH||path.join(data,"chat.sqlite");
-    if(!fs.existsSync(database))return;
-    const {DatabaseSync,backup}=await import("node:sqlite");
-    if(typeof backup!=="function")throw Error("Node 22.16 or newer is required for consistent database backups");
-    const target=path.join(data,"metis-pre-update.sqlite"),temporary=target+".new";
-    fs.rmSync(temporary,{force:true});
-    const db=new DatabaseSync(database,{readOnly:true});
-    try{await backup(db,temporary);fs.renameSync(temporary,target);}
-    finally{db.close();fs.rmSync(temporary,{force:true});}
-    record("database-backup");
+    if(await snapshotDatabase(database,path.join(data,"metis-pre-update.sqlite")))record("database-backup");
   },
   async stop(){
     if(process.platform==="linux")await command("systemctl",["stop",...units]);

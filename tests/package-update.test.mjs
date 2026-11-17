@@ -6,7 +6,7 @@ import path from "node:path";
 import * as tar from "tar";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { activatePackage,extractVerifiedPackage,downloadVerified,packageAssetName,atomicJson,acquireUpdateLock } from "../scripts/package-update-core.mjs";
+import { activatePackage,extractVerifiedPackage,downloadVerified,packageAssetName,atomicJson,acquireUpdateLock,snapshotDatabase } from "../scripts/package-update-core.mjs";
 import { createRequire } from "node:module";
 const require=createRequire(import.meta.url);
 const {resolveService}=require("../scripts/run-installed-service.cjs");
@@ -26,6 +26,20 @@ async function fixture(){
   const manager={preflight:async()=>events.push("preflight"),stop:async()=>events.push("stop"),start:async()=>events.push("start"),health:async()=>{events.push("health");return true;}};
   return {root,data,home,payload,archive,events,manager,close:()=>fs.rmSync(home,{recursive:true,force:true})};
 }
+test("SQLite snapshots include WAL rows, stay private and replace one bounded backup",async()=>{
+ const f=await fixture();try{
+  const {DatabaseSync}=await import("node:sqlite"),source=path.join(f.data,"db.sqlite"),target=path.join(f.data,"backup.sqlite");
+  const db=new DatabaseSync(source);db.exec("PRAGMA journal_mode=WAL;CREATE TABLE records(value TEXT);INSERT INTO records VALUES ('first')");
+  try{
+   await snapshotDatabase(source,target);
+   let copy=new DatabaseSync(target,{readOnly:true});assert.equal(copy.prepare("SELECT count(*) n FROM records").get().n,1);copy.close();
+   db.exec("INSERT INTO records VALUES ('second')");await snapshotDatabase(source,target);
+   copy=new DatabaseSync(target,{readOnly:true});assert.equal(copy.prepare("SELECT count(*) n FROM records").get().n,2);copy.close();
+   assert.ok(!fs.existsSync(target+".new"));
+   if(process.platform!=="win32")assert.equal(fs.statSync(target).mode&0o777,0o600);
+  }finally{db.close();}
+ }finally{f.close();}
+});
 test("an owned live update lock is never stolen and releases only its own lock",async()=>{
  const f=await fixture();try{
   const lock=path.join(f.home,"lock"),release=acquireUpdateLock(lock);
@@ -51,6 +65,14 @@ test("complete package switches pointer only after preflight and retains user da
     assert.ok(launch.env.GIT_CEILING_DIRECTORIES.includes(fs.realpathSync(f.root)));
     assert.equal(JSON.parse(fs.readFileSync(path.join(f.data,"metis-package-transaction.json"))).phase,"complete");
   }finally{f.close();}
+});
+test("relative persistent paths stay anchored to the stable install, not a new code release",async()=>{
+ const f=await fixture();try{
+  const launch=resolveService(f.root,"app",{CHAT_DATA_DIR:"custom-data",CHAT_DB_PATH:"state/chat.sqlite",AI_CHAT_MCP_STATE_DIR:"mcp-state"});
+  assert.equal(launch.env.CHAT_DATA_DIR,path.join(fs.realpathSync(f.root),"custom-data"));
+  assert.equal(launch.env.CHAT_DB_PATH,path.join(fs.realpathSync(f.root),"state/chat.sqlite"));
+  assert.equal(launch.env.AI_CHAT_MCP_STATE_DIR,path.join(fs.realpathSync(f.root),"mcp-state"));
+ }finally{f.close();}
 });
 test("package Git identity never inherits the bootstrap parent checkout",async()=>{
   const f=await fixture();try{

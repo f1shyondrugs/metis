@@ -11,8 +11,28 @@ export const packageAssetName=(tag,platform=process.platform,arch=process.arch)=
 };
 export function atomicJson(file,value){
   const temp=file+"."+randomUUID()+".tmp";
-  fs.writeFileSync(temp,JSON.stringify(value,null,2)+"\n",{mode:0o600});
-  fs.renameSync(temp,file);
+  let fd;
+  try{
+    fd=fs.openSync(temp,"wx",0o600);
+    fs.writeFileSync(fd,JSON.stringify(value,null,2)+"\n");fs.fsyncSync(fd);
+    fs.closeSync(fd);fd=undefined;
+    fs.renameSync(temp,file);
+    if(process.platform!=="win32"){
+      const directory=fs.openSync(path.dirname(file),"r");
+      try{fs.fsyncSync(directory);}catch(error){if(!["EINVAL","ENOTSUP"].includes(error.code))throw error;}finally{fs.closeSync(directory);}
+    }
+  }finally{if(fd!==undefined)fs.closeSync(fd);fs.rmSync(temp,{force:true});}
+}
+export async function snapshotDatabase(database,target){
+  if(!fs.existsSync(database))return false;
+  const {DatabaseSync,backup}=await import("node:sqlite");
+  if(typeof backup!=="function")throw Error("Node 22.16 or newer is required for consistent database backups");
+  const temporary=target+".new";fs.rmSync(temporary,{force:true});
+  const fd=fs.openSync(temporary,"wx",0o600);fs.closeSync(fd);
+  const db=new DatabaseSync(database,{readOnly:true});
+  try{await backup(db,temporary);fs.chmodSync(temporary,0o600);fs.renameSync(temporary,target);}
+  finally{db.close();fs.rmSync(temporary,{force:true});}
+  return true;
 }
 export async function downloadVerified(url,file,expected,{fetcher=fetch,maxBytes=2*1024**3,attempts=3}={}){
   if(!/^[a-f0-9]{64}$/i.test(expected))throw Error("Missing package SHA256");
@@ -134,8 +154,9 @@ export async function activatePackage({installRoot,dataDir,tag,archive,manager,p
     // All download/extraction/native checks finish before touching any service.
     stopped=true;await manager.stop();save("stopped");
     await manager.snapshot?.();
+    changed=true;
     atomicJson(pointer,{schemaVersion:1,active:path.basename(target),previous:old?.active||null});
-    changed=true;save("activated");
+    save("activated");
     await manager.start();
     if(!await manager.health(target,manifest))throw Error("New native release failed health checks");
     save("complete");

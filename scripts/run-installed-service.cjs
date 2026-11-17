@@ -21,7 +21,8 @@ function resolveService(root,role,env=process.env){
     childEnv.PATH=[path.dirname(node),env.PATH].filter(Boolean).join(path.delimiter);
   }
   childEnv.AI_CHAT_ROOT=source;
-  childEnv.CHAT_DATA_DIR=env.CHAT_DATA_DIR||path.join(root,"data");
+  childEnv.CHAT_DATA_DIR=path.resolve(root,env.CHAT_DATA_DIR||"data");
+  for(const key of ["CHAT_DB_PATH","AI_CHAT_MCP_STATE_DIR"])if(env[key])childEnv[key]=path.resolve(root,env[key]);
   const args=role==="mcp"?[path.join(source,"lib/mcp-core/gateway-core.mjs")]:[path.join(source,"node_modules/tsx/dist/cli.mjs"),path.join(source,role==="app"?"server.mjs":"worker.ts")];
   return{command:node,args,cwd:source,env:childEnv};
 }
