@@ -1,6 +1,8 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
-import {CalendarDays,ArrowUpRight} from "lucide-react";
+import {CalendarDays} from "lucide-react";
+import {Button} from "@/components/ui/button";
+import {chatCardStyles} from "@/components/chat-card-styles";
 import {useInternalLinkPreview} from "@/components/use-internal-link-preview";
 import {usePublicMarkdownShare} from "@/components/public-markdown-context";
 import {loadToolPayload} from "@/lib/tool-result-client";
@@ -24,7 +26,7 @@ export function DeferredCalendarEventCard({name,input,resultUrl,status}:{name:st
  },[name,input,resultUrl,status,retry,share]);
  if(share)return <p>Calendar event (private)</p>;
  const value=state?.url===resultUrl?state:null;
- return <div ref={host}>{value?.id?<CalendarEventCard id={value.id}/>:value?.error?<p role="status" className="text-xs">Calendar event details unavailable. <button className="min-h-11 underline" onClick={()=>setRetry(v=>v+1)}>Retry</button></p>:!value?<p role="status" className="my-3 text-xs text-muted-foreground">Checking calendar event…</p>:null}</div>;
+ return <div ref={host}>{value?.id?<CalendarEventCard id={value.id}/>:value?.error?<p role="status" className="text-sm">Calendar event details unavailable. <button className="min-h-11 underline" onClick={()=>setRetry(v=>v+1)}>Retry</button></p>:!value?<p role="status" className="my-3 text-sm text-muted-foreground">Checking calendar event…</p>:null}</div>;
 }
 /** Live account-checked projection, not caller-provided event fields. Public shares stay private. */
 export function CalendarEventCard({id}:{id:string}){
@@ -38,13 +40,22 @@ export function CalendarEventCard({id}:{id:string}){
  const target={kind:"calendar-event" as const,id},navigation=internalLinkNavigation(target);
  const{preview,state,retry}=useInternalLinkPreview(target,null,visible&&!share);
  if(share)return <p className="my-2 text-sm text-muted-foreground">Calendar event (private)</p>;
- return <div ref={host} data-calendar-event-card={id} className="my-3 min-w-0 overflow-hidden rounded-lg border border-border border-l-4 bg-card p-3" style={{borderLeftColor:preview?.color&&/^#[a-f0-9]{6}$/i.test(preview.color)?preview.color:undefined}}>
-  {state==="loading"?<p role="status" className="text-xs text-muted-foreground">Loading calendar event…</p>:state==="error"?<div role="status" className="text-xs text-muted-foreground">Event unavailable. It may have been deleted or is not shared with this account. <button className="min-h-11 underline" onClick={retry}>Retry</button></div>:preview?<>
-   <a href={navigation.href} className="flex min-h-11 items-center gap-2 text-sm font-medium hover:underline" onClick={e=>{if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();window.dispatchEvent(new CustomEvent(navigation.event,{detail:navigation.detail}));}}>
-    <CalendarDays className="size-4 shrink-0" aria-hidden="true"/><span className="min-w-0 flex-1 break-words">{preview.title}</span><ArrowUpRight className="size-4 shrink-0" aria-hidden="true"/>
-   </a>
-   {preview.description?<p className="mt-1 line-clamp-2 whitespace-pre-line break-words text-xs text-muted-foreground">{preview.description}</p>:null}
-   <dl className="mt-2 space-y-1 text-xs">{preview.details.map(d=><div key={d.label} className="flex gap-3"><dt className="w-28 shrink-0 text-muted-foreground">{d.label}</dt><dd className="min-w-0 break-words">{d.value}</dd></div>)}</dl>
+ return <div ref={host} data-calendar-event-card={id} data-chat-card="calendar-event" className={chatCardStyles.frame+" border-l-4"} style={{borderLeftColor:preview?.color&&/^#[a-f0-9]{6}$/i.test(preview.color)?preview.color:undefined}}>
+  {state==="loading"?<div role="status" className="p-4 text-sm text-muted-foreground">Loading calendar event…</div>:state==="error"?<div role="status" className="p-4 text-sm text-muted-foreground">Event unavailable. It may have been deleted or is not shared with this account. <Button type="button" size="action" variant="ghost" onClick={retry}>Retry</Button></div>:preview?<>
+   <header className={chatCardStyles.header}>
+    <span className={chatCardStyles.icon}><CalendarDays className="size-4" aria-hidden="true"/></span>
+    <div className="min-w-0 flex-1">
+     <div className={chatCardStyles.metadata}><span className="font-medium">Calendar event</span></div>
+     <h3 data-chat-card-title className={chatCardStyles.title}>{preview.title}</h3>
+    </div>
+   </header>
+   <div className="border-y border-border bg-background px-4 py-3">
+    {preview.description?<p data-chat-card-description className="line-clamp-2 whitespace-pre-line break-words text-sm text-foreground">{preview.description}</p>:null}
+    <dl className={(preview.description?"mt-3 ":"")+"space-y-1 text-sm"}>{preview.details.map(d=><div key={d.label} className="flex flex-wrap gap-x-3 gap-y-0.5"><dt className="w-28 shrink-0 text-muted-foreground">{d.label}</dt><dd className="min-w-0 flex-1 basis-32 break-words">{d.value}</dd></div>)}</dl>
+   </div>
+   <footer className={chatCardStyles.footer+" justify-end"}>
+    <Button asChild size="action" variant="outline"><a href={navigation.href} onClick={e=>{if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();window.dispatchEvent(new CustomEvent(navigation.event,{detail:navigation.detail}));}}><CalendarDays className="size-4" aria-hidden="true"/>Open event</a></Button>
+   </footer>
   </>:null}
  </div>;
 }
