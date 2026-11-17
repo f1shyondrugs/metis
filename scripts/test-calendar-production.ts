@@ -7,15 +7,15 @@ import net from "node:net";
 import {spawn} from "node:child_process";
 async function run(){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"metis-calendar-production-"));
- const env={...process.env,AI_CHAT_ROOT:process.cwd(),CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"test.sqlite"),AI_CHAT_SECRETS_KEY:Buffer.alloc(32,4).toString("hex"),METIS_CALENDAR_SYNC_DISABLED:"1",NEXT_DIST_DIR:process.env.NEXT_DIST_DIR||".next-b"};
+ const port=await new Promise<number>(resolve=>{const server=net.createServer();server.listen(0,"127.0.0.1",()=>{const p=(server.address() as net.AddressInfo).port;server.close(()=>resolve(p));});});
+ const url="http://127.0.0.1:"+port;
+ const env={...process.env,AI_CHAT_ROOT:process.cwd(),AI_CHAT_PUBLIC_URL:url,AI_CHAT_INTERNAL_ORIGIN:url,PORT:String(port),CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"test.sqlite"),AI_CHAT_SECRETS_KEY:Buffer.alloc(32,4).toString("hex"),METIS_CALENDAR_SYNC_DISABLED:"1",NEXT_DIST_DIR:process.env.NEXT_DIST_DIR||".next-b"};
  Object.assign(process.env,env);
  const auth=require("../lib/auth") as typeof import("../lib/auth");
  const store=require("../lib/calendar/store") as typeof import("../lib/calendar/store");
  const owner=auth.createUser("production-calendar-test","Synthetic-Production-Calendar").id;
  const token=auth.authenticateUser("production-calendar-test","Synthetic-Production-Calendar")!.token;
  const calendar=store.ensureCalendar(owner);
- const port=await new Promise<number>(resolve=>{const server=net.createServer();server.listen(0,"127.0.0.1",()=>{const p=(server.address() as net.AddressInfo).port;server.close(()=>resolve(p));});});
- const url="http://127.0.0.1:"+port;
  const child=spawn(process.execPath,[require.resolve("next/dist/bin/next"),"start","--hostname","127.0.0.1","--port",String(port)],{cwd:process.cwd(),env,stdio:["ignore","pipe","pipe"]});
  let output="";child.stdout.on("data",d=>output+=d);child.stderr.on("data",d=>output+=d);
  try{
