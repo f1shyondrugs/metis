@@ -82,7 +82,7 @@ previous="$(readlink "$install_dir/current" 2>/dev/null || true)"
 ln -s "$stage" "$install_dir/current.new"
 node -e 'require("node:fs").renameSync(process.argv[1],process.argv[2])' "$install_dir/current.new" "$install_dir/current"
 committed=true
-printf '#!/usr/bin/env bash\nset -eu\ncd %q\nexport PATH="$PWD/runtime/bin:$PATH"\nexec "$PWD/runtime/bin/node" "$PWD/client.mjs" --config "$PWD/config.json"\n' "$install_dir/current" > "$install_dir/run-client.sh"
+printf '#!/usr/bin/env bash\nset -eu\ncd -P %q\nexport PATH="$PWD/runtime/bin:$PATH"\nexec "$PWD/runtime/bin/node" "$PWD/client.mjs" --config "$PWD/config.json"\n' "$install_dir/current" > "$install_dir/run-client.sh"
 chmod 700 "$install_dir/run-client.sh"
 service_suffix="$(printf '%s' "$install_dir" | cksum | awk '{print $1}')"
 service_name="metis-ai-remote-client-$service_suffix"

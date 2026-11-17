@@ -74,16 +74,19 @@ test("symlink candidates and out-of-root active/rollback paths are never deleted
   } finally { f.close(); fs.rmSync(outside, { recursive: true }); }
 });
 
-test("a real running release is detected and preserved", { skip: process.platform !== "linux" }, async () => {
+test("a real running release is preserved with complete or restricted process visibility", { skip: process.platform !== "linux" }, async () => {
   const f = fixture();
   const busy = f.release("1.0.1");
   const child = spawn(process.execPath, ["-e", "process.stdout.write('ready'); setInterval(()=>{},1000)"], { cwd: busy, stdio: ["ignore", "pipe", "ignore"] });
   try {
     await once(child.stdout, "data");
     const references = liveProcessReferences();
-    assert.ok(Array.isArray(references));
-    assert.ok(references.includes(busy));
-    f.run({ references });
+    if(Array.isArray(references)){
+      assert.ok(references.includes(busy));
+      f.run({references});
+    }else{
+      assert.match(f.run({references}).reason,/visibility unavailable/);
+    }
     assert.ok(fs.existsSync(busy));
   } finally { child.kill(); await once(child, "exit"); f.close(); }
 });

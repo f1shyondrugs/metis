@@ -38,7 +38,7 @@ fs.writeFileSync(binary, "#!/usr/bin/env node\\nconsole.log('codex-cli " + selec
   chmodSync(which, 0o755);
   const run = (version: string) => execFileSync(process.execPath, [script], {
     cwd: root,
-    env: { ...process.env, PATH: `${bin}:/usr/bin:/bin`, CHAT_DATA_DIR: data, MOCK_CLI_VERSION: version },
+    env: { ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, CHAT_DATA_DIR: data, MOCK_CLI_VERSION: version },
     encoding: "utf8",
   });
   try {

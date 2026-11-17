@@ -9,15 +9,14 @@ export function liveProcessReferences() {
       const references = [];
       for (const pid of fs.readdirSync("/proc").filter(name => /^\d+$/.test(name))) {
         try {
-          const sameUser = fs.statSync(`/proc/${pid}`).uid === process.getuid();
           references.push(fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replaceAll("\0", " "));
           for (const kind of ["cwd", "exe"]) {
             try { references.push(fs.readlinkSync(`/proc/${pid}/${kind}`)); }
             catch (error) {
-              // Ordinary service users cannot ptrace foreign-user cwd/exe links.
-              // Their command paths are still included; require full visibility
-              // for this user's own processes, which own these installations.
-              if (!sameUser && ["EACCES", "EPERM"].includes(error.code)) continue;
+              // Sandboxed processes can hide cwd/exe even from the same user.
+              // Managed launchers use physical absolute release paths in argv;
+              // these links augment command references when the OS allows it.
+              if (["EACCES", "EPERM"].includes(error.code)) continue;
               if (!["ENOENT", "ESRCH"].includes(error.code)) throw error;
             }
           }

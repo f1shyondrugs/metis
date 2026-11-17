@@ -293,6 +293,11 @@ async function runInstaller(platform, mode, systemd = false) {
       }
     }
     if (mode === "success") {
+      if(process.platform==="linux" && platform==="linux" && !systemd){
+        const pid=Number(fs.readFileSync(path.join(install,"client.pid"),"utf8"));
+        const command=fs.readFileSync("/proc/"+pid+"/cmdline","utf8");
+        assert.ok(command.includes(fs.realpathSync(path.join(install,"current"))+"/runtime/bin/node"),"launcher argv must name the physical release, not a movable symlink");
+      }
       const retained = fs.readdirSync(releases);
       assert.ok(retained.includes("release.000019"), "previous working release must survive");
       if(output.includes("cleanup deferred: Process visibility unavailable")){
