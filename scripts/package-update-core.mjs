@@ -62,7 +62,7 @@ export async function extractVerifiedPackage(archive,destination,{maxBytes=12*10
     const name=entry.path.replace(/\/$/,"");
     if(++count>maxEntries)throw Error("Package entry count exceeds limit");
     if(name==="payload" && entry.type==="Directory"){entry.resume();return;}
-    if(name.includes("\\")||name.includes(":")||name.includes("\0")||!name.startsWith("payload/")||name.split("/").some(part=>part===".."||part==="."))throw Error("Unsafe package entry");
+    if(name.includes("\\")||name.includes(":")||name.includes("\0")||!name.startsWith("payload/")||name.split("/").some(part=>!part||part===".."||part==="."))throw Error("Unsafe package entry");
     if(!["File","Directory","SymbolicLink"].includes(entry.type))throw Error("Unsupported package entry type");
     size+=entry.size||0;if(size>maxBytes)throw Error("Extracted package exceeds limit");
     if(entry.type==="SymbolicLink"){

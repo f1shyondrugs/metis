@@ -16,7 +16,7 @@ export function windowsStopProbe(root,pid=process.pid){
   return `$ErrorActionPreference='Stop'
 $hostExe=${quote(path.join(root,"MetisHost.exe"))}
 $prefix=${quote(root+path.sep)}
-$count=@(Get-CimInstance Win32_Process | Where-Object {
+$count=@(Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='MetisHost.exe'" | Where-Object {
   $_.ProcessId -ne ${pid} -and $_.ProcessId -ne $PID -and (
     ($_.ExecutablePath -ieq $hostExe) -or (
       $_.Name -ieq 'node.exe' -and $_.CommandLine -and
@@ -39,11 +39,11 @@ export async function windowsHostOperation(root,action,{node=process.execPath,ru
   if(action!=="stop")throw Error("Unsupported Windows host operation");
   await run(executable,[...base,"--stop"],{cwd:root,timeout:60000,windowsHide:true,maxBuffer:65536});
   const end=Date.now()+timeout;
-  do{
+  while(Date.now()<=end){
     const result=await run("powershell.exe",["-NoProfile","-NonInteractive","-Command",windowsStopProbe(root)],{cwd:root,timeout:10000,windowsHide:true,maxBuffer:65536});
     if(result.stdout.trim()==="0")return;
     if(!/^\d+$/.test(result.stdout.trim()))throw Error("Windows service process visibility unavailable");
-    if(Date.now()>=end)throw Error("Windows host did not finish stopping");
     await sleep(200);
-  }while(true);
+  }
+  throw Error("Windows host did not finish stopping");
 }
