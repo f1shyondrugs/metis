@@ -10364,7 +10364,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         setInput(current => [current.trim(), skill.id === "skill-creator" ? "Use the skill-creator skill to help me create a new skill. " : "Use the " + skill.title + " skill. "].filter(Boolean).join("\n\n"));
         setComposerSyncNonce(current => current + 1);
       }} /> : accountView === "settings" ? settingsPanel : null}
-        </AccountPanel> : calendarOpen ? <CalendarWorkspace onOpenSidebar={() => setMobileNavOpen(true)} onToggleSidebar={toggleDesktopSidebar} sidebarOpen={desktopSidebarOpen}/> : <>
+        </AccountPanel> : calendarOpen ? <CalendarWorkspace userId={status?.userId} onOpenSidebar={() => setMobileNavOpen(true)} onToggleSidebar={toggleDesktopSidebar} sidebarOpen={desktopSidebarOpen}/> : <>
         {/* Thin top bar */}
         <header className="relative z-20 flex h-14 shrink-0 items-center gap-2.5 border-b border-border/55 bg-background px-3.5 md:h-12 md:gap-2 md:px-4">
           <Button

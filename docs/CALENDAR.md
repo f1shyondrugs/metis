@@ -18,6 +18,29 @@ is the page's single visible h1: panels do not repeat the area name or add a
 generic introductory tagline. Action toolbars, period labels, subsection
 headings, user-authored content and necessary state/error/help text remain.
 
+## Time zones
+
+Calendar time zone defaults to **Device time zone**, detected in the browser,
+not the server. The selector can override it with a named IANA zone. This
+display-only preference is stored per account on this browser/device; it does
+not rewrite events or another device's preference. Automatic mode resolves the
+device zone again on focus/visibility changes. Invalid stored values return to
+automatic mode. If detection is unavailable, the selector discloses UTC fallback;
+blocked storage leaves a usable session-only override.
+
+FullCalendar v6 uses the matching `@fullcalendar/luxon3` connector for named
+zones and DST rather than UTC coercion. Date clicks use FullCalendar's
+offset-aware `dateStr`; all-day dates never pass through device-local Date
+getters. Changing the view zone leaves existing event instants untouched.
+
+New events start in the effective display zone (device by default). Existing
+events retain their stored zone. In the event editor, changing Time zone
+converts the displayed start/end while preserving their instants; the user can
+then edit local times if needed. Existing explicit offsets are preserved for
+ambiguous fall-back times, and nonexistent spring-forward local times are
+rejected. Date-only all-day events retain their dates across zone changes.
+Saving still uses canonical Metis writes and native provider synchronization.
+
 ## Connections and mapping
 
 The owner explicitly connects iCloud with an app-specific password or Google with OAuth. Secrets are encrypted at rest and target/account-bound, never returned by calendar APIs or agent tools. Disconnect clears saved credentials and stops sync without deleting local or remote events.

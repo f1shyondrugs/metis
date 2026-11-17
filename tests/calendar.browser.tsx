@@ -1,18 +1,24 @@
 import React from "react";import {createRoot} from "react-dom/client";
 import {CalendarPanel} from "../components/calendar/calendar-panel";
+import {DateTime} from "luxon";
+import {calendarTimeZoneKey} from "../lib/calendar/time-zone";
 import {CalendarFilter} from "../components/calendar/calendar-filter";
 import type {CalendarGroup} from "../lib/calendar/types";
 import {applyAppearanceTheme,createDefaultAppearanceState,getSelectedTheme} from "../lib/appearance-storage";
 const results:string[]=[];const wait=(ms=180)=>new Promise(r=>setTimeout(r,ms));const check=(ok:unknown,label:string)=>results.push((ok?"PASS ":"FAIL ")+label);
 applyAppearanceTheme(document.documentElement,getSelectedTheme(createDefaultAppearanceState()),"midnight");
 const nativeFetch=fetch.bind(window);let failSave=false,dropSave=false;
+const zoneSaves:Array<{timeZone:string;start:string;end:string}>=[];
 window.fetch=async(input,init)=>{
+ if(String(input)==="/api/calendar"&&init?.method==="POST"){const body=JSON.parse(String(init.body));if(body.action==="save")zoneSaves.push(body.event);}
  if(String(input)==="/api/calendar"&&init?.method==="POST"&&String(init.body).includes('"action":"save"')&&failSave){failSave=false;return Response.json({error:"Synthetic save failure"},{status:503});}
  const r=await nativeFetch(input,init);
  if(String(input)==="/api/calendar"&&init?.method==="POST"&&String(init.body).includes('"action":"save"')&&dropSave){dropSave=false;throw Error("Synthetic lost reply");}
  return r;
 };
-createRoot(document.getElementById("root")!).render(<main style={{height:"100dvh"}} className="flex min-w-0 bg-background text-foreground"><CalendarPanel/></main>);
+const panelRoot=createRoot(document.getElementById("root")!);
+const renderPanel=(owner="calendar-preview-a")=>panelRoot.render(<main style={{height:"100dvh"}} className="flex min-w-0 bg-background text-foreground"><CalendarPanel key={owner} userId={owner}/></main>);
+renderPanel();
 const button=(label:string)=>[...document.querySelectorAll<HTMLButtonElement>("button")].find(e=>e.textContent?.trim()===label||e.getAttribute("aria-label")===label);
 async function press(e:HTMLElement|undefined|null){if(!e)throw Error("Missing control");if(e.getAttribute("aria-haspopup")==="menu"){e.focus();e.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));}else e.click();await wait();}
 function fill(e:HTMLInputElement|HTMLTextAreaElement,value:string){const p=e instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,"value")!.set!.call(e,value);e.dispatchEvent(new Event("input",{bubbles:true}));}
@@ -72,7 +78,54 @@ async function testCompactFilter(){
  check(activeButtons.every(b=>b.querySelector("svg")!.getBoundingClientRect().left===icons[0].left&&b.querySelector("span")!.getBoundingClientRect().left===labels[0].left),"active Calendar preserves icon and label alignment");
  frame.remove();
 }
+async function testTimeZones(){
+ const zone=()=>document.querySelector<HTMLSelectElement>('select[name="calendarTimeZone"]')!;
+ const eventZone=()=>document.querySelector<HTMLSelectElement>('select[name="timeZone"]')!;
+ const localFields=()=>[...document.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]')];
+ const choose=async(element:HTMLSelectElement,value:string)=>{element.value=value;element.dispatchEvent(new Event("change",{bubbles:true}));await wait(300);};
+ await until(()=>!!zone()&&!zone().disabled&&!!button("New event")&&!button("New event")!.disabled);
+ const device=Intl.DateTimeFormat().resolvedOptions().timeZone;
+ await choose(zone(),"device");
+ check(zone().selectedOptions[0].textContent?.includes(device),"view defaults to this device's time zone, not the server");
+ await press(button("New event"));check(eventZone().value===device,"new event defaults to device time zone");
+ await press(button("Close"));
+ const initialSaves=zoneSaves.length;
+ await choose(zone(),"Asia/Tokyo");
+ await until(()=>[...document.querySelectorAll(".fc-event")].some(e=>e.textContent?.includes("Design review")&&e.textContent.includes("19:00")));
+ check(true,"named-zone calendar rendering converts 10:00 UTC to 19:00 Tokyo");
+ check(zoneSaves.length===initialSaves,"changing display zone never saves or moves events");
+ await press(button("New event"));check(eventZone().value==="Asia/Tokyo","explicit display zone is used for new drafts");await press(button("Close"));
+ renderPanel("calendar-preview-b");await until(()=>!!zone()&&!zone().disabled&&zone().value==="device");
+ check(true,"another account does not inherit the previous account's override");
+ renderPanel();await until(()=>!!zone()&&!zone().disabled&&zone().value==="Asia/Tokyo");
+ check(true,"per-account device preference survives remount");
+ await until(()=>[...document.querySelectorAll(".fc-event")].some(e=>e.textContent?.includes("Design review")));
+ await press([...document.querySelectorAll<HTMLElement>(".fc-event")].find(e=>e.textContent?.includes("Design review")));
+ await until(()=>!!eventZone());check(eventZone().value==="UTC","opening an existing event retains its saved zone");await press(button("Close"));
+ await choose(zone(),"Europe/Berlin");await press(button("New event"));
+ fill(document.querySelector<HTMLInputElement>('input[name="title"]')!,"Timezone DST browser regression");
+ fill(localFields()[0],"2026-03-29T01:30");fill(localFields()[1],"2026-03-29T03:30");
+ await choose(eventZone(),"America/New_York");
+ check(localFields()[0].value==="2026-03-28T20:30"&&localFields()[1].value==="2026-03-28T21:30","event zone conversion preserves both instants across DST and the date boundary");
+ await press(button("Save event"));await until(()=>!document.querySelector('[role="dialog"]'));
+ const saved=zoneSaves.at(-1)!;
+ check(saved.timeZone==="America/New_York"&&DateTime.fromISO(saved.start).toUTC().toISO()==="2026-03-29T00:30:00.000Z","saved payload includes selected IANA zone and correct explicit offset");
+ const data=await(await nativeFetch("/api/calendar?start=2026-03-28T00:00:00Z&end=2026-03-30T00:00:00Z")).json();
+ const created=data.events.find((e:{title:string})=>e.title==="Timezone DST browser regression");
+ check(created?.timeZone==="America/New_York"&&created.start==="2026-03-29T00:30:00.000Z","real API round-trips the selected zone without changing the instant");
+ if(created)await nativeFetch("/api/calendar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"delete",id:created.eventId,version:created.version})});
+ const originalSet=Storage.prototype.setItem;
+ Storage.prototype.setItem=function(){throw Error("Synthetic blocked preference storage");};
+ try{
+  await choose(zone(),"UTC");
+  check(zone().value==="UTC"&&document.body.textContent?.includes("session only"),"blocked storage keeps a usable session override with an honest status");
+ }finally{Storage.prototype.setItem=originalSet;}
+ await choose(zone(),"device");
+ check(localStorage.getItem(calendarTimeZoneKey("calendar-preview-a"))==="device","automatic mode stores device intent rather than a resolved fixed zone");
+ check(document.body.scrollWidth<=innerWidth,"zone controls fit the viewport");
+}
 async function run(){
+ await testTimeZones();
  await testCompactFilter();
  await until(()=>!!document.querySelector(".fc-dayGridMonth-view")&&!!button("New event")&&!document.body.textContent?.includes("Loading calendar"));
  check(document.querySelectorAll(".fc-col-header-cell").length===7,"month view has seven day columns");
