@@ -1,9 +1,26 @@
 import ICAL from "ical.js";
-import {getVtimezoneComponent} from "@touch4it/ical-timezones";
+import {tzlib_get_ical_block} from "timezones-ical-library";
+import {getVtimezoneComponent as legacyTimeZone} from "@touch4it/ical-timezones";
 import {DateTime} from "luxon";
 import {createHash} from "node:crypto";
 import {CalendarError,type CalendarEvent,type CalendarOccurrence,type EventInput} from "./types";
 const MAX_ICS=1024*1024;
+function zonedTime(dt:DateTime,zone:string,component:ICAL.Component){
+ const local=dt.setZone(zone);
+ return new ICAL.Time({year:local.year,month:local.month,day:local.day,hour:local.hour,minute:local.minute,second:local.second},new ICAL.Timezone({component,tzid:zone}));
+}
+function getVtimezoneComponent(zone:string,at?:DateTime){
+ const block=tzlib_get_ical_block(zone),current=Array.isArray(block)?block[0]:null;
+ // ICU and bundled tzdata can be different releases. Use only a definition
+ // that reproduces the requested instant; existing imported definitions stay untouched.
+ for(const raw of [current,legacyTimeZone(zone)]){
+  if(!raw)continue;
+  const component=new ICAL.Component(ICAL.parse(raw));
+  component.updatePropertyWithValue("tzid",zone);
+  if(!at||zonedTime(at,zone,component).toJSDate().getTime()===at.toMillis())return component.toString();
+ }
+ return null;
+}
 export function parseCalendar(ics:string){
  if(typeof ics!=="string"||Buffer.byteLength(ics)>MAX_ICS)throw new CalendarError("Calendar item exceeds the supported size.",413);
  try{const c=new ICAL.Component(ICAL.parse(ics));if(c.name!=="vcalendar")throw Error();const e=c.getAllSubcomponents("vevent");if(!e.length||e.length>1000||e.some(v=>typeof v.getFirstPropertyValue("uid")!=="string"||!String(v.getFirstPropertyValue("uid")).trim()||String(v.getFirstPropertyValue("uid")).length>1000)||new Set(e.map(v=>String(v.getFirstPropertyValue("uid")))).size!==1)throw Error();
@@ -40,8 +57,8 @@ function isoTime(value:string,allDay:boolean,zone:string,calendar:ICAL.Component
  const dt=DateTime.fromISO(value,{zone,setZone:true});if(!dt.isValid||!/[zZ]|[+-]\d{2}:\d{2}$/.test(value))throw new CalendarError("Timed events require an ISO time with an explicit offset.");
   if(zone==="UTC")return ICAL.Time.fromJSDate(dt.toUTC().toJSDate(),true);
  let timezone=calendar.getAllSubcomponents("vtimezone").find(t=>t.getFirstPropertyValue("tzid")===zone);
- if(!timezone){const data=getVtimezoneComponent(zone);if(!data)throw new CalendarError("This time zone cannot be exported safely.");timezone=new ICAL.Component(ICAL.parse(data));calendar.addSubcomponent(timezone);}
- const local=dt.setZone(zone),t=new ICAL.Time({year:local.year,month:local.month,day:local.day,hour:local.hour,minute:local.minute,second:local.second},new ICAL.Timezone({component:timezone,tzid:zone}));
+ if(!timezone){const data=getVtimezoneComponent(zone,dt);if(!data)throw new CalendarError("This time zone cannot represent the selected time safely. Choose another time zone.");timezone=new ICAL.Component(ICAL.parse(data));calendar.addSubcomponent(timezone);}
+ const t=zonedTime(dt,zone,timezone);
  if(t.toJSDate().getTime()!==dt.toMillis())throw new CalendarError("This time zone definition needs an update. Choose UTC or edit the event in its source calendar.");
  return t;
 }

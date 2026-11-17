@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {DateTime} from "luxon";
-import {DEVICE_TIME_ZONE,calendarTimeZoneKey,calendarTimeZonePreference,calendarTimeZones,convertEventTimeZone,deviceCalendarTimeZone,eventEditorTimeZone,eventLocalDateTime,eventLocalValue,newCalendarEvent,validCalendarTimeZone} from "../lib/calendar/time-zone";
+import {allDayEventRange,nextAllDayDate,DEVICE_TIME_ZONE,calendarTimeZoneKey,calendarTimeZonePreference,calendarTimeZones,convertEventTimeZone,deviceCalendarTimeZone,eventEditorTimeZone,eventLocalDateTime,eventLocalValue,newCalendarEvent,validCalendarTimeZone} from "../lib/calendar/time-zone";
+test("all-day conversion enforces an exclusive end across date and DST boundaries",()=>{
+ assert.deepEqual(allDayEventRange("2026-03-29T09:00","2026-03-29T10:00"),{start:"2026-03-29",end:"2026-03-30"});
+ assert.deepEqual(allDayEventRange("2028-02-28","2028-02-28"),{start:"2028-02-28",end:"2028-02-29"});
+ assert.deepEqual(allDayEventRange("2026-12-31","2026-01-01"),{start:"2026-12-31",end:"2027-01-01"});
+ assert.deepEqual(allDayEventRange("2026-03-29","2026-04-03"),{start:"2026-03-29",end:"2026-04-03"});
+ assert.equal(nextAllDayDate(""),"");assert.equal(nextAllDayDate("2026-02-30"),"");
+});
 test("device default is detected at the client boundary, with a disclosed UTC fallback",()=>{
  assert.deepEqual(deviceCalendarTimeZone(()=>"Pacific/Auckland"),{zone:"Pacific/Auckland",detected:true});
  assert.deepEqual(deviceCalendarTimeZone(()=>""),{zone:"UTC",detected:false});

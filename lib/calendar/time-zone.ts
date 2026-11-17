@@ -37,6 +37,15 @@ export function convertEventTimeZone(start:string,end:string,from:string,to:stri
  const convert=(value:string,original?:string)=>value?eventLocalDateTime(value,from,original).setZone(to).toFormat("yyyy-MM-dd'T'HH:mm"):"";
  return{start:convert(start,reference.start),end:convert(end,reference.end)};
 }
+/** All-day DTEND excludes that date: a one-day event ends on the following date. */
+export function nextAllDayDate(start:string){
+ const date=/^\d{4}-\d{2}-\d{2}$/.test(start)?DateTime.fromISO(start,{zone:"UTC"}):null;
+ return date?.isValid?date.plus({days:1}).toISODate()!:"";
+}
+export function allDayEventRange(start:string,end:string){
+ const first=start.slice(0,10),last=end.slice(0,10),minimum=nextAllDayDate(first);
+ return{start:first,end:minimum&&(!nextAllDayDate(last)||last<minimum)?minimum:last};
+}
 export function newCalendarEvent(start:string,allDay:boolean,timeZone:string){
  const date=DateTime.fromISO(allDay?start.slice(0,10):start,{zone:allDay?"UTC":timeZone}).startOf("minute");
  if(!date.isValid)throw Error("Choose a valid calendar date.");

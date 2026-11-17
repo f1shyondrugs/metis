@@ -41,6 +41,20 @@ ambiguous fall-back times, and nonexistent spring-forward local times are
 rejected. Date-only all-day events retain their dates across zone changes.
 Saving still uses canonical Metis writes and native provider synchronization.
 
+All-day End is exclusive and must be after Start. Switching a same-day timed
+draft to all day, or moving Start past End, advances End to the following date.
+The end picker also prevents same/earlier dates, with a pre-submit guard; a
+one-day all-day event is still supported. Date arithmetic uses UTC date-only
+values so DST cannot skip or duplicate a date.
+
+ICS export uses current bundled VTIMEZONE data from timezones-ical-library.
+If its release differs from runtime ICU, the existing compatibility definitions
+may be used only when they reproduce the requested instant exactly. The end
+instant is validated too. Requested IANA aliases retain matching TZIDs.
+Imported definitions are never silently replaced; recurrence exceptions and
+alarms remain intact. The exact round-trip guard still rejects unsupported or
+ambiguous definitions rather than shifting saved events.
+
 ## Connections and mapping
 
 The owner explicitly connects iCloud with an app-specific password or Google with OAuth. Secrets are encrypted at rest and target/account-bound, never returned by calendar APIs or agent tools. Disconnect clears saved credentials and stops sync without deleting local or remote events.

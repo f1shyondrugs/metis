@@ -266,6 +266,9 @@ importers:
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
+      timezones-ical-library:
+        specifier: 3.0.0
+        version: 3.0.0
       tsdav:
         specifier: 2.2.0
         version: 2.2.0
@@ -6617,6 +6620,9 @@ packages:
   throttle-debounce@5.0.2:
     resolution: {integrity: sha512-B71/4oyj61iNH0KeCamLuE2rmKuTO5byTOSVwECM5FA7TiAiAW+UqTKZ9ERueC4qvgSttUhdmq1mXC3kJqGX7A==}
     engines: {node: '>=12.22'}
+
+  timezones-ical-library@3.0.0:
+    resolution: {integrity: sha512-z4pz4GqxS2lFuJadGwGSOhraBtQ277sjvjNpajaIfJb7dkQ3RnO/Ps5M8eLFhyklSMzX7gOVmI9YUs+GPSFPIw==}
 
   tiny-invariant@1.3.3:
     resolution: {integrity: sha512-+FbBPE1o9QAYvviau/qC5SE3caw21q3xkvWKBtja5vgqOWIHHJ3ioaq1VPfn/Szqctz2bU/oYeKd9/z5BL+PVg==}
@@ -14419,6 +14425,8 @@ snapshots:
   tapable@2.3.3: {}
 
   throttle-debounce@5.0.2: {}
+
+  timezones-ical-library@3.0.0: {}
 
   tiny-invariant@1.3.3: {}
 

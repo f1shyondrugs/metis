@@ -124,8 +124,40 @@ async function testTimeZones(){
  check(localStorage.getItem(calendarTimeZoneKey("calendar-preview-a"))==="device","automatic mode stores device intent rather than a resolved fixed zone");
  check(document.body.scrollWidth<=innerWidth,"zone controls fit the viewport");
 }
+async function testDateBoundaries(){
+ await press(button("New event"));
+ fill(document.querySelector<HTMLInputElement>('input[name="title"]')!,"All-day boundary browser regression");
+ const toggle=document.querySelector<HTMLInputElement>('#calendar-event-form input[type="checkbox"]')!;
+ await press(toggle);
+ const fields=()=>[...document.querySelectorAll<HTMLInputElement>('input[type="date"]')];
+ const start=fields()[0].value,end=fields()[1].value;
+ check(end>start,"switching a same-day timed draft to all day automatically advances end");
+ check(fields()[1].min===end,"all-day end picker disallows the start date and earlier dates");
+ fill(fields()[1],start);await wait();
+ check(fields()[1].value===end,"manually entering the same all-day end date is corrected before save");
+ fill(fields()[1],"2026-01-01");await wait();
+ check(fields()[1].value>fields()[0].value,"earlier all-day end dates cannot remain selected");
+ fill(fields()[0],"2028-02-28");await wait();
+ check(fields()[1].value==="2028-02-29"&&fields()[1].min==="2028-02-29","moving start beyond end uses the next real date including leap days");
+ fill(fields()[1],"2028-03-02");await wait();
+ check(fields()[1].value==="2028-03-02","valid multi-day all-day ranges are preserved");
+ await press(button("Save event"));await until(()=>!document.querySelector('[role="dialog"]'));
+ const saved=zoneSaves.at(-1)!;
+ const cleanup=async(start:string,end:string,title:string)=>{const data=await(await nativeFetch("/api/calendar?"+new URLSearchParams({start,end}))).json();for(const e of data.events.filter((e:{title:string})=>e.title===title))await nativeFetch("/api/calendar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"delete",id:e.eventId,version:e.version})});};
+ await cleanup("2028-02-27T00:00:00Z","2028-03-03T00:00:00Z","All-day boundary browser regression");
+ check(saved.start==="2028-02-28"&&saved.end==="2028-03-02","all-day save uses exclusive plain dates without offsets");
+ await press(button("New event"));
+ fill(document.querySelector<HTMLInputElement>('input[name="title"]')!,"Updated timezone browser regression");
+ const zone=document.querySelector<HTMLSelectElement>('select[name="timeZone"]')!;
+ zone.value="Asia/Almaty";zone.dispatchEvent(new Event("change",{bubbles:true}));await wait();
+ check(zone.value==="Asia/Almaty","previously stale timezone can be selected");
+ await press(button("Save event"));await until(()=>!document.querySelector('[role="dialog"]'));
+ check(zoneSaves.at(-1)?.timeZone==="Asia/Almaty","updated timezone saves successfully through the canonical API");
+ await cleanup(DateTime.now().minus({days:1}).toISO()!,DateTime.now().plus({days:2}).toISO()!,"Updated timezone browser regression");
+}
 async function run(){
  await testTimeZones();
+ await testDateBoundaries();
  await testCompactFilter();
  await until(()=>!!document.querySelector(".fc-dayGridMonth-view")&&!!button("New event")&&!document.body.textContent?.includes("Loading calendar"));
  check(document.querySelectorAll(".fc-col-header-cell").length===7,"month view has seven day columns");

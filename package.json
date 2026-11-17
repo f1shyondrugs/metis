@@ -121,6 +121,7 @@
     "sharp": "^0.35.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
+    "timezones-ical-library": "3.0.0",
     "tsdav": "2.2.0",
     "tsx": "^4.23.5",
     "undici": "^7",
