@@ -13,16 +13,24 @@ export function parseCalendar(ics:string){
 }
 function main(c:ICAL.Component){return c.getAllSubcomponents("vevent").find(e=>!e.hasProperty("recurrence-id"))||c.getFirstSubcomponent("vevent")!;}
 function timeValue(t:ICAL.Time){return t.isDate?t.toString().slice(0,10):t.zone===ICAL.Timezone.localTimezone?t.toString():t.toJSDate().toISOString();}
+/** Only simple start-relative DISPLAY alarms are exposed by the editor.
+ * Other alarm types and recurrence exceptions remain intact when editing. */
+function reminderOffset(alarm:ICAL.Component):number|null{
+ const trigger=alarm.getFirstProperty("trigger"),value=trigger?.getFirstValue();
+ if(alarm.getFirstPropertyValue("action")!=="DISPLAY"||!(value instanceof ICAL.Duration)||trigger?.getParameter("related")==="END"||alarm.hasProperty("repeat")||alarm.hasProperty("duration"))return null;
+ const minutes=-value.toSeconds()/60;
+ return Number.isInteger(minutes)&&minutes>=0&&minutes<=40320?Math.max(0,minutes):null;
+}
 export function eventFields(ics:string){
  const c=parseCalendar(ics),m=main(c),e=new ICAL.Event(m);
  if(!e.startDate)throw new CalendarError("Calendar item has no start.");
  const end=e.endDate||e.startDate;
- return {uid:String(e.uid),title:String(e.summary||"Untitled event"),description:String(e.description||""),location:String(e.location||""),start:timeValue(e.startDate),end:timeValue(end),allDay:e.startDate.isDate,timeZone:String(m.getFirstProperty("dtstart")?.getParameter("tzid")||(e.startDate.zone===ICAL.Timezone.localTimezone?"floating":"UTC")),recurrence:String(m.getFirstPropertyValue("rrule")||"")};
+ return {uid:String(e.uid),title:String(e.summary||"Untitled event"),description:String(e.description||""),location:String(e.location||""),start:timeValue(e.startDate),end:timeValue(end),allDay:e.startDate.isDate,timeZone:String(m.getFirstProperty("dtstart")?.getParameter("tzid")||(e.startDate.zone===ICAL.Timezone.localTimezone?"floating":"UTC")),recurrence:String(m.getFirstPropertyValue("rrule")||""),reminderMinutes:[...new Set(m.getAllSubcomponents("valarm").map(reminderOffset).filter((v):v is number=>v!==null))].sort((a,b)=>a-b)};
 }
 export function normalizedEventHash(ics:string){
  const c=parseCalendar(ics);
  const rows=c.getAllSubcomponents("vevent").map(v=>{
-  const e=new ICAL.Event(v);return {...eventFields(new ICAL.Component(["vcalendar",[],[...c.getAllSubcomponents("vtimezone").map(t=>t.toJSON()),v.toJSON()]]).toString()),recurrenceId:v.getFirstPropertyValue("recurrence-id")?.toString()||"",status:v.getFirstPropertyValue("status")||"",rules:["rrule","rdate","exdate"].flatMap(k=>v.getAllProperties(k).map(p=>p.toICALString())).sort(),alarms:v.getAllSubcomponents("valarm").map(a=>a.toString()).sort(),duration:e.duration.toString()};
+  const e=new ICAL.Event(v);const {reminderMinutes:derived,...fields}=eventFields(new ICAL.Component(["vcalendar",[],[...c.getAllSubcomponents("vtimezone").map(t=>t.toJSON()),v.toJSON()]]).toString());void derived;return {...fields,recurrenceId:v.getFirstPropertyValue("recurrence-id")?.toString()||"",status:v.getFirstPropertyValue("status")||"",rules:["rrule","rdate","exdate"].flatMap(k=>v.getAllProperties(k).map(p=>p.toICALString())).sort(),alarms:v.getAllSubcomponents("valarm").map(a=>a.toString()).sort(),duration:e.duration.toString()};
  }).sort((a,b)=>a.recurrenceId.localeCompare(b.recurrenceId));
  return createHash("sha256").update(JSON.stringify(rows)).digest("hex");
 }
@@ -46,6 +54,18 @@ export function writeEvent(input:EventInput,uid:string,previous?:string){
  m.removeAllProperties("duration");for(const [name,value] of [["dtstart",start],["dtend",end]] as const){m.removeAllProperties(name);const p=new ICAL.Property(name);p.resetType(input.allDay?"date":"date-time");p.setValue(value);if(!input.allDay&&input.timeZone&&input.timeZone!=="UTC")p.setParameter("tzid",input.timeZone);m.addProperty(p);}m.updatePropertyWithValue("dtstamp",ICAL.Time.now());
  const oldRule=String(m.getFirstPropertyValue("rrule")||"");
  if((input.recurrence||"")!==oldRule){if(c.getAllSubcomponents("vevent").length>1)throw new CalendarError("A recurring series with exceptions cannot change its rule here.");m.removeAllProperties("rrule");if(input.recurrence){try{m.updatePropertyWithValue("rrule",ICAL.Recur.fromString(input.recurrence));}catch{throw new CalendarError("Invalid recurrence rule.");}}}
+ if(input.reminderMinutes!==undefined){
+  // Omitted means preserve; [] removes only supported start-relative display alarms.
+  // Audio, absolute, end-relative, repeating and exception alarms are never destroyed.
+  for(const alarm of [...m.getAllSubcomponents("valarm")])if(reminderOffset(alarm)!==null)m.removeSubcomponent(alarm);
+  for(const minutes of new Set(input.reminderMinutes)){
+   const alarm=new ICAL.Component("valarm");
+   alarm.updatePropertyWithValue("action","DISPLAY");
+   alarm.updatePropertyWithValue("description",input.title);
+   alarm.updatePropertyWithValue("trigger",ICAL.Duration.fromSeconds(-minutes*60));
+   m.addSubcomponent(alarm);
+  }
+ }
  return c.toString();
 }
 /** New cross-provider replicas never send invitations; target scheduling metadata is retained on updates. */

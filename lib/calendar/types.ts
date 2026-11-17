@@ -1,9 +1,9 @@
 export type CalendarProvider="icloud"|"google";
 export type CalendarGroup={id:string;name:string;color:string;readOnly:boolean};
 export type CalendarConnection={id:string;provider:CalendarProvider;label:string;enabled:boolean;status:string;lastAttempt:string|null;error:string;version:number};
-export type CalendarEvent={id:string;calendarId:string;uid:string;title:string;description:string;location:string;start:string;end:string;allDay:boolean;timeZone:string;recurrence:string;version:number;deleted:boolean;ics:string;readOnly:boolean};
+export type CalendarEvent={id:string;calendarId:string;uid:string;title:string;description:string;location:string;start:string;end:string;allDay:boolean;timeZone:string;recurrence:string;version:number;deleted:boolean;ics:string;readOnly:boolean;reminderMinutes?:number[]};
 export type CalendarOccurrence=Omit<CalendarEvent,"ics">&{eventId:string};
-export type EventInput={id?:string;calendarId:string;title:string;description?:string;location?:string;start:string;end:string;allDay?:boolean;timeZone?:string;recurrence?:string;version?:number;idempotencyKey?:string};
+export type EventInput={id?:string;calendarId:string;title:string;description?:string;location?:string;start:string;end:string;allDay?:boolean;timeZone?:string;recurrence?:string;version?:number;idempotencyKey?:string;reminderMinutes?:number[]};
 export type RemoteCalendar={id:string;name:string;color:string;writable:boolean;url:string};
 export type RemoteObject={id:string;etag:string;ics?:string;deleted?:boolean};
 export type PullResult={objects:RemoteObject[];token:string;full:boolean};
