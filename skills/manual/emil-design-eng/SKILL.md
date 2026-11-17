@@ -528,30 +528,6 @@ element.animate([{ clipPath: 'inset(0 0 100% 0)' }, { clipPath: 'inset(0 0 0 0)'
 
 ## Accessibility
 
-### prefers-reduced-motion
-
-Animations can cause motion sickness. Reduced motion means fewer and gentler animations, not zero. Keep opacity and color transitions that aid comprehension. Remove movement and position animations.
-
-```css
-@media (prefers-reduced-motion: reduce) {
-  .element {
-    animation: fade 0.2s ease;
-    /* No transform-based motion */
-  }
-}
-
-@keyframes fade {
-  from {
-    opacity: 0;
-  }
-}
-```
-
-```jsx
-const shouldReduceMotion = useReducedMotion();
-const closedX = shouldReduceMotion ? 0 : '-100%';
-```
-
 ### Touch device hover states
 
 ```css
@@ -664,6 +640,21 @@ Step through animations frame by frame in Chrome DevTools (Animations panel). Th
 ### Test on real devices
 
 For touch interactions (drawers, swipe gestures), test on physical devices. Connect your phone via USB, visit your local dev server by IP address, and use Safari's remote devtools. The Xcode Simulator is an alternative but real hardware is better for gesture testing.
+
+## Practical motion patterns from Charles Liu
+
+Adapted from [Charles Liu's ten animation rules](https://www.tiktok.com/@charles.unemployed/video/7709207277240159494). Use these as starting points for the relevant components, not as universal requirements. Keep the existing frequency and purpose checks above.
+
+1. **Entrances:** For a subtle reveal, start at `scale: 0.97` and `opacity: 0`, then go to full size and opacity. Avoid starting at zero scale. This is an alternative to the `0.95` example above.
+2. **Buttons:** Use `button:active { scale: 0.97 }` with `transition: scale 150ms ease-out` as a press-feedback starting point. Preserve the focus indicator.
+3. **Password errors:** Pair a visible error state with a clear text message. An optional shake can use `translateX` offsets of 0, −10, +10, −6, +6, −3, and 0 px over 360 ms. Do not rely on red or motion alone.
+4. **Steppers:** Slide the incoming step from the direction of travel instead of crossfading; reverse for back navigation and move focus appropriately.
+5. **Accordions:** Where supported, use `interpolate-size: allow-keywords` to transition between a length and `height: auto`. Liu shows it on `:root`; scope it to the accordion if that is all that needs it. Keep expansion functional without interpolation.
+6. **Position changes:** Prefer animating `transform` over `top` or `left` when only the visual position changes. This can avoid layout work; it does not guarantee compositor-only rendering.
+7. **Theme switches (local override):** Preserve the existing light/dark (black-to-white and white-to-black) theme-switch animation. Do not globally disable CSS transitions during the switch.
+8. **Grouped tooltips:** Delay the first tooltip. While moving between adjacent triggers in the same group, show subsequent tooltips instantly.
+9. **Flicks and drags:** At release, preserve the measured release velocity in the spring instead of restarting with fixed timing. Liu's example: `animate(y, 0, { type: "spring", duration: 0.5, bounce: 0, velocity })`. Check the motion library's velocity units and direction.
+10. **Carousels:** Increase resistance when dragging past either end and spring back on release. Keep the logical index clamped; overscroll is visual only.
 
 ## Review Checklist
 
