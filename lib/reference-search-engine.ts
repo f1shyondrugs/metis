@@ -1,9 +1,12 @@
+import {automationReference} from "@/lib/automation-reference";
+import {listAutomations} from "@/lib/automations";
+import {referenceProject} from "@/lib/reference-appearance";
 import {getChatMetadata} from "@/lib/db-store";
 import {searchCalendarReferences} from "@/lib/calendar/reference";
 import { getGlobalModelSettings, listChatsForUser, listMemories } from "@/lib/db-store";
 import { listAccessibleIssues } from "@/lib/issues";
 import { issueReference } from "@/lib/issue-types";
-import { listProjects } from "@/lib/projects";
+import { getProject,listProjects } from "@/lib/projects";
 import { featureFlags } from "@/lib/feature-flags";
 import { config } from "@/lib/config";
 import { listNotes } from "@/lib/shared-context";
@@ -24,10 +27,13 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
   const perKindLimit=kind ? 80 : 8;
   const check=()=>{if(cancelled()) throw Object.assign(new Error("Search cancelled"),{name:"AbortError"});};
   const results: ReferenceResult[] = [];
+  const visibleProjects=new Map(listProjects(ownerId).map(project=>[project.id,project]));
+  const projectForChat=new Map<string,string|undefined>();
   let indexing=false;
   const seen = new Set<string>();
 
   const push = (item: ReferenceResult, ...searchValues: string[]) => {
+    if(!item.project&&item.chatId)item={...item,project:referenceProject(visibleProjects.get(projectForChat.get(item.chatId)||""))};
     if (includes(item.kind) && referenceMatches(query, item.label, item.detail, item.path, item.content, ...searchValues)) {
       const key = item.kind === "chat" ? "chat:" + (item.chatId || item.id) : item.kind === "file" ? [item.kind,item.chatId,item.path].join(":") : [item.kind,item.id,item.chatId || ""].join(":");
       if(seen.has(key))return;
@@ -43,6 +49,7 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
   };
 
   const chatEntries = (["file","chat","canvas","plan","browser","terminal"] as const).some(includes) ? listChatsForUser(ownerId) : [];
+  for(const entry of chatEntries)projectForChat.set(entry.id,entry.projectId);
   chatEntries.sort((a,b)=>Number(b.id===currentChatId)-Number(a.id===currentChatId));
   for (const entry of chatEntries) {
     check();
@@ -151,6 +158,8 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
       push({
         kind: note.kind === "learned_fact" ? "memory" : "note",
         id: note.id,
+        icon:note.icon,
+        project:referenceProject(visibleProjects.get(note.projectId||"")),
         label: noteDisplayTitle(note.title) || note.content.slice(0, 80) || "Untitled note",
         detail: [context,...ancestors,ancestors.length ? "Subfile" : ""].filter(Boolean).join(" / "),
         ...(note.parentId ? {parentId:note.parentId} : {}),
@@ -162,7 +171,7 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
 
   if (includes("issue") && featureFlags(getGlobalModelSettings(ownerId)).notes) {
     const projects = new Map(listProjects(ownerId).map(project => [project.id, project.name]));
-    for (const issue of listAccessibleIssues(ownerId)) push(issueReference(issue, issue.projectId ? projects.get(issue.projectId) : undefined));
+    for (const issue of listAccessibleIssues(ownerId)) push({...issueReference(issue, issue.projectId ? projects.get(issue.projectId) : undefined),project:referenceProject(visibleProjects.get(issue.projectId||""))});
   }
 
   if (includes("chat") && query.trim()) {
@@ -173,10 +182,15 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
       label:match.chatTitle,detail:match.snippet,isCurrentChat:match.chatId===currentChatId});
   }
 
+  if(includes("automation")){
+    for(const automation of listAutomations(ownerId,false)){
+      check();push(automationReference(automation,visibleProjects.get(automation.projectId||"")));
+    }
+  }
   if(includes("calendar-event")&&!getChatMetadata(currentChatId,ownerId)?.incognito){
     for(const item of searchCalendarReferences(ownerId,query,perKindLimit,check))push(item);
   }
   check();
   // Membership can change while extraction yields; never return revoked chat data.
-  return {results:results.filter(item=>!item.chatId || canAccessChat(item.chatId,ownerId)).sort((a,b)=>Number(Boolean(b.isCurrentChat))-Number(Boolean(a.isCurrentChat)) || Number(referenceMatches(query,b.label))-Number(referenceMatches(query,a.label))),indexing};
+  return {results:results.filter(item=>!item.chatId || canAccessChat(item.chatId,ownerId)).map(item=>item.project?{...item,project:referenceProject(getProject(item.project.id,ownerId))}:item).sort((a,b)=>Number(Boolean(b.isCurrentChat))-Number(Boolean(a.isCurrentChat)) || Number(referenceMatches(query,b.label))-Number(referenceMatches(query,a.label))),indexing};
 }

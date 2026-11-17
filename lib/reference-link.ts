@@ -6,7 +6,7 @@ const clean=(value:unknown,max=4096):value is string=>typeof value==="string"&&v
 /** Identity and navigation hints only. Destination APIs retain their normal access checks. */
 export function referenceHref(item:LinkReference):string|null {
   if(!clean(item.id,2000)||!item.id.trim())return null;
-  if(item.kind==="note"||item.kind==="issue"||item.kind==="calendar-event")return item.kind+"://"+encodeURIComponent(item.id);
+  if(item.kind==="note"||item.kind==="issue"||item.kind==="calendar-event"||item.kind==="automation")return item.kind+"://"+encodeURIComponent(item.id);
   if(item.kind==="canvas"||item.kind==="plan")return "workspace://"+item.kind+"/"+encodeURIComponent(item.id);
   if(!(REFERENCE_KINDS as readonly string[]).includes(item.kind))return null;
   const query=new URLSearchParams();

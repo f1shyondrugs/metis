@@ -3,13 +3,14 @@ import type { ReferenceKind } from "./reference-search";
 /** Reserved category names only: arbitrary titles and unknown prefixes stay literal. */
 export const REFERENCE_SHORTCUTS: Record<ReferenceKind, string> = {
   file:"files", canvas:"canvases", plan:"plans", note:"notes", issue:"issues",
-  browser:"browser", terminal:"terminals", memory:"memories", chat:"chats", "calendar-event":"events",
+  browser:"browser", terminal:"terminals", memory:"memories", chat:"chats", "calendar-event":"events", automation:"automations",
 };
 const aliases: Record<string, ReferenceKind> = {
   file:"file",files:"file",dateien:"file",canvas:"canvas",canvases:"canvas",
   plan:"plan",plans:"plan",pläne:"plan",note:"note",notes:"note",notizen:"note",
   issue:"issue",issues:"issue",browser:"browser",terminal:"terminal",terminals:"terminal",
   memory:"memory",memories:"memory",erinnerungen:"memory",chat:"chat",chats:"chat",
+  automation:"automation",automations:"automation",automationen:"automation",
   event:"calendar-event",events:"calendar-event",calendar:"calendar-event",kalender:"calendar-event",termin:"calendar-event",termine:"calendar-event",
 };
 

@@ -1,3 +1,4 @@
+import {resolveAutomationReference} from "./automation-reference";
 import {resolveCalendarReference} from "./calendar/reference";
 import { projectRole } from "@/lib/project-access";
 import { getChatMetadata, getChatNotePins, getGlobalModelSettings } from "@/lib/db-store";
@@ -55,6 +56,7 @@ export function resolveReferences(
   return references
     .slice(0, 20)
     .map((reference): ContextReference | null => {
+      if(reference.kind==="automation")return chat.incognito?null:resolveAutomationReference(resolvedOwnerId,reference.id);
       if(reference.kind==="calendar-event")return chat.incognito?null:resolveCalendarReference(resolvedOwnerId,reference.id);
       if (reference.kind !== "note") return { ...reference, source: reference.source || "explicit" };
       const note = accessibleNotes.get(reference.id) || getNote(reference.id, resolvedOwnerId, { chatId });

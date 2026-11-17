@@ -1,5 +1,6 @@
 import { getAuthenticatedUserId } from "@/lib/auth";
 import { getInternalLinkPreview } from "@/lib/internal-link-preview.server";
+import {getAutomation} from "@/lib/automations";
 import { getNote } from "@/lib/shared-context";
 import type { InternalLinkKind } from "@/lib/internal-link";
 
@@ -19,6 +20,9 @@ export async function GET(req: Request) {
       !id || id.length > 200 || /[\u0000-\u001f\u007f/\\]/.test(id) ||
       (chatId !== undefined && (!chatId || chatId.length > 200 || /[\u0000-\u001f\u007f/\\]/.test(chatId)))) {
     return Response.json({ error: "A valid kind and id are required" }, { status: 400, headers });
+  }
+  if(params.get("view")==="icon"&&kind==="automation"){
+    const value=getAutomation(id,ownerId,false);return value?Response.json({icon:value.icon??null},{headers}):Response.json({error:"Preview not found"},{status:404,headers});
   }
   if (params.get("view") === "icon" && kind === "note") {
     const note = getNote(id, ownerId);

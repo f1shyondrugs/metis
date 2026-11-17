@@ -381,6 +381,7 @@ export function getDatabase(): DatabaseSync {
       ON capability_manifests(owner_id, run_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS automations (
       id TEXT PRIMARY KEY,
+      icon TEXT,
       owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
      project_id TEXT,
@@ -735,6 +736,7 @@ export function getDatabase(): DatabaseSync {
     "ALTER TABLE pending_questions ADD COLUMN expires_at TEXT",
     "ALTER TABLE pending_questions ADD COLUMN status TEXT NOT NULL DEFAULT 'waiting_for_user'",
     "ALTER TABLE pending_questions ADD COLUMN heartbeat_at TEXT",
+    "ALTER TABLE automations ADD COLUMN icon TEXT",
     "ALTER TABLE automations ADD COLUMN mode_id TEXT",
     "ALTER TABLE automations ADD COLUMN model_id TEXT",
     "ALTER TABLE automations ADD COLUMN extended_model_id TEXT",

@@ -3,6 +3,7 @@ import { isSubagentControlName, isSubagentSpawnName } from "@/lib/subagent-bar";
 
 export type AutomationCardInfo = {
   id: string;
+  icon?:string|null;
   title: string;
   prompt: string;
   scheduleLabel?: string;
@@ -142,6 +143,7 @@ function visitAutomationPayload(
   depth: number,
   acc: {
     id: string;
+    icon?:string|null;
     title: string;
     prompt: string;
     scheduleLabel?: string;
@@ -184,6 +186,7 @@ function visitAutomationPayload(
   else if (typeof parsed.name === "string" && parsed.name.trim() && !acc.title && !isMcpWrapperName(parsed.name)) {
     acc.title = parsed.name.trim();
   }
+  if(typeof nested.icon==="string"&&acc.icon===undefined)acc.icon=nested.icon;
   if (typeof nested.prompt === "string" && nested.prompt && !acc.prompt) acc.prompt = nested.prompt;
   else if (typeof parsed.prompt === "string" && parsed.prompt && !acc.prompt) acc.prompt = parsed.prompt;
   acc.scheduleLabel = formatAutomationSchedule(nested.schedule)
@@ -209,6 +212,7 @@ export function parseAutomationCard(name: string, ...sources: unknown[]): Automa
   }
   return {
     id: acc.id,
+    ...(acc.icon!==undefined?{icon:acc.icon}:{}),
     title: acc.title || "Automation",
     prompt: acc.prompt,
     scheduleLabel: acc.scheduleLabel,

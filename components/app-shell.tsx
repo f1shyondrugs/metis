@@ -5256,6 +5256,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       const reference = (event as CustomEvent<ReferenceItem>).detail;
       if (!reference?.kind || !reference.id) return;
 
+      if(reference.kind==="automation"){window.dispatchEvent(new CustomEvent("ai-chat:open-automations",{detail:{id:reference.id}}));return;}
       if(reference.kind==="calendar-event"){window.dispatchEvent(new CustomEvent("ai-chat:open-calendar-event",{detail:{id:reference.id}}));return;}
       const targetChatId =
         reference.chatId ||
@@ -9545,8 +9546,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            {projectModelLock ? <ProjectModelLock message={projectModelLock} className="hidden min-w-0 md:inline-flex">
-              <Button type="button" variant="ghost" size="sm" disabled aria-label={`Model: ${selectedModelLabel}`} className="h-7 min-w-0 max-w-64 gap-1.5 px-1.5 text-xs">
+            {projectModelLock ? <ProjectModelLock message={projectModelLock} className="hidden min-w-0 max-w-[22rem] shrink md:inline-flex">
+              <Button type="button" variant="ghost" size="sm" disabled aria-label={`Model: ${selectedModelLabel}`} className="h-7 min-w-0 max-w-full shrink gap-1.5 px-1.5 text-xs">
                 <ProviderLogo providerId={selectedModel.providerId}/><span className="truncate">{selectedModelLabel} {selectedAttrs}</span>
               </Button>
             </ProjectModelLock> : (
@@ -9565,8 +9566,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="hidden h-7 min-w-0 max-w-[min(100vw-8rem,28rem)] flex-none justify-center gap-1.5 rounded-md px-1.5 text-xs font-normal text-foreground/90 hover:bg-muted/25 hover:text-foreground md:inline-flex"
+                  className="hidden h-7 min-w-0 max-w-[22rem] shrink justify-start gap-1.5 rounded-md px-1.5 text-xs font-normal text-foreground/90 hover:bg-muted/25 hover:text-foreground md:inline-flex"
                   title={`Model: ${selectedModelLabel}`}
+                  aria-label={`Model: ${selectedModelLabel}${selectedAttrs ? " "+selectedAttrs : ""}`}
                 >
                   {modelId ? <ProviderLogo providerId={selectedModel.providerId} /> : null}
                   <span className="min-w-0 truncate">

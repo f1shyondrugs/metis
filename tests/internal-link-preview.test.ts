@@ -75,7 +75,7 @@ async function getPreview(kind: string, id: string, chatId?: string) {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Cache-Control"), "private, no-store");
   const data = await response.json() as InternalLinkPreview;
-  assert.deepEqual(Object.keys(data).sort(), ["description", "details", ...(kind === "note" ? ["icon"] : []), "id", "kind", "title"].sort());
+  assert.deepEqual(Object.keys(data).sort(), ["description", "details", ...((kind === "note"||kind==="automation") ? ["icon"] : []), "id", "kind", "title"].sort());
   assert.ok(data.title.length <= 200);
   assert.ok(data.description.length <= 600);
   assert.ok(data.details.length <= 5);

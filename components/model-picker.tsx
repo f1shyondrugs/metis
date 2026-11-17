@@ -56,6 +56,7 @@ export function ModelPicker({
   const normalized = String(search ?? "").trim().toLowerCase();
   const providers = modelAccountGroups(models);
   const selectedAccountLabel = selected ? modelAccountLabel(selected, providers) : undefined;
+  const fullSelectedLabel=selected?[selected.displayName,selectedAccountLabel].filter(Boolean).join(" · "):placeholder;
   const providerQueryMatch = normalized.match(/^([a-z0-9_-]+):(.*)$/);
   const providerQuery = providerQueryMatch && providers.some((provider) => provider.providerId === providerQueryMatch[1])
     ? providerQueryMatch[1]
@@ -94,13 +95,14 @@ export function ModelPicker({
           changeOpen(false);
         }}
         className="gap-2"
+        title={[model.displayName,model.connectionLabel,model.providerName].filter(Boolean).join(" · ")}
       >
         <Check className={cn("size-3.5 shrink-0", model.id === selected?.id ? "opacity-100" : "opacity-0")} />
         <ProviderLogo providerId={providerId} />
         <span className="min-w-0 flex-1 truncate">{model.displayName}{model.connectionLabel ? <span className="ml-1 text-xs text-muted-foreground">· {model.connectionLabel}</span> : null}</span>
         {allowPinning && <button
           type="button"
-          className="rounded p-1 text-muted-foreground hover:text-foreground"
+          className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
           aria-label={favorite ? `Unpin ${model.displayName}` : `Pin ${model.displayName}`}
           onClick={(event) => {
             event.preventDefault();
@@ -122,13 +124,15 @@ export function ModelPicker({
           variant="outline"
           disabled={disabled || models.length === 0}
           aria-label={ariaLabel}
-          className={cn("h-10 w-full justify-between gap-2 text-left font-normal", className)}
+          aria-description={fullSelectedLabel}
+          title={fullSelectedLabel}
+          className={cn("h-10 min-w-0 max-w-full w-full justify-between gap-2 text-left font-normal", className)}
         >
-          <span className="flex min-w-0 items-center gap-2 truncate">
+          <span className="flex min-w-0 flex-1 items-center gap-2">
             <ProviderLogo providerId={selected?.providerId} />
-            <span className="truncate">{selected?.displayName || placeholder}</span>
+            <span className="min-w-0 truncate">{selected?.displayName || placeholder}</span>
             {selectedAccountLabel ? (
-              <span className="truncate text-xs text-muted-foreground">· {selectedAccountLabel}</span>
+              <span className="min-w-0 max-w-[45%] shrink truncate text-xs text-muted-foreground">· {selectedAccountLabel}</span>
             ) : null}
           </span>
           <ChevronDown className="size-3.5 shrink-0 opacity-60" />

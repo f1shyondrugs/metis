@@ -15,7 +15,7 @@ const chat=store.createChat("Mathe course",undefined,owner);store.saveChat(chat)
 notes.createNote({ownerId:owner,title:"Exam notes",content:"Exam preparation content",icon:"lucide:calculator"});
 const output=path.resolve("output/mention-links-ui");fs.mkdirSync(output,{recursive:true});
 const require=createRequire(import.meta.url),{build}=createRequire(require.resolve("tsx"))("esbuild");
-await build({entryPoints:["tests/reference-mentions.browser.tsx"],outfile:output+"/app.js",bundle:true,platform:"browser",format:"esm",jsx:"automatic",loader:{".woff":"file",".woff2":"file",".ttf":"file"},define:{"process.env.NODE_ENV":'"production"'}});
+await build({entryPoints:["tests/reference-mentions.browser.tsx"],outfile:output+"/app.js",bundle:true,platform:"browser",format:"esm",jsx:"automatic",loader:{".woff":"file",".woff2":"file",".ttf":"file"},define:{"process.env.NODE_ENV":'"production"',"process.env":"{}"}});
 const css=await postcss([tailwind()]).process(fs.readFileSync("app/globals.css","utf8"),{from:"app/globals.css"});fs.writeFileSync(output+"/theme.css",css.css);
 const app='<html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mention links fixture</title><link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/app.css"><body><div id="root"></div><script type="module" src="/app.js"></script></body></html>';
 const server=http.createServer(async(req,res)=>{

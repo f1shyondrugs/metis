@@ -1,3 +1,4 @@
+import {automationIconPatch} from "@/lib/automation-icon";
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import {
   createAutomation,
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
     const automation = createAutomation({
       ownerId,
       creator: "user",
+      ...automationIconPatch(body),
       chatId: typeof body.chatId === "string" ? body.chatId : undefined,
       name: typeof body.name === "string" ? body.name : "",
       prompt: typeof body.prompt === "string" ? body.prompt : "",

@@ -1,10 +1,12 @@
 "use client";
 
-import { CalendarClock, ExternalLink } from "lucide-react";
+import {AutomationIcon} from "./automation-icon";
+import { ExternalLink } from "lucide-react";
 
 export type AutomationCardProps = {
   actionLabel: string;
   title: string;
+  icon?:string|null;
   prompt?: string;
   scheduleLabel?: string;
   automationLink?: string;
@@ -14,6 +16,7 @@ export type AutomationCardProps = {
 export function AutomationCard({
   actionLabel,
   title,
+  icon,
   prompt,
   scheduleLabel,
   automationLink,
@@ -23,7 +26,7 @@ export function AutomationCard({
     <section className="my-2.5 w-full rounded-lg border border-border/50 border-l-teal-400/70 bg-muted/20 p-2.5">
       <div className="flex items-start gap-2">
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-teal-400/10 text-teal-300">
-          <CalendarClock className="size-3.5" />
+          <AutomationIcon value={icon} className="size-3.5"/>
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-medium uppercase tracking-wide text-teal-300/80">

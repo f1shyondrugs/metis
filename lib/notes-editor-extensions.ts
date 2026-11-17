@@ -115,7 +115,7 @@ const NotesStarterKit = StarterKit.extend({
 
 export function notesEditorExtensions(collaborative = false) {
   return [
-    NotesStarterKit.configure({ ...(collaborative ? {undoRedo:false as const} : {}), trailingNode: false, link: { openOnClick: false, autolink: true, protocols: ["metis", "note", "issue", "workspace", "calendar-event"] }, heading: { levels: [1,2,3,4,5,6] } }),
+    NotesStarterKit.configure({ ...(collaborative ? {undoRedo:false as const} : {}), trailingNode: false, link: { openOnClick: false, autolink: true, protocols: ["metis", "note", "issue", "workspace", "calendar-event", "automation"] }, heading: { levels: [1,2,3,4,5,6] } }),
     TaskList, TaskItem.configure({ nested: true }), TableKit.configure({ table: { resizable: true } }),
     Image.configure({ inline: true, allowBase64: false }), TextStyle, Color, Highlight.configure({ multicolor: true }),
     Placeholder.configure({ placeholder: "Write something, or type / for blocks…", includeChildren: true }),

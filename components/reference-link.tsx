@@ -1,5 +1,6 @@
 "use client";
 
+import {ReferenceResultIcon,ReferenceResultMetadata} from "./reference-appearance";
 import type { ReactNode } from "react";
 import type { ReferenceResult } from "@/lib/reference-search";
 import { referenceHref, parseReferenceLink } from "@/lib/reference-link";
@@ -10,19 +11,19 @@ import { InternalLinkPreviewContent } from "@/components/internal-link-preview";
 import { usePublicMarkdownShare } from "@/components/public-markdown-context";
 import { cn } from "@/lib/utils";
 
-const labels = {"calendar-event":"Calendar event",file:"File",canvas:"Canvas",plan:"Plan",note:"Note",issue:"Issue",browser:"Browser",terminal:"Terminal",memory:"Memory",chat:"Chat"};
+const labels = {automation:"Automation","calendar-event":"Calendar event",file:"File",canvas:"Canvas",plan:"Plan",note:"Note",issue:"Issue",browser:"Browser",terminal:"Terminal",memory:"Memory",chat:"Chat"};
 
 /** Non-document previews use the already selected metadata, never arbitrary URL fetching. */
 export function ReferencePreviewContent({reference}:{reference:ReferenceResult}) {
   return <div data-reference-preview={reference.kind}>
     <div className="flex items-start gap-2">
-      <LinkIcon href={reference.kind === "browser" ? reference.path : undefined} kind={reference.kind} id={reference.id} className="mt-0.5 !mr-0 !size-4 text-muted-foreground"/>
+      <ReferenceResultIcon item={reference}/>
       <div className="min-w-0">
         <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{labels[reference.kind]}</div>
         <div className="mt-0.5 line-clamp-2 break-words text-xs font-medium">{reference.label}</div>
       </div>
     </div>
-    {reference.detail?<p className="mt-2 line-clamp-3 break-words text-[11px] text-muted-foreground">{reference.detail}</p>:null}
+    <ReferenceResultMetadata item={reference}/>
     {reference.path?<p className="mt-2 line-clamp-2 break-all text-[10px] text-muted-foreground">{reference.path}</p>:null}
     <p className="mt-2 text-[10px] text-muted-foreground">Open {labels[reference.kind].toLowerCase()}</p>
   </div>;

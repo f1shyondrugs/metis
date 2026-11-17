@@ -81,12 +81,12 @@ export function getInternalLinkPreview(target: InternalLinkTarget, ownerId: stri
   if (target.kind === "automation") {
     const automation = getAutomation(target.id, ownerId, false);
     if (!automation) return null;
-    return preview(target, automation.name, automation.prompt, [
+    return {...preview(target, automation.name, automation.prompt, [
       { label: "Status", value: automation.status[0].toUpperCase() + automation.status.slice(1) },
       { label: "Schedule", value: scheduleLabel(automation) },
       { label: "Timezone", value: automation.timezone },
       { label: "Next run", value: dateLabel(automation.nextRunAt, automation.timezone) },
-    ]);
+    ]),icon:automation.icon??null};
   }
   const resolved = getInternalWorkspace({ kind: target.kind, id: target.id }, ownerId, chatId);
   if (!resolved) return null;

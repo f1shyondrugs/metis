@@ -1,3 +1,4 @@
+import {resolveAutomationReference} from "./automation-reference";
 import {resolveCalendarReference} from "./calendar/reference";
 import {
   getChatMetadata,
@@ -183,6 +184,7 @@ export function resolveScopeReferences(
   return references
     .slice(0, 20)
     .map((reference): ScopedContextReference | null => {
+      if(reference.kind==="automation"){const resolved=incognito?null:resolveAutomationReference(ownerId,reference.id);return resolved?{...resolved,source:"explicit"}:null;}
       if(reference.kind==="calendar-event"){
         if(incognito)return null;const resolved=resolveCalendarReference(ownerId,reference.id);return resolved?{...resolved,source:"explicit"}:null;
       }

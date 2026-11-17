@@ -5,8 +5,8 @@ import {CalendarError,type CalendarEvent,type CalendarOccurrence} from "./types"
 import {validCalendarTimeZone} from "./time-zone";
 import {referenceMatches,type ReferenceResult} from "../reference-search";
 
-export function calendarEventReference(event:CalendarEvent,calendarName:string):ReferenceResult{
- return{kind:"calendar-event",id:event.id,label:event.title,detail:[calendarName,event.start,event.recurrence?"Recurring":""].filter(Boolean).join(" · "),
+export function calendarEventReference(event:CalendarEvent,calendarName:string,color?:string):ReferenceResult{
+ return{kind:"calendar-event",id:event.id,...(color?{calendar:{id:event.calendarId,name:calendarName,color}}:{}),label:event.title,detail:[calendarName,event.start,event.recurrence?"Recurring":""].filter(Boolean).join(" · "),
  content:JSON.stringify({id:event.id,calendar:calendarName,title:event.title,description:event.description.slice(0,4000),location:event.location,start:event.start,end:event.end,allDay:event.allDay,timeZone:event.timeZone,recurrence:event.recurrence,version:event.version})};
 }
 function calendarInfo(owner:string,id:string){
@@ -14,18 +14,18 @@ function calendarInfo(owner:string,id:string){
 }
 export function resolveCalendarReference(owner:string|undefined,id:string):ReferenceResult|null{
  if(!owner)return null;
- try{const event=getCalendarEvent(owner,id),calendar=calendarInfo(owner,event.calendarId);return !event.deleted&&calendar?calendarEventReference(event,calendar.name):null;}catch(error){if(error instanceof CalendarError&&error.status===404)return null;throw error;}
+ try{const event=getCalendarEvent(owner,id),calendar=calendarInfo(owner,event.calendarId);return !event.deleted&&calendar?calendarEventReference(event,calendar.name,calendar.color):null;}catch(error){if(error instanceof CalendarError&&error.status===404)return null;throw error;}
 }
 export function searchCalendarReferences(owner:string,query:string,limit:number,check:()=>void):ReferenceResult[]{
  if(!owner)return[];
- const rows=calendarDb().prepare("SELECT e.*,g.read_only,g.name FROM calendar_events e JOIN calendar_groups g ON g.id=e.group_id AND g.owner=e.owner WHERE e.owner=? AND e.deleted=0 ORDER BY e.id LIMIT 10001").iterate(owner);
+ const rows=calendarDb().prepare("SELECT e.*,g.read_only,g.name,g.color FROM calendar_events e JOIN calendar_groups g ON g.id=e.group_id AND g.owner=e.owner WHERE e.owner=? AND e.deleted=0 ORDER BY e.id LIMIT 10001").iterate(owner);
  const results:ReferenceResult[]=[];let count=0,bytes=0;
  for(const value of rows){
-  check();const row=value as Parameters<typeof eventFromRow>[0]&{name:string};
+  check();const row=value as Parameters<typeof eventFromRow>[0]&{name:string;color:string};
   if(++count>10000||(bytes+=Buffer.byteLength(row.ics))>32*1024*1024)throw new CalendarError("Too many calendar items to search.",413);
   const event=eventFromRow(row);
   if(referenceMatches(query,event.title,row.name,event.location,event.description)){
-   results.push(calendarEventReference(event,row.name));if(results.length>=limit)break;
+   results.push(calendarEventReference(event,row.name,row.color));if(results.length>=limit)break;
   }
  }
  return results;

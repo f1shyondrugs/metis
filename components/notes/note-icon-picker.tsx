@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { lazy, Suspense, useMemo, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent } from "react";
 import { FileText, Loader2, Pencil, Search } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ const emojiTheme = {
   "--epr-focus-bg-color": "var(--muted)", "--epr-emoji-size": "24px",
 } as CSSProperties;
 
-export function NoteIconPicker({ value, onChange }: { value: string | null | undefined; onChange: (icon: string | null) => void }) {
+export function NoteIconPicker({ value, onChange, label="Page",fallback,disabled=false }: { value: string | null | undefined; onChange: (icon: string | null) => void;label?:string;fallback?:ReactNode;disabled?:boolean }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("icons");
   const [query, setQuery] = useState("");
@@ -56,14 +56,14 @@ export function NoteIconPicker({ value, onChange }: { value: string | null | und
     if (next) { setQuery(""); setLimit(60); setColor(selected?.kind === "lucide" ? selected.color : null); setTab("icons"); }
   }}>
     <PopoverTrigger asChild>
-      <button type="button" aria-label={value ? "Change page icon" : "Add page icon"} title={value ? "Change icon" : "Add icon"}
+      <button type="button" disabled={disabled} aria-label={(value?"Change ":"Add ")+label.toLowerCase()+" icon"} title={value ? "Change icon" : "Add icon"}
         className="group relative inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-2xl transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {value ? <NoteIcon value={value} className="size-6" /> : <FileText aria-hidden="true" className="size-6 text-muted-foreground" />}
+        {value ? <NoteIcon value={value} className="size-6" /> : fallback || <FileText aria-hidden="true" className="size-6 text-muted-foreground" />}
         <Pencil aria-hidden="true" className="absolute bottom-0.5 right-0.5 size-3 rounded-sm bg-background text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
       </button>
     </PopoverTrigger>
-    <PopoverContent align="start" className="flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto p-3" style={{ maxHeight: "min(36rem, var(--radix-popover-content-available-height))" }} aria-label="Page icon picker">
-      <p className="text-sm font-medium">Page icon</p>
+    <PopoverContent align="start" className="flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto p-3" style={{ maxHeight: "min(36rem, var(--radix-popover-content-available-height))" }} aria-label={label+" icon picker"}>
+      <p className="text-sm font-medium">{label} icon</p>
       <Tabs value={tab} onValueChange={setTab} className="min-h-0 gap-3">
         <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="icons">Icons</TabsTrigger><TabsTrigger value="emojis">Emojis</TabsTrigger></TabsList>
         <TabsContent value="icons" className="min-h-0 space-y-3">

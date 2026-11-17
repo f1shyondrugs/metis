@@ -40,6 +40,10 @@ async function run(){
   const found=(await search.json()).results;assert.equal(found[0]?.id,data.event.id);assert.equal(found[0]?.kind,"calendar-event");
   const preview=await fetch(url+"/api/internal-link-preview?kind=calendar-event&id="+data.event.id,{headers});assert.equal(preview.status,200);const projected=await preview.json();assert.equal(projected.title,event.title);assert.match(projected.color,/^#[a-f0-9]{6}$/i);
   const focused=await fetch(url+"/api/calendar?reference="+data.event.id+"&timeZone=Europe%2FBerlin",{headers});assert.equal(focused.status,200);assert.equal((await focused.json()).recurring,true);
+  const autoResponse=await fetch(url+"/api/automations",{method:"POST",headers,body:JSON.stringify({name:"Production icon regression",prompt:"Synthetic fixture only",schedule:{kind:"interval",everyMinutes:1440},icon:"lucide:star:#30a070"})});assert.equal(autoResponse.status,201);const automation=(await autoResponse.json()).automation;assert.equal(automation.icon,"lucide:star:#30a070");
+  const iconChange=await fetch(url+"/api/automations/"+automation.id,{method:"PATCH",headers,body:JSON.stringify({icon:"✅"})});assert.equal(iconChange.status,200);assert.equal((await iconChange.json()).automation.icon,"✅");
+  const automationRefs=await fetch(url+"/api/references?kind=automation&q=Production",{headers});assert.equal(automationRefs.status,200);assert.equal((await automationRefs.json()).results[0]?.icon,"✅");
+  console.log("AUTOMATION_ICON_PRODUCTION_OK: create; icon-only update; real worker metadata");
   console.log("CALENDAR_EVENT_REFERENCE_PRODUCTION_OK: real worker source pin; search; preview; event focus");
   console.log("CALENDAR_PRODUCTION_OK: Europe/Berlin; DST; start-time VALARM; idempotent create; authenticated HTTP 201/200");
  }finally{

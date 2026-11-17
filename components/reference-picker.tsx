@@ -1,5 +1,7 @@
 "use client";
 
+import {ReferenceResultIcon,ReferenceResultMetadata} from "./reference-appearance";
+import {AutomationIcon} from "./automation-icon";
 import type { KeyboardEvent, ReactNode, Ref } from "react";
 import { CalendarDays, ArrowLeft, Brain, ClipboardList, File as FileIcon, MessageSquare, Palette, PanelRight, Search, StickyNote, Terminal } from "lucide-react";
 import { REFERENCE_KINDS, type ReferenceKind, type ReferenceResult } from "@/lib/reference-search";
@@ -7,10 +9,10 @@ import { cn } from "@/lib/utils";
 import { REFERENCE_SHORTCUTS } from "@/lib/reference-query";
 
 export const referenceLabel = (kind: ReferenceKind) => ({
-  file:"Files",canvas:"Canvases",plan:"Plans",note:"Notes",issue:"Issues",browser:"Browser",terminal:"Terminals",memory:"Memories",chat:"Chats","calendar-event":"Calendar events",
+  file:"Files",canvas:"Canvases",plan:"Plans",note:"Notes",issue:"Issues",browser:"Browser",terminal:"Terminals",memory:"Memories",chat:"Chats","calendar-event":"Calendar events",automation:"Automations",
 })[kind];
 export const referenceIcon = (kind: ReferenceKind) => ({
-  file:FileIcon,canvas:Palette,plan:ClipboardList,note:StickyNote,issue:ClipboardList,browser:PanelRight,terminal:Terminal,memory:Brain,chat:MessageSquare,"calendar-event":CalendarDays,
+  file:FileIcon,canvas:Palette,plan:ClipboardList,note:StickyNote,issue:ClipboardList,browser:PanelRight,terminal:Terminal,memory:Brain,chat:MessageSquare,"calendar-event":CalendarDays,automation:AutomationIcon,
 })[kind];
 
 export function ReferencePicker({ id, rootRef, inputRef, kind, query, results, loading, indexing, notice, error, retry,
@@ -47,14 +49,14 @@ export function ReferencePicker({ id, rootRef, inputRef, kind, query, results, l
       })}</div> : loading ? <p role="status" className="px-2.5 py-4 text-center text-xs text-muted-foreground">Searching…</p>
         : error ? <div role="alert" className="px-2.5 py-3 text-xs"><p>{error}</p><button type="button" className="mt-2 underline underline-offset-2" onMouseDown={event=>event.preventDefault()} onClick={retry}>Try again</button></div>
         : results.length ? results.map((item,position)=>{
-          const Icon=referenceIcon(item.kind),selected=position+prefixCount===index;
+          const selected=position+prefixCount===index;
           return <button key={[item.kind,item.id,item.chatId||""].join(":")} type="button" id={optionIdPrefix+"-option-"+(position+prefixCount)} role="option" aria-selected={selected}
             className={cn("flex min-h-9 max-sm:min-h-11 w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left",selected?"bg-muted":"hover:bg-muted/60")}
             onMouseDown={event=>event.preventDefault()} onMouseEnter={()=>onIndex(position+prefixCount)} onClick={()=>onSelect(item)}>
-            <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true"/>
+            <ReferenceResultIcon item={item}/>
             <span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-1.5"><span className="min-w-0 truncate text-xs text-foreground">{item.label}</span>
               {item.isCurrentChat?<span className="shrink-0 rounded bg-secondary px-1.5 text-[10px] text-secondary-foreground">In this chat</span>:null}</span>
-              {item.detail?<span className="block truncate text-[11px] text-muted-foreground">{item.detail}</span>:null}
+              <ReferenceResultMetadata item={item}/>
             </span>
           </button>;
         }) : prefixCount ? null : <p role="status" className="px-2.5 py-4 text-center text-xs text-muted-foreground">{indexing?"Preparing more results…":notice?"Search is incomplete.":query?"No matching references.":"No "+referenceLabel(kind||"file").toLowerCase()+" available."}</p>}

@@ -1,3 +1,4 @@
+import {automationIconPatch} from "@/lib/automation-icon";
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import {
   deleteAutomation,
@@ -69,6 +70,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const automation = action === "pause" || action === "resume"
       ? setAutomationStatus(id, ownerId, action === "resume" ? "active" : "paused")
       : updateAutomation(id, ownerId, {
+          ...automationIconPatch(body),
           ...(typeof body.name === "string" ? { name: body.name } : {}),
           ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
           ...(typeof body.modeId === "string" ? { modeId: body.modeId } : {}),

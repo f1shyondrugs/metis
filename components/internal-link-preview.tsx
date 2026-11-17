@@ -1,5 +1,6 @@
 "use client";
 
+import {AutomationIcon} from "./automation-icon";
 import { LinkIcon } from "@/components/link-icon";
 import { createContext } from "react";
 import {useInternalLinkPreview} from "./use-internal-link-preview";
@@ -24,7 +25,7 @@ export function InternalLinkPreviewContent({ target, chatId }: { target: Interna
   return <div data-internal-preview={target.kind}>
     <div className="flex items-start gap-2.5">
       {preview?.color&&/^#[a-f0-9]{6}$/i.test(preview.color)?<span aria-label="Calendar color" className="mt-0.5 size-4 shrink-0 rounded-full" style={{backgroundColor:preview.color}}/>:null}
-      <LinkIcon kind={target.kind} id={target.id} icon={preview?.icon ?? null} className="mt-0.5 !mr-0 !size-4 text-muted-foreground" />
+      {target.kind==="automation"?<AutomationIcon value={preview?.icon}/>:<LinkIcon kind={target.kind} id={target.id} icon={preview?.icon ?? null} className="mt-0.5 !mr-0 !size-4 text-muted-foreground" />}
       <div className="min-w-0">
         <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
         {preview ? <div className="mt-0.5 line-clamp-2 break-words text-xs font-medium leading-4 [overflow-wrap:anywhere]">{preview.title}</div> : null}
