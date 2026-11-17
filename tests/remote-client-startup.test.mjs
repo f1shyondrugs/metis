@@ -294,9 +294,13 @@ async function runInstaller(platform, mode, systemd = false) {
     }
     if (mode === "success") {
       const retained = fs.readdirSync(releases);
-      assert.equal(retained.length, 2, output);
       assert.ok(retained.includes("release.000019"), "previous working release must survive");
-      assert.match(output, /Obsolete client releases removed: 19/);
+      if(output.includes("cleanup deferred: Process visibility unavailable")){
+        assert.equal(retained.length,21,"unknown process visibility must preserve all releases");
+      }else{
+        assert.equal(retained.length,2,output);
+        assert.match(output,/Obsolete client releases removed: 19/);
+      }
     } else {
       assert.equal(fs.readdirSync(releases).length, 21, "failed authentication must never prune old releases");
     }

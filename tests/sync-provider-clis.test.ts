@@ -56,11 +56,13 @@ fs.writeFileSync(binary, "#!/usr/bin/env node\\nconsole.log('codex-cli " + selec
       const old = new Date(Date.now() - 3 * 86400000);
       utimesSync(version, old, old);
     }
-    assert.ok(run("0.156.2").includes("obsolete CLI versions"));
+    const upgradeOutput=run("0.156.2");
+    assert.ok(upgradeOutput.includes("obsolete CLI versions"));
     const upgraded = JSON.parse(readFileSync(manifestPath, "utf8"));
     assert.equal(upgraded.previousVersion, "0.156.1");
     assert.ok(existsSync(path.join(cliRoot, "0.156.1")), "rollback retained");
-    assert.ok(!existsSync(path.join(cliRoot, "0.155.0")), "old managed CLI removed");
+    if(upgradeOutput.includes("cleanup deferred: Process visibility unavailable"))assert.ok(existsSync(path.join(cliRoot,"0.155.0")),"unknown process visibility must preserve old versions");
+    else assert.ok(!existsSync(path.join(cliRoot, "0.155.0")), "old managed CLI removed");
     assert.ok(!existsSync(path.join(cliRoot, ".sync.lock")));
 
     writeFileSync(manifestPath, JSON.stringify({ ...initial, tracking: "pinned" }));

@@ -22,7 +22,12 @@ export function liveProcessReferences() {
             }
           }
         } catch (error) {
-          if (!["ENOENT", "ESRCH"].includes(error.code)) return null;
+          if (!["ENOENT", "ESRCH"].includes(error.code)) {
+            // Other OS accounts (including root daemons) can hide command lines.
+            // Require complete visibility only for the account owning this install.
+            try { if (fs.statSync(`/proc/${pid}`).uid !== process.getuid()) continue; } catch {}
+            return null;
+          }
         }
       }
       return references;

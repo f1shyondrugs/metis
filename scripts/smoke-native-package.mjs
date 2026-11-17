@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
+import { randomBytes } from "node:crypto";
 import { spawn,execFileSync } from "node:child_process";
 import { extractVerifiedPackage,validatePackage } from "./package-update-core.mjs";
 const archive=path.resolve(process.argv[2]);
@@ -17,7 +18,8 @@ try{
   const port=await freePort(),mcp=await freePort();
   const env={PATH:process.env.PATH,HOME:home,USERPROFILE:home,SYSTEMROOT:process.env.SYSTEMROOT,APPDATA:home,LOCALAPPDATA:home,TEMP:temp,TMP:temp,NODE_ENV:"production",
     AI_CHAT_ROOT:root,AI_CHAT_INSTALL_DIR:root,CHAT_DATA_DIR:data,PORT:String(port),MCP_PORT:String(mcp),AI_CHAT_HOST:"127.0.0.1",AI_CHAT_PUBLIC_URL:"http://127.0.0.1:"+port,
-    NEXT_DIST_DIR:".next",AI_CHAT_ALLOW_ROOT_AGENTS:"false",AI_CHAT_AGENT_CWD:home};
+    NEXT_DIST_DIR:".next",AI_CHAT_ALLOW_ROOT_AGENTS:"false",AI_CHAT_AGENT_CWD:home,METIS_DOCKER:"0",
+    AI_CHAT_INTERNAL_ORIGIN:"http://127.0.0.1:"+port,MCP_PUBLIC_URL:"http://127.0.0.1:"+mcp,MCP_BEARER_TOKEN:randomBytes(32).toString("hex")};
   const node=path.join(root,".runtime",process.platform==="win32"?"node.exe":"node");
   const roles=[["lib/mcp-core/gateway-core.mjs"],["--import","tsx","worker.ts"],["--import","tsx","server.mjs"]];
   let output="";
