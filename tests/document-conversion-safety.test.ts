@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";import test from "node:test";import {mkdtempSync,rmSync} from "node:fs";import os from "node:os";import path from "node:path";import {randomUUID} from "node:crypto";
+const root=mkdtempSync(path.join(os.tmpdir(),"metis-convert-safety-"));
+Object.assign(process.env,{AI_CHAT_ROOT:root,CHAT_DATA_DIR:root,CHAT_DB_PATH:path.join(root,"chat.sqlite"),AGENT_CWD:root,METIS_AI_BOOTSTRAP_PASSWORD:""});
+const modules=Promise.all([import("../lib/auth"),import("../lib/db-store"),import("../lib/shared-context"),import("../lib/sqlite"),import("../lib/projects"),import("../lib/document-conversion")]);
+test.after(async()=>{const[,,,sql]=await modules;sql.getDatabase().close();rmSync(root,{recursive:true,force:true});});
+test("project scope, note subfiles and metadata survive conversions; revoked access blocks replay",async()=>{
+ const[auth,store,notes,sql,projects,convert]=await modules;
+ const owner=auth.createUser("scope-owner","synthetic-password"),peer=auth.createUser("scope-peer","synthetic-password");
+ const project=projects.createProject({name:"Shared",ownerId:owner.id});
+ sql.getDatabase().prepare("INSERT INTO project_members(project_id,user_id,created_at) VALUES(?,?,?)").run(project.id,peer.id,new Date().toISOString());
+ const note=notes.createNote({ownerId:owner.id,projectId:project.id,title:"Project document",content:"Exact content",icon:"lucide:code",favorite:true});
+ const child=notes.createNote({ownerId:owner.id,parentId:note.id,title:"Child",content:"Keep this child"});
+ const input={source:{kind:"note",id:note.id,version:1,title:note.title,content:note.content},target:"canvas",requestId:randomUUID()};
+ const result=convert.convertDocument(input,peer.id);
+ assert.equal(store.getChat(result.chatId!,peer.id)!.projectId,project.id);
+ assert.equal(notes.getNote(note.id,owner.id)!.favorite,true);assert.equal(notes.getNote(note.id,owner.id)!.icon,"lucide:code");
+ assert.equal(notes.getNote(child.id,owner.id)!.parentId,note.id);
+ const copy=convert.convertDocument({source:{kind:"canvas",chatId:result.chatId,id:result.workspace!.id,version:1,title:note.title,content:note.content},target:"note",requestId:randomUUID()},peer.id);
+ assert.equal(copy.note!.projectId,project.id);assert.equal(copy.note!.parentId,null);
+ sql.getDatabase().prepare("DELETE FROM project_members WHERE project_id=? AND user_id=?").run(project.id,peer.id);
+ assert.throws(()=>convert.convertDocument(input,peer.id),/not found/);
+});
+test("failed writes roll back the conversion record and deleted destinations are not duplicated on retry",async()=>{
+ const[auth,store,notes,sql,,convert]=await modules;const owner=auth.createUser("rollback-owner","synthetic-password");
+ const note=notes.createNote({ownerId:owner.id,title:"Original",content:"Exact"});
+ const input={source:{kind:"note",id:note.id,version:1,title:note.title,content:note.content},target:"plan",requestId:randomUUID()};
+ const result=convert.convertDocument(input,owner.id);store.updateChat(result.chatId!,{workspaces:[]},owner.id);
+ assert.throws(()=>convert.convertDocument(input,owner.id),/no longer available/);
+ const chat=store.createChat("Failing target",undefined,owner.id);const now=new Date().toISOString();store.updateChat(chat.id,{workspaces:[{id:"source",type:"canvas",name:"Source",content:"Exact",version:1,createdAt:now,updatedAt:now}]},owner.id);
+ sql.getDatabase().exec("CREATE TRIGGER conversion_note_failure BEFORE INSERT ON notes BEGIN SELECT RAISE(ABORT,'synthetic failure'); END");
+ const requestId=randomUUID();
+ assert.throws(()=>convert.convertDocument({source:{kind:"canvas",chatId:chat.id,id:"source",title:"Source",content:"Exact",version:1},target:"note",requestId},owner.id),/synthetic failure/);
+ assert.equal(sql.getDatabase().prepare("SELECT 1 FROM document_conversions WHERE request_id=?").get(requestId),undefined);
+ assert.equal(store.getChat(chat.id,owner.id)!.workspaces![0].content,"Exact");
+});
