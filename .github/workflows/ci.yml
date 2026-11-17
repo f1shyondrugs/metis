@@ -78,3 +78,36 @@ jobs:
 
       - name: Build application
         run: pnpm build
+
+  integrated-regressions:
+    name: Integrated workspaces and protected browser
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frozen dependencies and isolated browser prerequisites
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm rebuild node-pty
+          pnpm exec playwright install --with-deps chromium
+      - name: Verify protected credential and browser boundaries
+        run: pnpm test:protected-login
+      - name: Verify integrated calendar, documents, notebooks and performance
+        run: >-
+          pnpm exec tsx --test --test-concurrency=2
+          tests/assistant-origin.test.ts tests/calendar-adapters.test.ts tests/calendar-api.test.ts
+          tests/calendar-navigation.test.ts tests/calendar-worker.test.ts tests/calendar.test.ts
+          tests/desktop-visual-guidance.test.ts tests/document-conversion-safety.test.ts
+          tests/document-conversion.test.ts tests/link-icons.test.tsx tests/notebook-header.test.tsx
+          tests/notebook-links.test.ts tests/session-performance.test.tsx tests/sign-in-protected.test.ts
+          tests/skill-context.test.ts tests/tool-call-group.test.tsx tests/workspace-headers.test.ts

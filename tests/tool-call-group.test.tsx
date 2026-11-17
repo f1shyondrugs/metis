@@ -103,7 +103,8 @@ test("collapsed groups show successful create and edit cards in call order", () 
     workspaces={[{ id: "canvas-two", type: "canvas", name: "Edited canvas", content: "Live canvas body" }]}
     onOpenWorkspace={() => {}} onBuildPlan={() => {}} />);
   assert.match(html, /aria-expanded="false"/);
-  assert.equal((html.match(/data-tool-call-row=/g) || []).length, tools.length);
+  assert.equal((html.match(/data-tool-call-row=/g) || []).length, 0);
+  assert.equal((html.match(/data-workspace-card=/g) || []).length, 4);
   const visible = visibleMarkup(html);
   const titles = ["Created plan", "Created canvas", "Saved Chat Memory", "Edited plan", "Edited canvas", "Updated Global Memory"];
   let previous = -1;
@@ -115,10 +116,8 @@ test("collapsed groups show successful create and edit cards in call order", () 
   for (const content of ["Stored plan", "Stored canvas", "Stored fact", "Updated plan body", "Live canvas body", "Updated fact"]) {
     assert.ok(visible.includes(content), content + " should be visible with activity collapsed");
   }
-  assert.match(visible, /workspace:\/\/plan\/plan-one/);
-  assert.match(visible, /workspace:\/\/canvas\/canvas-one/);
-  assert.match(visible, /aria-label="Open plan workspace"/);
-  assert.match(visible, /aria-label="Open canvas"/);
+  assert.equal((visible.match(/>Open plan<\/button>/g) || []).length, 2);
+  assert.equal((visible.match(/>Open canvas<\/button>/g) || []).length, 2);
 });
 
 test("unsaved, failed and running mutations expose no inline saved card", () => {
@@ -181,8 +180,8 @@ test("deferred previews retain lazy open and build controls without loading full
     onOpenWorkspace={() => {}} onBuildPlan={() => {}} buildDisabled />);
   const visible = visibleMarkup(html);
   assert.match(visible, /Deferred plan/);
-  assert.match(visible, /workspace:\/\/plan\/deferred-plan/);
-  assert.match(visible, /aria-label="Open plan workspace"/);
+  assert.match(visible, /data-workspace-card="plan"/);
+  assert.match(visible, />Open plan<\/button>/);
   assert.match(visible, /disabled=""/);
   assert.doesNotMatch(visible, /Loading tool details/);
 });
@@ -199,7 +198,7 @@ test("compacted long saved results keep their inline cards after loading history
   const [message] = compactChatPageMessages([{ id: "history", role: "assistant", content: "", createdAt: "2026-10-27T00:00:00Z", tools }], "history-chat");
   assert.ok(message.tools?.every(tool => tool.resultUrl));
   const visible = visibleMarkup(renderToStaticMarkup(<Group tools={message.tools!} onOpenWorkspace={() => {}} onBuildPlan={() => {}} />));
-  for (const text of ["Historical plan", "Historical canvas", "Saved Project Memory", "Stored plan", "Stored canvas", "Stored fact", "workspace://plan/plan-history", "workspace://canvas/canvas-history"]) {
+  for (const text of ["Historical plan", "Historical canvas", "Saved Project Memory", "Stored plan", "Stored canvas", "Stored fact", 'data-workspace-card="plan"', 'data-workspace-card="canvas"']) {
     assert.ok(visible.includes(text), text + " should survive history compaction");
   }
 });

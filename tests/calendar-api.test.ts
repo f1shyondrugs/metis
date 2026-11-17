@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Cold test modules load only after the isolated database environment is configured. */
 import test from "node:test";import assert from "node:assert/strict";import fs from "node:fs";import os from "node:os";import path from "node:path";
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),"metis-calendar-api-"));
-Object.assign(process.env,{AI_CHAT_ROOT:dir,CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"chat.sqlite"),AI_CHAT_SECRETS_KEY:Buffer.alloc(32,9).toString("hex"),MCP_BEARER_TOKEN:"SYNTHETIC-CALENDAR-BEARER"});
+Object.assign(process.env,{AI_CHAT_ROOT:dir,AI_CHAT_INTERNAL_URL:"http://127.0.0.1:1",CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"chat.sqlite"),AI_CHAT_SECRETS_KEY:Buffer.alloc(32,9).toString("hex"),MCP_BEARER_TOKEN:"SYNTHETIC-CALENDAR-BEARER"});
 const auth=require("../lib/auth") as typeof import("../lib/auth"),store=require("../lib/calendar/store") as typeof import("../lib/calendar/store"),api=require("../app/api/calendar/route") as typeof import("../app/api/calendar/route");
 const owner=auth.createUser("calendar-api-owner","SYNTHETIC-API-ONLY"),other=auth.createUser("calendar-api-other","SYNTHETIC-OTHER-ONLY");
 const token=auth.authenticateUser("calendar-api-owner","SYNTHETIC-API-ONLY")!.token,otherToken=auth.authenticateUser("calendar-api-other","SYNTHETIC-OTHER-ONLY")!.token;
