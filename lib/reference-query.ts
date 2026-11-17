@@ -14,7 +14,7 @@ const aliases: Record<string, ReferenceKind> = {
 
 /** Search scope is separate from the raw mention, preserving replacement/caret offsets. */
 export function resolveReferenceQuery(raw: string, selectedKind: ReferenceKind | null = null) {
-  const match = /^@?([^:\s]+)(?::([\s\S]*)|\s*)$/u.exec(raw);
+  const match = /^@?([^:\s]+)(?:(?::|\s+)([\s\S]*))?$/u.exec(raw);
   const alias = match?.[1].toLocaleLowerCase("en");
   const kind = alias && Object.hasOwn(aliases,alias) ? aliases[alias] : undefined;
   return kind ? {kind, query:(match![2] || "").trimStart()} : {kind:selectedKind, query:raw};

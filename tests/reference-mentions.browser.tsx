@@ -36,6 +36,11 @@ function Fixture(){
  (document.querySelector("[data-picker] [aria-label='All categories']") as HTMLButtonElement).click();
  await wait(()=>document.querySelectorAll("[data-picker] [role=option]").length===9,"Back categories");
  check("Back clears shortcut scope",true);
+ type("@chats   Mathe course");await wait(()=>document.querySelector("[data-picker]")?.getAttribute("data-kind")==="chat"&&document.querySelector("[data-picker]")?.getAttribute("data-query")==="Mathe course"&&Boolean(document.querySelector("[data-picker] [role=option]")),"Space-filtered chat");
+ check("Space query reaches chat search without the category in its query",requests.current.some(req=>req.kind==="chat"&&req.q==="Mathe course"));
+ input.current!.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));
+ await wait(()=>input.current?.value==="@Mathe course "&&!document.querySelector("[data-picker]"),"Space selection replacement");
+ check("Space prefix is fully replaced once without leftovers",true);
  type("@chats:Mathe");await wait(()=>document.querySelector("[data-picker]")?.getAttribute("data-query")==="Mathe"&&Boolean(document.querySelector("[data-picker] [role=option]")),"Filtered chat");
  check("Colon query only reaches chat search",requests.current.some(req=>req.kind==="chat"&&req.q==="Mathe"));
  input.current!.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));
@@ -58,12 +63,12 @@ function Fixture(){
  noteLink.focus();await wait(()=>document.querySelector("[data-hover-preview]")?.textContent?.includes("Exam preparation content")===true,"Live document preview");
  check("Note tooltip loads authenticated document preview",true);noteLink.click();
  check("Note click routes selected identity",eventLog.current.at(-1)?.kind==="note");
- const editor=document.querySelector<HTMLElement>(".notes-prosemirror")!;editor.focus();document.execCommand("insertText",false,"@chats:Mathe");
+ const editor=document.querySelector<HTMLElement>(".notes-prosemirror")!;editor.focus();document.execCommand("insertText",false,"@chats Mathe");
  await wait(()=>Boolean(document.querySelector(".notes-reference-popover [aria-label='Search chats']"))&&Boolean(document.querySelector(".notes-reference-popover [role=option]")),"Notes category shortcut");
- check("Real Notes editor scopes @chats: query",true);
+ check("Real Notes editor scopes @chats space query",true);
  (document.querySelector(".notes-reference-popover [role=option]") as HTMLButtonElement).click();
  await wait(()=>Boolean(editor.querySelector("a[href^='metis://reference/chat/']")),"Notes link inserted");
- check("Notes replaces entire scoped mention with saved link",!editor.textContent?.includes("@chats:")&&editor.textContent?.includes("Mathe course")===true);
+ check("Notes replaces entire scoped mention with saved link",!editor.textContent?.includes("@chats")&&editor.textContent?.includes("Mathe course")===true);
  setReport([...results,"COMPLETE"]);await fetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,passed:true,results})});
  }catch(error){const failed=[...results,"FAIL "+String(error)];setReport(failed);await fetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,passed:false,results:failed})});}
  }
