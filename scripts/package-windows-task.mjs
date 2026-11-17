@@ -11,6 +11,7 @@ export function scheduledUpdateScript({command,args,logFile,installRoot,packageU
   const invocation=[command,...args];
   const environment=packageUpdate?". "+quote(path.join(installRoot,"run-service.ps1"))+" '--metis-load-env-only'\n$ErrorActionPreference='Continue'\n$env:NODE_ENV='production'":"";
   const body=`$ErrorActionPreference='Continue'
+$ProgressPreference='SilentlyContinue'
 $code=1
 try {
   [IO.File]::AppendAllText(${quote(logFile)},("[metis-update-pid:"+$PID+"]"+[Environment]::NewLine))
@@ -27,6 +28,7 @@ finally {
 exit $code`;
   const encoded=Buffer.from(body,"utf16le").toString("base64");
   return `$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $sid=$identity.User.Value
 $elevated=([Security.Principal.WindowsPrincipal]::new($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)

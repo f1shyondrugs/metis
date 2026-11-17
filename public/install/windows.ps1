@@ -723,7 +723,7 @@ try {
 $runner = Join-Path $InstallDir "run-service.ps1"
 @"
 `$ErrorActionPreference = "Stop"
-Get-Content -LiteralPath (Join-Path `$PSScriptRoot ".env") | Where-Object { `$_ -and -not `$_.StartsWith("#") } | ForEach-Object {
+Get-Content -LiteralPath (Join-Path `$PSScriptRoot ".env") -Encoding UTF8 | Where-Object { `$_ -and -not `$_.StartsWith("#") } | ForEach-Object {
   `$pair = `$_ -split "=", 2
   if (`$pair.Count -eq 2) { [Environment]::SetEnvironmentVariable(`$pair[0].Trim([char]0xFEFF), `$pair[1], "Process") }
 }

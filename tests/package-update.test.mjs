@@ -47,7 +47,7 @@ test("Windows scheduler children survive the updater action, without inherited t
  const f=await fixture(),name="MetisUpdateFixture-"+crypto.randomUUID();
  const entry=path.join(f.home,"task-child.cjs"),pidFile=path.join(f.home,"child.pid"),parentFile=path.join(f.home,"parent.pid"),ended=path.join(f.home,"parent-ended"),stop=path.join(f.home,"stop");
  const q=value=>"'"+value.replaceAll("'","''")+"'";
- const run=script=>execFileSync("powershell.exe",["-NoProfile","-NonInteractive","-EncodedCommand",Buffer.from(script,"utf16le").toString("base64")],{encoding:"utf8",windowsHide:true,timeout:15000});
+ const run=script=>execFileSync("powershell.exe",["-NoProfile","-NonInteractive","-EncodedCommand",Buffer.from("$ProgressPreference='SilentlyContinue';"+script,"utf16le").toString("base64")],{encoding:"utf8",windowsHide:true,timeout:15000});
  const alive=pid=>{try{process.kill(pid,0);return true;}catch{return false;}};
  try{
   fs.writeFileSync(entry,"const fs=require('node:fs');fs.writeFileSync("+JSON.stringify(pidFile)+",String(process.pid));setInterval(()=>{if(fs.existsSync("+JSON.stringify(stop)+"))process.exit(0)},100);setTimeout(()=>process.exit(0),15000);");
