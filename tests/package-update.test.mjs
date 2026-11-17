@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import * as tar from "tar";
 import { startDetachedProcess,windowsHostOperation,windowsStopProbe } from "../scripts/package-windows-service.mjs";
-import { spawnSync,execFileSync } from "node:child_process";
+import { once } from "node:events";
+import { spawn,spawnSync,execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { activatePackage,extractVerifiedPackage,downloadVerified,packageAssetName,atomicJson,acquireUpdateLock,snapshotDatabase } from "../scripts/package-update-core.mjs";
 import { createRequire } from "node:module";
@@ -48,10 +49,16 @@ test("Windows shutdown waits for only the scoped host processes without killing 
  }finally{f.close();}
 });
 test("native Windows stop probe parses and ignores unrelated installations",{skip:process.platform!=="win32"},async()=>{
- const f=await fixture();try{
-  const result=execFileSync("powershell.exe",["-NoProfile","-NonInteractive","-Command",windowsStopProbe(f.root)],{encoding:"utf8",windowsHide:true,timeout:10000});
-  assert.equal(result.trim(),"0");
- }finally{f.close();}
+ const f=await fixture();let child;
+ const probe=()=>execFileSync("powershell.exe",["-NoProfile","-NonInteractive","-Command",windowsStopProbe(f.root)],{encoding:"utf8",windowsHide:true,timeout:10000}).trim();
+ try{
+  assert.equal(probe(),"0");
+  const entry=path.join(f.root,"server.mjs");fs.writeFileSync(entry,"setInterval(()=>{},1000)");
+  child=spawn(process.execPath,[entry],{stdio:"ignore",windowsHide:true});await once(child,"spawn");
+  assert.equal(probe(),"1","only this installation's service child must be counted");
+  const exited=once(child,"exit");child.kill();await exited;child=undefined;
+  assert.equal(probe(),"0");
+ }finally{if(child)child.kill();f.close();}
 });
 test("SQLite snapshots include WAL rows, stay private and replace one bounded backup",async()=>{
  const f=await fixture();try{
