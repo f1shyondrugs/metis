@@ -4,7 +4,7 @@ import {Eye,Users,X} from "lucide-react";
 import {ProfileAvatar} from "@/components/account/account-menu";
 import {Button} from "@/components/ui/button";
 import {Popover,PopoverContent,PopoverTrigger} from "@/components/ui/popover";
-import type {NotebookPeer,NotebookPerson} from "@/lib/notebook-presence";
+import {notebookDocumentPeers,type NotebookPeer,type NotebookPerson} from "@/lib/notebook-presence";
 
 type Controls={following:NotebookPeer|null;onFollow:(peer:NotebookPeer)=>void;onStop:()=>void};
 export function ParticipantButton({peer,following,onFollow,onStop,small=false}:Controls&{peer:NotebookPeer;small?:boolean}){
@@ -35,18 +35,18 @@ export function ParticipantButton({peer,following,onFollow,onStop,small=false}:C
   </PopoverContent>
  </Popover>;
 }
-export function NotebookPresenceBar({peers,self,connected,status,notice,onReconnect,...controls}:Controls&{
- peers:NotebookPeer[];self:NotebookPerson|null;connected:boolean;status?:string;notice:string;onReconnect:()=>void;
+export function NotebookPresenceBar({peers,self,noteId,connected,status,notice,onReconnect,...controls}:Controls&{
+ peers:NotebookPeer[];self:NotebookPerson|null;noteId:string|null;connected:boolean;status?:string;notice:string;onReconnect:()=>void;
 }){
+ const people=connected?notebookDocumentPeers(peers,self?.id,noteId):[];
+ if(!people.length)return notice?<section data-notebook-presence-control aria-label="Notebook presence notice" className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 text-xs text-muted-foreground sm:px-5"><p role="status" className="min-w-0 flex-1">{notice}</p>{!connected?<Button size="action" variant="ghost" onClick={onReconnect}>Retry</Button>:null}</section>:null;
  return <section data-notebook-presence-control aria-label="Live editing and notebook participants" className="z-20 shrink-0 border-b border-border bg-background px-3 py-1 sm:px-5">
   <div className="flex min-h-11 min-w-0 items-center gap-2">
-   <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><Users className="size-4" aria-hidden="true"/><span role="status">{status||"Live editing"}{!connected?" · Presence offline":""}</span></div>
-   <div className="ml-auto flex min-w-0 items-center gap-1 overflow-x-auto py-1" aria-label="People in notebooks">
+   <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><Users className="size-4" aria-hidden="true"/><span role="status">{status||"Live editing"}</span></div>
+   <div className="ml-auto flex min-w-0 items-center gap-1 overflow-x-auto py-1" aria-label="People in this document">
     {self?<span className="shrink-0 px-1" title={"You (@"+self.username+")"}><ProfileAvatar profile={{displayName:self.name,avatar:self.avatar}} name={self.username} className="size-7"/></span>:null}
-    {peers.map(peer=><ParticipantButton key={peer.user.id} peer={peer} {...controls}/>)}
-    {!peers.length&&connected?<span className="whitespace-nowrap px-2 text-xs text-muted-foreground">Only you here</span>:null}
+    {people.map(peer=><ParticipantButton key={peer.user.id} peer={peer} {...controls}/>)}
    </div>
-   {!connected?<Button size="action" variant="ghost" onClick={onReconnect}>Retry</Button>:null}
   </div>
   {notice?<p role="status" className="pb-2 text-xs text-muted-foreground">{notice}</p>:null}
  </section>;

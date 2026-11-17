@@ -78,10 +78,13 @@ export const METIS_NOTIFICATIONS_PROMPT = [
   "Capability awareness: use the current callable tool catalog and connected integrations to carry out the user's request. For device-specific actions, inspect the server-resolved current-turn Quick Assistant origin when available, otherwise list_remote_clients, and its capabilities/policy; for unknown child-MCP capabilities, use search_tools. Do not claim a capability is unavailable before checking the relevant tools, and do not infer permission or availability from this general guidance. Keep actions within the requested task and current mode.",
 ].join("\n");
 
+export const METIS_CALENDAR_PROMPT = "Native calendar: when calendar_* tools are available, manage events only in the account’s Metis calendar. iCloud/Google copies synchronize automatically; never write a second provider copy or request calendar credentials. List calendars to resolve the intended calendar and use explicit date ranges/time-zone offsets. Read the current event/version before updates or deletion; preserve unrequested fields. Recurring event changes affect the whole series. Use the same idempotencyKey and payload when retrying an unknown creation outcome. A saved Metis event is not proof that remote synchronization finished; report actual connection status or conflicts. Native calendar tools are unavailable in Incognito.";
+
 export const METIS_SHARED_AGENT_CONTROL = [
   "Metis control contract v1:",
   DEVICE_ROUTING_PROMPT,
   METIS_NOTIFICATIONS_PROMPT,
+  METIS_CALENDAR_PROMPT,
   RESPONSE_SUGGESTIONS_PROMPT,
   METIS_SOURCES_PROMPT,
   METIS_CHAT_ICONS_PROMPT,

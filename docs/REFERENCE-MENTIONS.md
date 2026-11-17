@@ -28,6 +28,24 @@ other raw content are not included in hover cards. These metadata cards are
 not a live permission or existence check. Destination APIs retain access checks.
 Public-share rendering remains inert and cannot inherit private navigation.
 
+Link hover cards are interactive dialogs: the pointer can cross the gap into the
+card, Open link (or clicking its non-interactive content) activates the original
+anchor exactly once, Arrow Down enters the action and Escape dismisses it.
+Editor anchors delegate their hover lifecycle to the same component. Plain,
+Ctrl/Cmd and middle clicks on web links in the shared Markdown editor open a new
+tab; internal note/file/reference routes keep their existing callbacks and draft
+flush boundaries. The link-editing toolbar remains available.
+
+Copied same-origin `/?c=notes#note-...` URLs resolve through the authenticated
+note preview/navigation path. Same-origin `/share/notes/<token>` URLs use the
+public share grant through `GET /api/shared-notes/<token>?view=preview`, optionally
+scoped to a shared descendant. This returns bounded title/icon/description only,
+not files, the full tree or private account metadata. Locked shares reveal no
+protected title/content; existing signed viewer cookies, password changes,
+revocation, archive and live-tree checks remain authoritative. Foreign origins
+never resolve local note IDs or share tokens. Public-reader Markdown still does
+not inherit account preview APIs or private navigation.
+
 HTTP(S) link icons in chat, citations, the shared Notes/Canvas/Plan editor,
 browser references and profile links use the destination origin’s `/favicon.ico`.
 Images load lazily without a referrer. Until loaded, or if missing, blocked or

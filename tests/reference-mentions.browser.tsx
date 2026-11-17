@@ -43,11 +43,11 @@ function Fixture(){
  check("Enter replaces prefix without leftovers",input.current!.value==="@Mathe course ");
  const chatLink=document.querySelector<HTMLAnchorElement>("[data-sent] a")!;
  check("Saved mention is an icon link with dotted underline",chatLink.tagName==="A"&&getComputedStyle(chatLink).textDecorationStyle==="dotted"&&Boolean(chatLink.querySelector("[data-link-icon-kind=chat]")));
- chatLink.focus();await wait(()=>Boolean(document.querySelector("[role=tooltip] [data-reference-preview=chat]")),"Focus preview");
+ chatLink.focus();await wait(()=>Boolean(document.querySelector("[data-hover-preview] [data-reference-preview=chat]")),"Focus preview");
  check("Keyboard focus opens reference tooltip",chatLink.hasAttribute("aria-describedby"));
- const tooltip=document.querySelector<HTMLElement>("[role=tooltip]")!,rect=tooltip.getBoundingClientRect();
+ const tooltip=document.querySelector<HTMLElement>("[data-hover-preview]")!,rect=tooltip.getBoundingClientRect();
  check("Tooltip fits viewport",rect.left>=0&&rect.right<=innerWidth+1);
- chatLink.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await wait(()=>!document.querySelector("[role=tooltip]"),"Escape");
+ chatLink.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await wait(()=>!document.querySelector("[data-hover-preview]"),"Escape");
  check("Escape dismisses tooltip",true);chatLink.click();check("Click routes saved chat identity",eventLog.current.at(-1)?.kind==="chat"&&eventLog.current.at(-1)?.id===chatLink.getAttribute("href")?.split("=")[1]);
  const modified=new MouseEvent("click",{bubbles:true,cancelable:true,ctrlKey:true});chatLink.addEventListener("click",event=>{if(event.ctrlKey)event.preventDefault();},{once:true});const count=eventLog.current.length;chatLink.dispatchEvent(modified);
  check("Ctrl-click keeps native chat link semantics",eventLog.current.length===count&&chatLink.getAttribute("href")?.startsWith("/?c=")===true);
@@ -55,7 +55,7 @@ function Fixture(){
  (document.querySelector("[data-picker] [role=option]") as HTMLButtonElement).click();
  await wait(()=>Boolean(document.querySelector("[data-sent] [data-reference-kind=note]")),"Note selected");
  const noteLink=document.querySelector<HTMLAnchorElement>("[data-sent] [data-reference-kind=note]")!;
- noteLink.focus();await wait(()=>document.querySelector("[role=tooltip]")?.textContent?.includes("Exam preparation content")===true,"Live document preview");
+ noteLink.focus();await wait(()=>document.querySelector("[data-hover-preview]")?.textContent?.includes("Exam preparation content")===true,"Live document preview");
  check("Note tooltip loads authenticated document preview",true);noteLink.click();
  check("Note click routes selected identity",eventLog.current.at(-1)?.kind==="note");
  const editor=document.querySelector<HTMLElement>(".notes-prosemirror")!;editor.focus();document.execCommand("insertText",false,"@chats:Mathe");

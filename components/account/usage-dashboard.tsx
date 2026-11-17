@@ -82,16 +82,13 @@ export function UsageDashboard() {
   const costLabel=usageCostLabel(costMode);
   const reports=totals ? usageCostReports(totals,costMode):0;
   return <div className="space-y-8">
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Usage</h1><p className="mt-2 text-sm text-muted-foreground">Your activity across models, in one place.</p></div>
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
         <label className="sr-only" htmlFor={id+"range"}>Usage date range</label>
         <select id={id+"range"} aria-label="Usage date range" value={range} onChange={e=>{if(e.target.value==="custom"){setFrom(usage?.from || new Date(Date.now()-29*86400000).toISOString().slice(0,10));setTo(usage?.to || new Date().toISOString().slice(0,10));}setRange(e.target.value);}} className="h-11 rounded-lg border border-border bg-background px-3 text-sm">
           <option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option><option value="custom">Custom range</option>
         </select>
         <UsageProviderFilter providers={providers} excluded={excludedProviders} onChange={setExcludedProviders} disabled={!usage || Boolean(error)}/>
         <Button variant="outline" size="icon" className="size-11" aria-label="Refresh usage" onClick={()=>setRefresh(n=>n+1)} disabled={loading}><RefreshCw className={loading?"size-4 animate-spin":"size-4"} /></Button>
-      </div>
     </div>
     <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
       <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">Cost display

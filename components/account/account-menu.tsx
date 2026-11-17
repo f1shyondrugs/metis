@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ChartNoAxesCombined, ChevronsUpDown, Settings, UserRound, Puzzle, Bell, LogOut, Monitor, CircleHelp } from "lucide-react";
+import { ChartNoAxesCombined, ChevronsUpDown, Settings, UserRound, Puzzle, Bell, LogOut, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -50,13 +50,15 @@ export function AccountMenu({profile,username,updateAvailable,onSettings,onProfi
     <DropdownMenuContent side="top" align="start" sideOffset={8} className="min-w-52" onCloseAutoFocus={event=>{if(appSettingsOpen)event.preventDefault();}}>
       <div className="truncate px-2 py-2 text-xs text-muted-foreground">{username}</div>
       <DropdownMenuSeparator />
+      {desktop?<>
+        <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={()=>setAppSettingsOpen(true)}><Monitor /> App settings{appUpdateAvailable?<span className="ml-auto size-2 shrink-0 rounded-full bg-primary" aria-label="App update available"/>:null}</DropdownMenuItem>
+        <DropdownMenuSeparator />
+      </>:null}
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onProfile}><UserRound /> Profile</DropdownMenuItem>
-      {onNotifications ? <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onNotifications}><Bell /> Notifications{unreadCount > 0 ? <span className="ml-auto size-2 rounded-full bg-destructive" aria-label="Unread notifications" /> : null}</DropdownMenuItem> : null}
+      {onNotifications ? <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onNotifications}><Bell /> Notifications{unreadCount > 0 ? <span className="ml-auto size-2 shrink-0 rounded-full bg-destructive" aria-label="Unread notifications" /> : null}</DropdownMenuItem> : null}
       {onAgentHub ? <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onAgentHub}><Puzzle /> Agent Hub</DropdownMenuItem> : null}
-      <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onSettings}><Settings /> Settings{updateAvailable ? <span className="ml-auto size-1.5 rounded-full bg-primary" /> : null}</DropdownMenuItem>
-      {desktop?<DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={()=>setAppSettingsOpen(true)}><Monitor /> App settings{appUpdateAvailable?<span className="ml-auto size-2 rounded-full bg-primary" aria-label="App update available"/>:null}</DropdownMenuItem>:null}
+      <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onSettings}><Settings /> Settings{updateAvailable ? <span className="ml-auto size-2 shrink-0 rounded-full bg-primary" aria-label="Update available" /> : null}</DropdownMenuItem>
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onUsage}><ChartNoAxesCombined /> Usage</DropdownMenuItem>
-      <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={()=>window.dispatchEvent(new Event("metis:onboarding-open"))}><CircleHelp /> Getting started</DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onLogout}><LogOut /> Logout</DropdownMenuItem>
     </DropdownMenuContent>

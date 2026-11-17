@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { BookOpen, PlugZap, Puzzle, SlidersHorizontal, MessagesSquare } from "lucide-react";
+import { BookOpen, PlugZap, SlidersHorizontal, MessagesSquare } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SkillLibrary } from "@/components/skill-library";
 import { HubConnections, HubModes } from "@/components/agent-hub-managers";
@@ -16,11 +16,7 @@ export function AgentHub({ isHostAdmin, onModesChanged, onTrySkill }: {
   isHostAdmin: boolean; onModesChanged: () => void; onTrySkill: (skill: SkillSettingsView) => void;
 }) {
   const [section, setSection] = useState("skills");
-  return <section aria-labelledby="agent-hub-title" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-border px-5 py-6 sm:px-8">
-        <h1 id="agent-hub-title" className="flex items-center gap-2 text-2xl font-semibold"><Puzzle className="size-5" /> Agent Hub</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Discover and manage your agent’s skills, connections and instructions.</p>
-      </header>
+  return <section aria-label="Agent Hub" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <Tabs value={section} onValueChange={setSection} className="min-h-0 flex-1 gap-0 lg:grid lg:grid-cols-[12rem_minmax(0,1fr)]">
         <TabsList aria-label="Agent Hub sections" className="h-auto w-full shrink-0 justify-start gap-1 overflow-x-auto rounded-none border-b border-border bg-muted/20 p-2 lg:h-full lg:flex-col lg:items-stretch lg:justify-start lg:border-b-0 lg:border-r lg:p-3">
           {sections.map(item => <TabsTrigger key={item.id} value={item.id} className="min-h-11 shrink-0 gap-2 px-3 lg:h-auto lg:flex-none lg:justify-start"><item.icon className="hidden size-4 sm:block" /><span>{item.label}</span></TabsTrigger>)}

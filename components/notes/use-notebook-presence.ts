@@ -1,12 +1,12 @@
 "use client";
-import {useCallback,useEffect,useRef,useState,type RefObject} from "react";
+import {useCallback,useEffect,useMemo,useRef,useState,type RefObject} from "react";
 import {NotebookPresenceConnection} from "@/lib/notebook-presence-connection";
 import {notebookScrollPosition,NotebookFollowNavigation,uniqueNotebookPeers,type NotebookPeer,type NotebookPerson,type NotebookSnapshot,type NotebookView} from "@/lib/notebook-presence";
 
 type Options={ownerId:string;noteId:string|null;active:boolean;root:RefObject<HTMLDivElement|null>;openNote:(id:string,blockId?:string,canNavigate?:()=>boolean)=>Promise<boolean>};
 export function useNotebookPresence(options:Options){
  const current=useRef(options);current.current=options;
- const [peers,setPeers]=useState<NotebookPeer[]>([]),[self,setSelf]=useState<NotebookPerson|null>(null),[connected,setConnected]=useState(false);
+ const [sessions,setSessions]=useState<NotebookPeer[]>([]),[self,setSelf]=useState<NotebookPerson|null>(null),[connected,setConnected]=useState(false);
  const [following,setFollowing]=useState<NotebookPeer|null>(null),[notice,setNotice]=useState(""),[attempt,setAttempt]=useState(0);
  const socket=useRef<NotebookPresenceConnection|null>(null),target=useRef<NotebookPeer|null>(null);
  const navigation=useRef(new NotebookFollowNavigation()),inflight=useRef<string|null>(null),uiKey=useRef(""),lastPoint=useRef(""),markerTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -55,9 +55,9 @@ export function useNotebookPresence(options:Options){
   }
  };
  useEffect(()=>{
-  if(!options.active||!options.ownerId){stop();setPeers([]);setSelf(null);setConnected(false);return;}
+  if(!options.active||!options.ownerId){stop();setSessions([]);setSelf(null);setConnected(false);return;}
   let disposed=false;
-  setPeers([]);setSelf(null);setConnected(false);uiKey.current="";
+  setSessions([]);setSelf(null);setConnected(false);uiKey.current="";
   function receivePeer(peer:NotebookPeer){
    if(target.current?.sessionId!==peer.sessionId)return;
    if(navigation.current.move(peer.sessionId,peer.note.id))inflight.current=null;
@@ -76,9 +76,9 @@ export function useNotebookPresence(options:Options){
       const snapshot=packet as unknown as NotebookSnapshot;
       if(snapshot.self.id!==current.current.ownerId)return;
       setSelf(previous=>JSON.stringify(previous)===JSON.stringify(snapshot.self)?previous:snapshot.self);
-      const people=uniqueNotebookPeers(snapshot.peers,snapshot.self.id).sort((a,b)=>a.user.username.localeCompare(b.user.username));
+      const people=snapshot.peers.filter(peer=>peer.user.id!==snapshot.self.id).sort((a,b)=>a.user.username.localeCompare(b.user.username));
       const key=JSON.stringify(people.map(peer=>({sessionId:peer.sessionId,user:peer.user,note:peer.note})));
-      if(uiKey.current!==key){uiKey.current=key;setPeers(people);}
+      if(uiKey.current!==key){uiKey.current=key;setSessions(people);}
       if(target.current){
        const peer=snapshot.peers.find(peer=>peer.sessionId===target.current?.sessionId);
        if(!peer)stop("This participant left or their note is unavailable.");else receivePeer(peer);
@@ -89,7 +89,7 @@ export function useNotebookPresence(options:Options){
    },
    onDisconnected:code=>{
     if(disposed)return;
-    setConnected(false);setPeers([]);uiKey.current="";
+    setConnected(false);setSessions([]);uiKey.current="";
     stop(code===4403?"Notebook presence needs a new sign-in. Your editor and draft are preserved.":"Reconnecting notebook presence. Your editor and draft are preserved.");
    },
   });
@@ -144,5 +144,6 @@ export function useNotebookPresence(options:Options){
   return()=>{if(scheduled)clearTimeout(scheduled);cancelAnimationFrame(frame);observer.disconnect();resize.disconnect();publishRef.current=()=>{};root.removeEventListener("pointerdown",pointer,true);root.removeEventListener("wheel",manual,true);root.removeEventListener("touchstart",manual,true);window.removeEventListener("keydown",key,true);root.removeEventListener("scroll",changed,true);root.removeEventListener("load",reapply,true);};
  },[options.active,options.root,send,stop]);
  useEffect(()=>{publishRef.current(true);requestAnimationFrame(()=>applyRef.current());},[options.noteId]);
- return {peers,self,connected,following,notice,follow,stop,reconnect:()=>setAttempt(value=>value+1)};
+ const peers=useMemo(()=>uniqueNotebookPeers(sessions,options.ownerId),[sessions,options.ownerId]);
+ return {peers,sessions,self,connected,following,notice,follow,stop,reconnect:()=>setAttempt(value=>value+1)};
 }

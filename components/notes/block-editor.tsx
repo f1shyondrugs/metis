@@ -1,7 +1,7 @@
 "use client";
 import { createClientId } from "@/lib/client-id";
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, useId, type ReactNode, type PointerEventHandler } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, useId, type ReactNode, type PointerEventHandler, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import {EmbeddedSourceControlsContext} from "@/components/embedded-source-controls";
 import { StickyActions } from "@/components/ui/sticky-actions";
@@ -28,6 +28,7 @@ import { parseWorkspaceFileLink, type WorkspaceFileLocation } from "@/lib/worksp
 import { registerFileDrop } from "@/lib/file-drop";
 import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
 import { LinkPreview } from "@/components/link-preview";
+import { parseNotebookLink } from "@/lib/notebook-link";
 import { useReferenceSearch } from "@/components/use-reference-search";
 import { ReferencePicker } from "@/components/reference-picker";
 import { composerReferenceKeyAction } from "@/lib/composer-references";
@@ -637,39 +638,38 @@ function NotesBlockEditorInstance({
     }
     setDialog(null);
   };
-  return <div ref={root} className={"notes-block-editor" + (disabled ? " is-readonly" : "") + (className ? " " + className : "")} data-section-navigation-root data-note-drop-target={noteId || workspace?.id || identity} onPointerDown={onPointerDown} aria-disabled={disabled || undefined}
-    onMouseOver={(event)=>{const anchor=(event.target as HTMLElement).closest<HTMLAnchorElement>(".notes-prosemirror a");setPreviewAnchor(anchor);}}
-    onMouseOut={(event)=>{if(previewAnchor && !(event.relatedTarget instanceof Node && previewAnchor.contains(event.relatedTarget)))setPreviewAnchor(null);}}
-    onFocusCapture={(event)=>setPreviewAnchor((event.target as HTMLElement).closest<HTMLAnchorElement>(".notes-prosemirror a"))}
-    onBlurCapture={()=>setPreviewAnchor(null)}
-    onClickCapture={(event) => {
+  const activateLink = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if(event.button!==0&&event.button!==1)return;
+    if((event.target as HTMLElement).closest("[data-hover-preview]"))return;
     const anchor = (event.target as HTMLElement).closest("a");
     const href = anchor?.getAttribute("href");
-    if(!href)return;
+    if(!href||anchor?.hasAttribute("download"))return;
     if(href.startsWith("#")){try{const target=findNotesSection(root.current!,decodeURIComponent(href.slice(1)));if(target){event.preventDefault();event.stopPropagation();scrollNotesSection(target);return;}}catch{/* Invalid fragments remain inert. */}}
     const resolved=settings.current.resolveUrl?.(href,"link") || href;
-    const modified=event.ctrlKey || event.metaKey;
-    if(/^https?:\/\//i.test(resolved) && (modified || disabled)) {
-      event.preventDefault();event.stopPropagation();setPreviewAnchor(null);
-      if(modified)window.open(resolved,"_blank","noopener,noreferrer");
-      else window.dispatchEvent(new CustomEvent("ai-chat:open-browser",{detail:resolved}));
-      return;
-    }
+    const notebook=parseNotebookLink(resolved,window.location.origin);
+    const internal = parseInternalLink(resolved) || (notebook?.type==="note"?{kind:"note" as const,id:notebook.id,blockId:notebook.blockId}:null);
     const fileLocation = parseWorkspaceFileLink(resolved);
-    if (fileLocation) { event.preventDefault(); event.stopPropagation(); window.dispatchEvent(new CustomEvent("ai-chat:open-file", { detail: fileLocation })); return; }
+    if(fileLocation){event.preventDefault();event.stopPropagation();window.dispatchEvent(new CustomEvent("ai-chat:open-file",{detail:fileLocation}));return;}
+    if(!internal&&/^(?:https?:\/\/|mailto:|tel:|\/(?!\/))/i.test(resolved)){
+      event.preventDefault();event.stopPropagation();setPreviewAnchor(null);
+      window.open(resolved,"_blank","noopener,noreferrer");return;
+    }
     const referenceLink=parseReferenceLink(resolved);
     if(referenceLink){event.preventDefault();event.stopPropagation();window.dispatchEvent(new CustomEvent("ai-chat:open-reference",{detail:referenceLink}));return;}
-    const internal = parseInternalLink(resolved);
-    if (internal) {
-      event.preventDefault(); event.stopPropagation();
-      if (internal.kind === "note" && internal.id === noteId && internal.blockId) {
-        const target = root.current && findNotesSection(root.current,internal.blockId); if(target)scrollNotesSection(target);
-      } else if (internal.kind === "note" && onOpenNote) onOpenNote(internal.id, internal.blockId);
-      else { const navigation = internalLinkNavigation(internal); window.dispatchEvent(new CustomEvent(navigation.event, { detail: navigation.detail })); }
+    if(internal){
+      if(notebook?.type==="note"&&(event.ctrlKey||event.metaKey||event.shiftKey||event.button===1)){event.preventDefault();event.stopPropagation();window.open(resolved,"_blank","noopener,noreferrer");return;}
+      event.preventDefault();event.stopPropagation();setPreviewAnchor(null);
+      if(internal.kind==="note"&&internal.id===noteId&&internal.blockId){const target=root.current&&findNotesSection(root.current,internal.blockId);if(target)scrollNotesSection(target);}
+      else if(internal.kind==="note"&&onOpenNote)onOpenNote(internal.id,internal.blockId);
+      else{const navigation=internalLinkNavigation(internal);window.dispatchEvent(new CustomEvent(navigation.event,{detail:navigation.detail}));}
     }
-  }}>
+  };
+  return <div ref={root} className={"notes-block-editor" + (disabled ? " is-readonly" : "") + (className ? " " + className : "")} data-section-navigation-root data-note-drop-target={noteId || workspace?.id || identity} onPointerDown={onPointerDown} aria-disabled={disabled || undefined}
+    onMouseOver={(event)=>{const anchor=(event.target as HTMLElement).closest<HTMLAnchorElement>(".notes-prosemirror a");if(anchor)setPreviewAnchor(anchor);}}
+    onFocusCapture={(event)=>{const anchor=(event.target as HTMLElement).closest<HTMLAnchorElement>(".notes-prosemirror a");if(anchor)setPreviewAnchor(anchor);}}
+    onClickCapture={activateLink} onAuxClickCapture={activateLink}>
     {!sourceMode && <EditorLinkIcons editor={editor} resolveUrl={resolveUrl} />}
-    {previewAnchor && <LinkPreview key={previewAnchor.getAttribute("href")} href={settings.current.resolveUrl?.(previewAnchor.getAttribute("href") || "","link") || previewAnchor.getAttribute("href") || ""} anchorElement={previewAnchor}/>}
+    {previewAnchor && <LinkPreview key={previewAnchor.getAttribute("href")} href={settings.current.resolveUrl?.(previewAnchor.getAttribute("href") || "","link") || previewAnchor.getAttribute("href") || ""} anchorElement={previewAnchor} onDismiss={()=>setPreviewAnchor(null)}/>}
     <div className="notes-editor-topbar">
       <div className="notes-editor-mode" role="group" aria-label="Editor mode"><button type="button" className={!sourceMode ? "is-active" : ""} onClick={() => { if (!editor) return; try { const parsed = parseNotesMarkdown(latest.current); editor.schema.nodeFromJSON(parsed).check(); if (!collaboration && serialize(editor.state.doc) !== latest.current) { externalUpdate.current = true; try { editor.commands.setContent(parsed as JSONContent, { emitUpdate: false, errorOnInvalidContent: true }); } finally { externalUpdate.current = false; } } setSourceMode(false); setError(""); } catch { setError("Could not open rich blocks. Your complete Markdown source is preserved."); } }}>Blocks</button><button type="button" className={sourceMode ? "is-active" : ""} onClick={() => setSourceMode(true)}><Code2 size={13} /> Markdown</button></div>
       <div className="notes-editor-tools">

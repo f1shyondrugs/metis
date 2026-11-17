@@ -72,9 +72,7 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
     catch{toast.error("Copy the profile link from the field below.");}
   }
   return <div className="space-y-8">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Profile</h1><p className="mt-2 text-sm text-muted-foreground">A little about you, and what you build.</p></div>
-      {!editing ? <Button variant="outline" className="h-11 gap-2" onClick={()=>{setDraft(profile);setHandleError("");setEditing(true);}}><Pencil className="size-4" /> Edit profile</Button>:null}
-    </div>
+    {!editing ? <div className="flex justify-end"><Button variant="outline" className="h-11 gap-2" onClick={()=>{setDraft(profile);setHandleError("");setEditing(true);}}><Pencil className="size-4" /> Edit profile</Button></div>:null}
     <BannerHeader value={editing ? draft.banner : profile.banner} alt="Profile banner" bannerClassName="aspect-[4/1] w-full rounded-xl" gapClassName="mt-8">
     <div className="grid items-start gap-8 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10">
       <div className="min-w-0">

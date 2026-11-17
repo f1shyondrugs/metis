@@ -2,6 +2,8 @@
 
 import { LinkIcon } from "@/components/link-icon";
 import { LinkPreview } from "@/components/link-preview";
+import { parseNotebookLink } from "@/lib/notebook-link";
+import { useNotebookLink } from "@/components/use-notebook-link";
 import { FileLink } from "@/components/file-link";
 import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
 import { parseWorkspaceFileLink } from "@/lib/workspace-file-link";
@@ -25,7 +27,8 @@ type Reference = {
 };
 
 function dispatchInternalLink(href: string) {
-  const target = parseInternalLink(href);
+  const local=parseNotebookLink(href,typeof window==="undefined"?undefined:window.location.origin);
+  const target = parseInternalLink(href) || (local?.type==="note"?{kind:"note" as const,id:local.id,blockId:local.blockId}:null);
   if (!target) return false;
   const navigation = internalLinkNavigation(target);
   window.dispatchEvent(new CustomEvent(navigation.event, { detail: navigation.detail }));
@@ -35,7 +38,8 @@ function dispatchInternalLink(href: string) {
 function RichLink({ href, children, ...props }: { href: string; children: string; "aria-describedby"?: string }) {
   const [hovered, setHovered] = useState(false);
   const [modifierHeld, setModifierHeld] = useState(false);
-  const internal = Boolean(parseInternalLink(href));
+  const notebook=useNotebookLink(href);
+  const internal = Boolean(parseInternalLink(href)) || notebook?.type==="note";
   useEffect(() => {
     if (!hovered || internal) return;
     const update = (event: KeyboardEvent) => {
@@ -55,7 +59,9 @@ function RichLink({ href, children, ...props }: { href: string; children: string
     <a
       {...props}
       href={href}
-      className="inline-flex items-center underline underline-offset-2 hover:text-primary"
+      target={notebook?.type==="share"?"_blank":undefined}
+      rel={notebook?.type==="share"?"noopener noreferrer":undefined}
+      className="inline-flex min-w-0 max-w-full items-center underline underline-offset-2 hover:text-primary"
       onMouseEnter={(event) => {
         setHovered(true);
         setModifierHeld(event.ctrlKey || event.metaKey);
@@ -65,6 +71,8 @@ function RichLink({ href, children, ...props }: { href: string; children: string
         setModifierHeld(false);
       }}
       onClick={(event) => {
+        if(notebook&&(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey))return;
+        if(notebook?.type==="share")return;
         event.preventDefault();
         if (dispatchInternalLink(href)) return;
         if (event.ctrlKey || event.metaKey) {
@@ -74,7 +82,7 @@ function RichLink({ href, children, ...props }: { href: string; children: string
         window.dispatchEvent(new CustomEvent("ai-chat:open-browser", { detail: href }));
       }}
     >
-      <LinkIcon href={href} />{children}
+      <LinkIcon href={href} /><span className="min-w-0 [overflow-wrap:anywhere]">{children}</span>
       {hovered && modifierHeld && !internal ? (
         <ExternalLink className="ml-1 size-3.5 animate-in fade-in text-muted-foreground" aria-label="Ctrl-click opens in a new tab" />
       ) : null}

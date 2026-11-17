@@ -1,4 +1,4 @@
-import { getSharedNote, getSharedNoteAccess, noteShareCookieName, noteShareCredential, unlockSharedNote } from "@/lib/note-sharing";
+import { getSharedNote, getSharedNotePreview, getSharedNoteAccess, noteShareCookieName, noteShareCredential, unlockSharedNote } from "@/lib/note-sharing";
 import { consumeSharePasswordLimit } from "@/lib/share-rate-limit";
 import { requestIsSecure } from "@/lib/request-network";
 
@@ -15,6 +15,13 @@ export async function GET(req: Request, { params }: Context) {
   const access = getSharedNoteAccess(token, credential);
   if (access === "not_found") return unavailable();
   if (access === "password_required") return locked();
+  const query=new URL(req.url).searchParams;
+  if(query.get("view")==="preview"){
+    const noteId=query.get("noteId")||undefined;
+    if(noteId&&(noteId.length>200||/[\u0000-\u001f\u007f/\\]/.test(noteId)))return Response.json({error:"Invalid note id"},{status:400,headers});
+    const preview=getSharedNotePreview(token,credential,noteId);
+    return preview?Response.json(preview,{headers}):unavailable();
+  }
   const share = getSharedNote(token, credential);
   return share ? Response.json(share, { headers }) : unavailable();
 }
