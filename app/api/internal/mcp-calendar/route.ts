@@ -18,8 +18,8 @@ export async function POST(req:Request){
   const body=await calendarBody(req,40000);
   if(body.action==="calendars")return calendarResponse({calendars:listCalendars(owner),connections:listConnections(owner)});
   if(body.action==="list")return calendarResponse({events:listCalendarEvents(owner,body.start,body.end,body.calendarId)});
-  if(body.action==="get"){const {ics:omitted,...event}=getCalendarEvent(owner,body.id);void omitted;return calendarResponse({event});}
-  if(body.action==="create"||body.action==="update"){const {action:omitted,...input}=body;void omitted;if(body.action==="create"&&(!input.idempotencyKey||input.id))throw new CalendarError("A creation idempotency key is required.");if(body.action==="update"&&!input.id)throw new CalendarError("An event ID is required.");const {ics:raw,...event}=saveCalendarEvent(owner,input);void raw;return calendarResponse({event});}
+  if(body.action==="get"){const {ics:omitted,...event}=getCalendarEvent(owner,body.id);void omitted;return calendarResponse({event,eventLink:"calendar-event://"+event.id});}
+  if(body.action==="create"||body.action==="update"){const {action:omitted,...input}=body;void omitted;if(body.action==="create"&&(!input.idempotencyKey||input.id))throw new CalendarError("A creation idempotency key is required.");if(body.action==="update"&&!input.id)throw new CalendarError("An event ID is required.");const {ics:raw,...event}=saveCalendarEvent(owner,input);void raw;return calendarResponse({event,eventLink:"calendar-event://"+event.id});}
   if(body.action==="delete")return calendarResponse(deleteCalendarEvent(owner,body.id,body.version));
   throw new CalendarError("Unknown calendar action.");
  }catch(error){return calendarFailure(error);}

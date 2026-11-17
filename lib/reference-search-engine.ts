@@ -1,3 +1,5 @@
+import {getChatMetadata} from "@/lib/db-store";
+import {searchCalendarReferences} from "@/lib/calendar/reference";
 import { getGlobalModelSettings, listChatsForUser, listMemories } from "@/lib/db-store";
 import { listAccessibleIssues } from "@/lib/issues";
 import { issueReference } from "@/lib/issue-types";
@@ -171,6 +173,9 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
       label:match.chatTitle,detail:match.snippet,isCurrentChat:match.chatId===currentChatId});
   }
 
+  if(includes("calendar-event")&&!getChatMetadata(currentChatId,ownerId)?.incognito){
+    for(const item of searchCalendarReferences(ownerId,query,perKindLimit,check))push(item);
+  }
   check();
   // Membership can change while extraction yields; never return revoked chat data.
   return {results:results.filter(item=>!item.chatId || canAccessChat(item.chatId,ownerId)).sort((a,b)=>Number(Boolean(b.isCurrentChat))-Number(Boolean(a.isCurrentChat)) || Number(referenceMatches(query,b.label))-Number(referenceMatches(query,a.label))),indexing};

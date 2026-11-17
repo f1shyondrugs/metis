@@ -1,8 +1,9 @@
 /** Internal document links. Content access is checked by the preview API. */
-export type InternalLinkKind = "plan" | "canvas" | "note" | "automation" | "issue";
+export type InternalLinkKind = "plan" | "canvas" | "note" | "automation" | "issue" | "calendar-event";
 export type InternalLinkTarget = { kind: InternalLinkKind; id: string; blockId?: string };
 export type InternalLinkPreview = InternalLinkTarget & {
   icon?: string | null;
+  color?: string;
   title: string;
   description: string;
   details: Array<{ label: string; value: string }>;
@@ -10,8 +11,8 @@ export type InternalLinkPreview = InternalLinkTarget & {
 
 export function parseInternalLink(href: string | undefined): InternalLinkTarget | null {
   if (!href) return null;
-  const workspace = /^(?:workspace|metis):\/\/(plan|canvas|note|automation|issue)\/([^/?#]+)(?:[?#].*)?$/i.exec(href);
-  const item = /^(note|automation|issue):\/\/([^/?#]+)(?:[?#].*)?$/i.exec(href);
+  const workspace = /^(?:workspace|metis):\/\/(plan|canvas|note|automation|issue|calendar-event)\/([^/?#]+)(?:[?#].*)?$/i.exec(href);
+  const item = /^(note|automation|issue|calendar-event):\/\/([^/?#]+)(?:[?#].*)?$/i.exec(href);
   const match = workspace || item;
   if (!match) return null;
   let id: string;
@@ -25,6 +26,7 @@ export function parseInternalLink(href: string | undefined): InternalLinkTarget 
 }
 
 export function internalLinkNavigation(target: InternalLinkTarget) {
+  if(target.kind==="calendar-event")return {href:"/?c=calendar#event-"+encodeURIComponent(target.id),event:"ai-chat:open-calendar-event",detail:{id:target.id}};
   if (target.kind === "plan" || target.kind === "canvas") {
     return { href: `#workspace-${encodeURIComponent(target.id)}`, event: "ai-chat:open-workspace", detail: { type: target.kind, id: target.id } };
   }

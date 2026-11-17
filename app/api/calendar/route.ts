@@ -1,3 +1,4 @@
+import {getCalendarReference} from "@/lib/calendar/reference";
 import {getAuthenticatedUserId} from "@/lib/auth";
 import {requestOriginAllowed} from "@/lib/request-network";
 import {CalendarError} from "@/lib/calendar/types";
@@ -11,7 +12,7 @@ export const runtime="nodejs";export const dynamic="force-dynamic";
 import {calendarResponse,calendarFailure,calendarBody} from "@/lib/calendar/http";
 export async function GET(req:Request){
  const owner=await getAuthenticatedUserId(req);if(!owner)return calendarResponse({error:"Unauthorized"},401);
- try{const url=new URL(req.url);if(url.searchParams.has("conflict"))return calendarResponse({conflict:calendarConflictDetail(owner,url.searchParams.get("conflict")!)});if(url.searchParams.has("id")){const {ics:_,...event}=getCalendarEvent(owner,url.searchParams.get("id")!);return calendarResponse({event});}
+ try{const url=new URL(req.url);if(url.searchParams.has("reference"))return calendarResponse(getCalendarReference(owner,url.searchParams.get("reference")!,url.searchParams.get("timeZone")||"UTC"));if(url.searchParams.has("conflict"))return calendarResponse({conflict:calendarConflictDetail(owner,url.searchParams.get("conflict")!)});if(url.searchParams.has("id")){const {ics:_,...event}=getCalendarEvent(owner,url.searchParams.get("id")!);return calendarResponse({event});}
  const start=url.searchParams.get("start"),end=url.searchParams.get("end");
  return calendarResponse({calendars:listCalendars(owner),connections:listConnections(owner),conflicts:listCalendarConflicts(owner),googleOAuth:calendarOAuthSetup(owner),events:start&&end?listCalendarEvents(owner,start,end):[]});}
  catch(error){return calendarFailure(error);}

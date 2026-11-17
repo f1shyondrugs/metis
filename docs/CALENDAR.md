@@ -55,6 +55,37 @@ Imported definitions are never silently replaced; recurrence exceptions and
 alarms remain intact. The exact round-trip guard still rejects unsupported or
 ambiguous definitions rather than shifting saved events.
 
+## Event references
+
+The shared @/Add context picker includes Calendar events. Use `@events query`
+(or `@calendar query`, `@kalender query`, and colon forms). Each result identifies
+the event/series once, never one entry for every occurrence. The server
+rehydrates selected event context from the authenticated account; submitted
+titles/content cannot grant access. Deleted, foreign and Incognito references
+are omitted. Notes uses the same picker and native link.
+
+Saved events use `calendar-event://EVENT_ID` Markdown links. Hover/focus loads
+bounded, private/no-store details and the current calendar color. Links open
+`/?c=calendar#event-EVENT_ID`, reveal the relevant calendar, move to the resolved
+date and outline just that occurrence. Series resolve from the start of today
+in the viewer's display zone, respecting canonical recurrence exceptions and
+cancellations. Sparse series use bounded year windows (up to ten years); an
+exhausted or unsupported series never gets an invented next occurrence.
+
+Successful `calendar_create_event` / `calendar_update_event` results render
+a compact live event card below the tool group, even while it is collapsed.
+Deferred payloads are resolved only near the viewport, retaining only the
+saved ID. Failed/pending tools and input-only IDs do not render saved cards.
+For an explicit embed, use a `calendar-event` fenced block with
+`{"id":"EVENT_ID"}`. Public shares keep event links/cards private and inert;
+they never inherit a visitor's authenticated calendar preview.
+
+Tests: `calendar-references.test.ts` covers ACLs, context rehydration,
+recurrences and acknowledged tool results. `calendar-event-references.preview.mjs`
+serves real components and authenticated APIs on isolated synthetic data;
+its browser fixture also executes the extracted real AppShell navigation
+handler. No external provider writes or owner events are used.
+
 ## Connections and mapping
 
 The owner explicitly connects iCloud with an app-specific password or Google with OAuth. Secrets are encrypted at rest and target/account-bound, never returned by calendar APIs or agent tools. Disconnect clears saved credentials and stops sync without deleting local or remote events.

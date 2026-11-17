@@ -1,16 +1,16 @@
 "use client";
 
 import type { KeyboardEvent, ReactNode, Ref } from "react";
-import { ArrowLeft, Brain, ClipboardList, File as FileIcon, MessageSquare, Palette, PanelRight, Search, StickyNote, Terminal } from "lucide-react";
+import { CalendarDays, ArrowLeft, Brain, ClipboardList, File as FileIcon, MessageSquare, Palette, PanelRight, Search, StickyNote, Terminal } from "lucide-react";
 import { REFERENCE_KINDS, type ReferenceKind, type ReferenceResult } from "@/lib/reference-search";
 import { cn } from "@/lib/utils";
 import { REFERENCE_SHORTCUTS } from "@/lib/reference-query";
 
 export const referenceLabel = (kind: ReferenceKind) => ({
-  file:"Files",canvas:"Canvases",plan:"Plans",note:"Notes",issue:"Issues",browser:"Browser",terminal:"Terminals",memory:"Memories",chat:"Chats",
+  file:"Files",canvas:"Canvases",plan:"Plans",note:"Notes",issue:"Issues",browser:"Browser",terminal:"Terminals",memory:"Memories",chat:"Chats","calendar-event":"Calendar events",
 })[kind];
 export const referenceIcon = (kind: ReferenceKind) => ({
-  file:FileIcon,canvas:Palette,plan:ClipboardList,note:StickyNote,issue:ClipboardList,browser:PanelRight,terminal:Terminal,memory:Brain,chat:MessageSquare,
+  file:FileIcon,canvas:Palette,plan:ClipboardList,note:StickyNote,issue:ClipboardList,browser:PanelRight,terminal:Terminal,memory:Brain,chat:MessageSquare,"calendar-event":CalendarDays,
 })[kind];
 
 export function ReferencePicker({ id, rootRef, inputRef, kind, query, results, loading, indexing, notice, error, retry,

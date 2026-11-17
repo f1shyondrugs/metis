@@ -20,7 +20,7 @@ function Fixture(){
  const refs=useReferenceSearch({enabled:Boolean(mention&&(kind||query)),kind,query});
  useEffect(()=>{const listener=(event:Event)=>eventLog.current.push((event as CustomEvent).detail);window.addEventListener("ai-chat:open-reference",listener);return()=>window.removeEventListener("ai-chat:open-reference",listener);},[]);
  const choose=(item:ReferenceResult)=>{if(!mention)return;const result=replaceComposerMention(text,mention,item.label);if(!result)return;draft.current=result.value;setText(result.value);setNonce(n=>n+1);setSelected(items=>[...items.filter(old=>old.id!==item.id),item]);setMention(null);requestAnimationFrame(()=>{input.current?.focus();input.current?.setSelectionRange(result.cursor,result.cursor);});};
- const key=(event:React.KeyboardEvent)=>{if(!mention)return;const categories=!kind&&!query;const action=composerReferenceKeyAction({key:event.key,count:categories?9:refs.results.length,index});if(!action)return;event.preventDefault();if(action.type==="move")setIndex(action.index);else if(action.type==="dismiss")setMention(null);else if(categories){setManual(REFERENCE_KINDS[action.index]);setSearch("");}else choose(refs.results[action.index]);};
+ const key=(event:React.KeyboardEvent)=>{if(!mention)return;const categories=!kind&&!query;const action=composerReferenceKeyAction({key:event.key,count:categories?REFERENCE_KINDS.length:refs.results.length,index});if(!action)return;event.preventDefault();if(action.type==="move")setIndex(action.index);else if(action.type==="dismiss")setMention(null);else if(categories){setManual(REFERENCE_KINDS[action.index]);setSearch("");}else choose(refs.results[action.index]);};
  const change=(value:string,cursor:number)=>{draft.current=value;setText(value);setMention(composerMentionQuery(value,cursor,cursor,selected.map(item=>item.label)));setSearch(undefined);setManual(null);setIndex(0);};
  async function run(){
  const results:string[]=[];const check=(label:string,ok:boolean)=>{if(!ok)throw Error(label);results.push("PASS "+label);setReport([...results]);};
@@ -34,7 +34,7 @@ function Fixture(){
  await wait(()=>document.querySelector("[data-picker]")?.getAttribute("data-kind")==="chat"&&document.querySelector("[data-picker]")?.getAttribute("data-query")==="Mathe","Scoped popup search");
  check("Typing into popup retains shortcut category",true);
  (document.querySelector("[data-picker] [aria-label='All categories']") as HTMLButtonElement).click();
- await wait(()=>document.querySelectorAll("[data-picker] [role=option]").length===9,"Back categories");
+ await wait(()=>document.querySelectorAll("[data-picker] [role=option]").length===REFERENCE_KINDS.length,"Back categories");
  check("Back clears shortcut scope",true);
  type("@chats   Mathe course");await wait(()=>document.querySelector("[data-picker]")?.getAttribute("data-kind")==="chat"&&document.querySelector("[data-picker]")?.getAttribute("data-query")==="Mathe course"&&Boolean(document.querySelector("[data-picker] [role=option]")),"Space-filtered chat");
  check("Space query reaches chat search without the category in its query",requests.current.some(req=>req.kind==="chat"&&req.q==="Mathe course"));

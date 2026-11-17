@@ -1,4 +1,4 @@
-export const REFERENCE_KINDS = ["file", "canvas", "plan", "note", "issue", "browser", "terminal", "memory", "chat"] as const;
+export const REFERENCE_KINDS = ["file", "canvas", "plan", "note", "issue", "browser", "terminal", "memory", "chat", "calendar-event"] as const;
 export type ReferenceKind = typeof REFERENCE_KINDS[number];
 export type ReferenceResult = {
   kind: ReferenceKind; id: string; label: string; detail?: string; chatId?: string;

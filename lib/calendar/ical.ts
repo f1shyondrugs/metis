@@ -97,6 +97,9 @@ export function mirrorPayload(ics:string,target?:string){
  return c.toString();
 }
 export function calendarRange(from:string,to:string){const min=Date.parse(from),max=Date.parse(to);if(typeof from!=="string"||typeof to!=="string"||!Number.isFinite(min)||!Number.isFinite(max)||max<=min||max-min>370*86400000)throw new CalendarError("Choose a calendar range up to one year.");return {min,max};}
+export function calendarEventRecurs(event:CalendarEvent){
+ const c=parseCalendar(event.ics);return new ICAL.Event(main(c)).isRecurring();
+}
 export function expandEvent(event:CalendarEvent,from:string,to:string):CalendarOccurrence[]{
  if(event.deleted)return [];
  const c=parseCalendar(event.ics),m=main(c),exceptions=c.getAllSubcomponents("vevent").filter(v=>v!==m),e=new ICAL.Event(m,{exceptions:exceptions.map(v=>new ICAL.Event(v))});

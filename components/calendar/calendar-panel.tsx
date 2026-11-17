@@ -66,8 +66,37 @@ export function CalendarPanel({userId}:{userId?:string}={}){
  const timeZone=useCalendarTimeZone(userId);
  const calendar=useRef<FullCalendar>(null),[data,setData]=useState<CalendarData|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false),[title,setTitle]=useState("Calendar"),[view,setView]=useState("dayGridMonth"),[connections,setConnections]=useState(false),[event,setEvent]=useState<Partial<CalendarEvent>|null>(null),[hidden,setHidden]=useState<string[]>([]);
  const [conflictId,setConflictId]=useState<string|null>(null);
+ const [focused,setFocused]=useState<{id:string;start:string;allDay:boolean;title:string}|null>(null),[focusMessage,setFocusMessage]=useState("");
  const [range,setRange]=useState<{start:string;end:string}|null>(null),[revision,setRevision]=useState(0),mounted=useRef(true),syncing=useRef(false),opening=useRef(0);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+ useEffect(()=>{
+  if(!timeZone.ready)return;
+  let controller:AbortController|undefined;
+  const open=()=>{
+   controller?.abort();controller=new AbortController();const current=controller;
+   setFocused(null);setFocusMessage("");
+   const match=/^#event-([^/]+)$/.exec(window.location.hash);if(!match)return;
+   let id:string;try{id=decodeURIComponent(match[1]);}catch{return;}
+   const params=new URLSearchParams({reference:id,timeZone:timeZone.zone});
+   setFocusMessage("Locating calendar event…");
+   fetch("/api/calendar?"+params,{cache:"no-store",signal:current.signal}).then(async r=>{if(!r.ok)throw Error("Event unavailable");return r.json();}).then(value=>{
+    if(current.signal.aborted)return;
+    const occurrence=value.occurrence;
+    if(!occurrence){setFocusMessage("This recurring series has no occurrence in the next 10 years.");return;}
+    calendar.current?.getApi().gotoDate(occurrence.start);
+    setHidden(hidden=>hidden.filter(id=>id!==value.event.calendarId));
+    setFocused({id:value.event.id,start:occurrence.start,allDay:occurrence.allDay,title:occurrence.title});
+    setFocusMessage("Selected: "+occurrence.title+(value.recurring?" · Next occurrence from today":""));
+   }).catch(()=>{if(!current.signal.aborted)setFocusMessage("Event unavailable. It may have been deleted or is not accessible.");});
+  };
+  open();window.addEventListener("hashchange",open);window.addEventListener("popstate",open);
+  return()=>{controller?.abort();window.removeEventListener("hashchange",open);window.removeEventListener("popstate",open);};
+ },[timeZone.ready,timeZone.zone]);
+ useEffect(()=>{
+  if(!focused||!data)return;
+  const frame=requestAnimationFrame(()=>{document.querySelector(".metis-calendar-selected-event")?.scrollIntoView({block:"nearest",inline:"nearest"});});
+  return()=>cancelAnimationFrame(frame);
+ },[focused,data]);
  const refresh=useCallback(()=>setRevision(v=>v+1),[]);
  useEffect(()=>{
   if(!range)return;const controller=new AbortController();
@@ -90,6 +119,7 @@ export function CalendarPanel({userId}:{userId?:string}={}){
     <div className="ml-auto flex rounded-md bg-muted/40 p-0.5 sm:ml-0" aria-label="Calendar view">{[["dayGridMonth","Month"],["timeGridWeek","Week"]].map(([value,label])=><Button key={value} variant={view===value?"secondary":"ghost"} size="action" aria-pressed={view===value} onClick={()=>{calendar.current?.getApi().changeView(value);setView(value);}}>{label}</Button>)}</div>
    </div>
   </header>
+  {focusMessage?<p role="status" className="border-b border-border px-4 py-2 text-xs">{focusMessage}</p>:null}
   {timeZone.sessionOnly?<p role="status" className="px-4 py-2 text-xs text-muted-foreground">Time zone preference is available for this session only.</p>:null}
   {error?<div role="alert" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-sm text-destructive">{error}<Button variant="ghost" size="action" onClick={refresh}>Retry</Button></div>:null}
   {!data&&!error?<p role="status" className="px-4 pt-3 text-sm text-muted-foreground">Loading calendar…</p>:null}
@@ -102,6 +132,7 @@ export function CalendarPanel({userId}:{userId?:string}={}){
    {timeZone.ready?<FullCalendar ref={calendar} timeZone={timeZone.zone} plugins={[dayGridPlugin,timeGridPlugin,interactionPlugin,luxonPlugin]} initialView="dayGridMonth" headerToolbar={false} height="100%" firstDay={1} locale="en-gb" nowIndicator allDaySlot stickyHeaderDates dayMaxEvents={3} eventDisplay="block" displayEventEnd eventTimeFormat={{hour:"2-digit",minute:"2-digit",hour12:false}}
     events={(data?.events||[]).filter(e=>!hidden.includes(e.calendarId)).map(e=>({id:e.id,title:e.title,start:e.start,end:e.end,allDay:e.allDay,color:data?.calendars.find(c=>c.id===e.calendarId)?.color,extendedProps:{eventId:e.eventId}}))}
     datesSet={info=>{setTitle(info.view.title);setRange(current=>current?.start===info.startStr&&current.end===info.endStr?current:{start:info.startStr,end:info.endStr});}}
+    eventClassNames={info=>focused&&info.event.extendedProps.eventId===focused.id&&(focused.allDay?info.event.startStr===focused.start:Date.parse(info.event.startStr)===Date.parse(focused.start))?["metis-calendar-selected-event"]:[]}
     dateClick={info=>newEvent(info.dateStr,info.allDay)} eventClick={info=>void openEvent(info.event.extendedProps.eventId)}
    />:null}
   </div></div>

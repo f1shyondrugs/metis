@@ -760,7 +760,7 @@ function normalizeTerminalTabs(session: ChatSessionState, defaultCwd: string): T
 
 type WorkspaceItem = import("@/lib/store").WorkspaceItem;
 
-type ReferenceKind = "file" | "canvas" | "plan" | "note" | "issue" | "browser" | "memory" | "chat" | "terminal";
+type ReferenceKind = import("@/lib/reference-search").ReferenceKind;
 
 type ReferenceItem = {
   kind: ReferenceKind;
@@ -5256,6 +5256,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       const reference = (event as CustomEvent<ReferenceItem>).detail;
       if (!reference?.kind || !reference.id) return;
 
+      if(reference.kind==="calendar-event"){window.dispatchEvent(new CustomEvent("ai-chat:open-calendar-event",{detail:{id:reference.id}}));return;}
       const targetChatId =
         reference.chatId ||
         (reference.kind === "chat" ? reference.id : undefined);
@@ -5433,6 +5434,16 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       setMobileNavOpen(false);
       navigateChat("automations");
     };
+    const openLinkedCalendarEvent=(event:Event)=>{
+      const id=(event as CustomEvent<{id?:unknown}>).detail?.id;
+      if(typeof id!=="string"||!id.trim()||id.length>200)return;
+      workspaceLinkRequestRef.current+=1;persistActiveSnapshot();
+      setProjectHomeId(null);setAccountView(null);setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setMobileNavOpen(false);
+      navigateChat("calendar");
+      window.history.replaceState(window.history.state,"","/?c=calendar#event-"+encodeURIComponent(id));
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    };
+    window.addEventListener("ai-chat:open-calendar-event",openLinkedCalendarEvent);
     window.addEventListener("ai-chat:open-browser", openLinkedUrl);
     window.addEventListener("ai-chat:open-reference", openLinkedReference);
     window.addEventListener("ai-chat:open-workspace", openLinkedWorkspace);
@@ -5441,6 +5452,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     window.addEventListener("ai-chat:open-issue", openLinkedIssue);
     window.addEventListener("ai-chat:open-automations", openLinkedAutomation);
     return () => {
+      window.removeEventListener("ai-chat:open-calendar-event",openLinkedCalendarEvent);
       window.removeEventListener("ai-chat:open-browser", openLinkedUrl);
       window.removeEventListener("ai-chat:open-reference", openLinkedReference);
       window.removeEventListener("ai-chat:open-workspace", openLinkedWorkspace);

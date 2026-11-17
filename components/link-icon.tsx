@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ClipboardList, LayoutDashboard, FileText, Workflow, CircleDot, Globe, Terminal, Brain, MessageSquare, File, Link2, Mail, Users } from "lucide-react";
+import { CalendarDays, ClipboardList, LayoutDashboard, FileText, Workflow, CircleDot, Globe, Terminal, Brain, MessageSquare, File, Link2, Mail, Users } from "lucide-react";
 import { parseInternalLink } from "@/lib/internal-link";
 import { parseReferenceLink } from "@/lib/reference-link";
 import { parseWorkspaceFileLink } from "@/lib/workspace-file-link";
@@ -12,7 +12,7 @@ import { sourceFaviconUrl } from "@/lib/message-sources";
 import { usePublicMarkdownShare } from "@/components/public-markdown-context";
 import { cn } from "@/lib/utils";
 
-const icons = { plan: ClipboardList, canvas: LayoutDashboard, note: FileText, automation: Workflow, issue: CircleDot,
+const icons = { "calendar-event":CalendarDays, plan: ClipboardList, canvas: LayoutDashboard, note: FileText, automation: Workflow, issue: CircleDot,
   browser: Globe, terminal: Terminal, memory: Brain, chat: MessageSquare, file: File, subagent: Users };
 const pending = new Map<string, Promise<string | null>>();
 function loadNoteIcon(id: string) {

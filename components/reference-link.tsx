@@ -3,14 +3,14 @@
 import type { ReactNode } from "react";
 import type { ReferenceResult } from "@/lib/reference-search";
 import { referenceHref, parseReferenceLink } from "@/lib/reference-link";
-import { parseInternalLink } from "@/lib/internal-link";
+import { internalLinkNavigation,parseInternalLink } from "@/lib/internal-link";
 import { LinkIcon } from "@/components/link-icon";
 import { HoverPreview } from "@/components/hover-preview";
 import { InternalLinkPreviewContent } from "@/components/internal-link-preview";
 import { usePublicMarkdownShare } from "@/components/public-markdown-context";
 import { cn } from "@/lib/utils";
 
-const labels = {file:"File",canvas:"Canvas",plan:"Plan",note:"Note",issue:"Issue",browser:"Browser",terminal:"Terminal",memory:"Memory",chat:"Chat"};
+const labels = {"calendar-event":"Calendar event",file:"File",canvas:"Canvas",plan:"Plan",note:"Note",issue:"Issue",browser:"Browser",terminal:"Terminal",memory:"Memory",chat:"Chat"};
 
 /** Non-document previews use the already selected metadata, never arbitrary URL fetching. */
 export function ReferencePreviewContent({reference}:{reference:ReferenceResult}) {
@@ -37,7 +37,7 @@ export function ReferenceLink({reference,children,className}:{
   if(share || !href || (!parseInternalLink(href)&&!parseReferenceLink(href)))return <span>{children || "@"+reference.label}</span>;
   const target=parseInternalLink(href);
   const browserHref=reference.kind==="browser" && /^https?:\/\//i.test(reference.path || "") ? reference.path : undefined;
-  const webHref=reference.kind==="chat" ? "/?c="+encodeURIComponent(reference.chatId || reference.id) : browserHref;
+  const webHref=reference.kind==="calendar-event"&&target?internalLinkNavigation(target).href:reference.kind==="chat" ? "/?c="+encodeURIComponent(reference.chatId || reference.id) : browserHref;
   return <HoverPreview content={target
     ? <InternalLinkPreviewContent target={target} chatId={reference.chatId || null}/>
     : <ReferencePreviewContent reference={reference}/>}>
