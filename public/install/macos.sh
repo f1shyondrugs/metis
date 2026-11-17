@@ -835,9 +835,9 @@ write_plist() {
   launchctl bootout "gui/$(id -u)" "$launch_dir/$label.plist" >/dev/null 2>&1 || true
   launchctl bootstrap "gui/$(id -u)" "$launch_dir/$label.plist"
 }
-write_plist app "$install_dir/node_modules/tsx/dist/cli.mjs" "$install_dir/server.mjs"
-write_plist worker "$install_dir/node_modules/tsx/dist/cli.mjs" "$install_dir/worker.ts"
-write_plist mcp "$install_dir/lib/mcp-core/gateway-core.mjs"
+write_plist app "$install_dir/scripts/run-installed-service.cjs" app
+write_plist worker "$install_dir/scripts/run-installed-service.cjs" worker
+write_plist mcp "$install_dir/scripts/run-installed-service.cjs" mcp
 # Finder/Spotlight application entry. The application hosts no web view.
 app_bundle="$HOME/Applications/Metis AI ($service_name).app"
 mkdir -p "$app_bundle/Contents/MacOS"
@@ -891,6 +891,7 @@ wait_for_frontend_assets "http://127.0.0.1:$port" ||
 wait_for_health "http://127.0.0.1:$mcp_port/health" "$health_tries" ||
   die "Metis MCP gateway did not become healthy on port $mcp_port. Check $data_dir/${service_name}-mcp.error.log for startup errors and port conflicts."
 
+printf '1\n' > "$install_dir/.metis-package-updates-v1"
 install_method="native"
 {
   printf '{'

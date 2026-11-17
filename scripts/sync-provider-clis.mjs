@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { pruneManagedReleases } from "../public/install/release-retention.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,6 +41,16 @@ function manifestFor(id) {
 }
 
 function syncManaged(id) {
+  if (id !== "codex" && !manifestFor(id)) return;
+  const root = path.join(runtimes, id);
+  mkdirSync(root, { recursive: true });
+  const lock = path.join(root, ".sync.lock");
+  mkdirSync(lock); // Never race another installer or remove its live staging version.
+  try { syncManagedLocked(id); }
+  finally { rmSync(lock, { recursive: true }); }
+}
+
+function syncManagedLocked(id) {
   const item = packages[id];
   const previous = manifestFor(id);
   if (id !== "codex" && !previous) return;
@@ -65,8 +76,20 @@ function syncManaged(id) {
   mkdirSync(root, { recursive: true });
   const file = path.join(root, "active.json");
   const temporary = `${file}.${process.pid}.tmp`;
-  writeFileSync(temporary, JSON.stringify({ version, executable, tracking: pinned ? "pinned" : "latest" }), { mode: 0o600 });
+  const previousVersion = previous?.version !== version ? previous?.version : previous?.previousVersion;
+  writeFileSync(temporary, JSON.stringify({ version, executable, tracking: pinned ? "pinned" : "latest", ...(previousVersion && versionPattern.test(previousVersion) ? { previousVersion } : {}) }), { mode: 0o600 });
   renameSync(temporary, file);
+  try {
+    const cleanup = pruneManagedReleases({
+      root, active: destination,
+      previous: previousVersion && versionPattern.test(previousVersion) ? path.join(root, previousVersion) : undefined,
+      pattern: versionPattern,
+      requiredFiles: [path.join("node_modules", ...item.name.split("/"), "package.json")],
+    });
+    console.log(`${id}: removed ${cleanup.removed.length} obsolete CLI versions${cleanup.reason ? " (cleanup deferred: " + cleanup.reason + ")" : ""}`);
+  } catch (error) {
+    console.warn(`${id}: cleanup deferred: ${error.message}`);
+  }
   console.log(`${id}: ${version}${pinned ? " (pinned)" : ""}`);
 }
 

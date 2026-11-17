@@ -32,11 +32,11 @@ function harness(visible = true) {
 }
 test("visibility contract excludes collapsed panes, other tabs, account/notebooks and hidden documents", () => {
   const decl = find(n => ts.isVariableDeclaration(n) && n.name.getText(tree) === "browserStreamVisible") as ts.VariableDeclaration;
-  const base = { workspaceOpen: true, workspaceMounted: true, workspaceTab: "browser", accountView: null, notesOpen: false, automationsOpen: false, projectHomeId: null, browserDocumentVisible: true };
+  const base = { workspaceOpen: true, workspaceMounted: true, workspaceTab: "browser", accountView: null, notesOpen: false, automationsOpen: false, calendarOpen: false, projectHomeId: null, browserDocumentVisible: true };
   const js = ts.transpileModule("const callback=()=>(" + decl.initializer!.getText(tree) + ");", { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   const visible = (values: Record<string, unknown>) => new Function(...Object.keys(values), js + ";return callback();")(...Object.values(values));
   assert.equal(visible(base), true);
-  for (const patch of [{ workspaceOpen: false }, { workspaceMounted: false }, { workspaceTab: "files" }, { accountView: "settings" }, { notesOpen: true }, { automationsOpen: true }, { projectHomeId: "project" }, { browserDocumentVisible: false }]) assert.equal(visible({ ...base, ...patch }), false);
+  for (const patch of [{ workspaceOpen: false }, { workspaceMounted: false }, { workspaceTab: "files" }, { accountView: "settings" }, { notesOpen: true }, { automationsOpen: true }, { calendarOpen: true }, { projectHomeId: "project" }, { browserDocumentVisible: false }]) assert.equal(visible({ ...base, ...patch }), false);
 });
 test("hidden browser never connects; teardown disposes frames and stale messages cannot paint", () => {
   assert.equal(harness(false).sockets.length, 0);

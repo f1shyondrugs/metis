@@ -76,6 +76,15 @@ export NODE_OPTIONS="$build_node_options"
   exit 1
 }
 
+# Production serves compiled assets, not webpack/SWC compiler caches.
+# Keep runtime image/fetch caches intact and allow explicit local cache reuse.
+if [[ "${METIS_REUSE_BUILD_CACHE:-0}" != "1" ]]; then
+  for compiler_cache in "$BUILD_DIR/cache/webpack" "$BUILD_DIR/cache/swc"; do
+    if [[ -d "$compiler_cache" && ! -L "$BUILD_DIR/cache" && ! -L "$compiler_cache" ]]; then
+      rm -rf -- "$compiler_cache"
+    fi
+  done
+fi
 build_succeeded=1
 rm -rf -- "$rollback_dir"
 restore_tsconfig

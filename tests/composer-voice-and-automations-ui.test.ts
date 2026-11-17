@@ -72,7 +72,7 @@ test("voice composer exposes cancel via the plus button and drops stale waveform
   assert.match(shellSource, /Cancel voice input/);
   assert.match(shellSource, /<X className="size-4" \/>/);
   assert.match(shellSource, /voiceRecording && voiceState === "recording"/);
-  assert.match(shellSource, /\[activeChatId, automationsOpen, notesOpen\]/);
+  assert.match(shellSource, /\[activeChatId, automationsOpen, notesOpen, calendarOpen\]/);
   assert.match(shellSource, /composerTranscriptInsert/);
   assert.match(shellSource, /setComposerSyncNonce/);
   assert.match(shellSource, /paintVoiceWaveform/);

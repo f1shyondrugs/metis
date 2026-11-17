@@ -21,7 +21,7 @@ import { boundInstallerLogLines, readBoundedUpdateJson } from "./installer-updat
 type UpdateJobResult = {
   tag: string;
   commit?: string;
-  method?: "installer";
+  method?: "installer" | "package";
   asset: string;
   activeSlot?: ".next-a" | ".next-b";
   preparedSlot?: ".next-a" | ".next-b";

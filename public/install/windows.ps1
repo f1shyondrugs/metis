@@ -723,11 +723,12 @@ try {
 $runner = Join-Path $InstallDir "run-service.ps1"
 @"
 `$ErrorActionPreference = "Stop"
-Get-Content -LiteralPath (Join-Path `$PSScriptRoot ".env") | Where-Object { `$_ -and -not `$_.StartsWith("#") } | ForEach-Object {
+Get-Content -LiteralPath (Join-Path `$PSScriptRoot ".env") -Encoding UTF8 | Where-Object { `$_ -and -not `$_.StartsWith("#") } | ForEach-Object {
   `$pair = `$_ -split "=", 2
   if (`$pair.Count -eq 2) { [Environment]::SetEnvironmentVariable(`$pair[0].Trim([char]0xFEFF), `$pair[1], "Process") }
 }
 Set-Location `$PSScriptRoot
+if (`$args.Count -eq 1 -and `$args[0] -eq "--metis-load-env-only") { return }
 `$node = `$env:METIS_NODE_BIN
 if (-not `$node -or -not (Test-Path -LiteralPath `$node)) { `$node = (Get-Command node).Source }
 & `$node @args
@@ -839,9 +840,9 @@ internal static class MetisHost {
                         string node = Env("METIS_NODE_BIN", "node.exe");
                         string tsx = "--import tsx ";
                         string[] commands = {
-                            tsx + "\"" + Path.Combine(root, "server.mjs") + "\"",
-                            tsx + "\"" + Path.Combine(root, "worker.ts") + "\"",
-                            "\"" + Path.Combine(root, "lib/mcp-core/gateway-core.mjs") + "\""
+                            "\"" + Path.Combine(root, "scripts/run-installed-service.cjs") + "\" app",
+                            "\"" + Path.Combine(root, "scripts/run-installed-service.cjs") + "\" worker",
+                            "\"" + Path.Combine(root, "scripts/run-installed-service.cjs") + "\" mcp"
                         };
                         string[] names = { "app", "worker", "mcp" };
                         if (docker) {
@@ -1017,10 +1018,8 @@ function appendChildLog(name, chunk) {
 }
 function childCommand(name) {
   const node = config.METIS_NODE_BIN || "node.exe";
-  const rootPath = (value) => isAbsolute(value) ? value : join(installRoot, value);
-  if (name === "app") return { command: node, args: ["--import", "tsx", rootPath("server.mjs")] };
-  if (name === "worker") return { command: node, args: ["--import", "tsx", rootPath("worker.ts")] };
-  return { command: node, args: [rootPath("lib/mcp-core/gateway-core.mjs")] };
+  if (!["app", "worker", "mcp"].includes(name)) throw new Error("Unsupported service role");
+  return { command: node, args: [join(installRoot, "scripts", "run-installed-service.cjs"), name] };
 }
 function startChild(name) {
   const command = childCommand(name);
@@ -1265,6 +1264,7 @@ for ($attempt = 0; $attempt -lt 20; $attempt++) {
 if ($aiChatHost -eq "0.0.0.0") {
   Write-Host "Warning: the web application is reachable on the local network. Use strong credentials and a firewall or trusted TLS reverse proxy."
 }
+if (-not $useDocker) { [IO.File]::WriteAllText((Join-Path $InstallDir ".metis-package-updates-v1"), "1") }
 Write-Host "`nMetis AI installed successfully."
 Write-Host "Open: $publicUrl (or Metis AI in the Start menu)"
 Write-Host "Host: background app, starts automatically at sign-in. Logs: $dataDir"

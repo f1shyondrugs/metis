@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -38,7 +38,7 @@ fs.writeFileSync(binary, "#!/usr/bin/env node\\nconsole.log('codex-cli " + selec
   chmodSync(which, 0o755);
   const run = (version: string) => execFileSync(process.execPath, [script], {
     cwd: root,
-    env: { ...process.env, PATH: `${bin}:/usr/bin:/bin`, CHAT_DATA_DIR: data, MOCK_CLI_VERSION: version },
+    env: { ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, CHAT_DATA_DIR: data, MOCK_CLI_VERSION: version },
     encoding: "utf8",
   });
   try {
@@ -47,6 +47,23 @@ fs.writeFileSync(binary, "#!/usr/bin/env node\\nconsole.log('codex-cli " + selec
     const initial = JSON.parse(readFileSync(manifestPath, "utf8"));
     assert.equal(initial.tracking, "latest");
     assert.equal(initial.version, "0.156.1");
+
+    const cliRoot = path.dirname(manifestPath);
+    for (let i = 0; i < 20; i++) {
+      const version = path.join(cliRoot, "0.155." + i);
+      mkdirSync(path.join(version, "node_modules/@openai/codex"), { recursive: true });
+      writeFileSync(path.join(version, "node_modules/@openai/codex/package.json"), JSON.stringify({ version: "0.155." + i }));
+      const old = new Date(Date.now() - 3 * 86400000);
+      utimesSync(version, old, old);
+    }
+    const upgradeOutput=run("0.156.2");
+    assert.ok(upgradeOutput.includes("obsolete CLI versions"));
+    const upgraded = JSON.parse(readFileSync(manifestPath, "utf8"));
+    assert.equal(upgraded.previousVersion, "0.156.1");
+    assert.ok(existsSync(path.join(cliRoot, "0.156.1")), "rollback retained");
+    if(upgradeOutput.includes("cleanup deferred: Process visibility unavailable"))assert.ok(existsSync(path.join(cliRoot,"0.155.0")),"unknown process visibility must preserve old versions");
+    else assert.ok(!existsSync(path.join(cliRoot, "0.155.0")), "old managed CLI removed");
+    assert.ok(!existsSync(path.join(cliRoot, ".sync.lock")));
 
     writeFileSync(manifestPath, JSON.stringify({ ...initial, tracking: "pinned" }));
     assert.ok(run("0.999.0").includes("codex: 0.156.1 (pinned)"));

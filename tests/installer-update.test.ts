@@ -12,6 +12,20 @@ const base = {
   dataDir: path.join(root, "data"),
 };
 
+test("capable native installs use prebuilt packages on each supported OS", () => {
+  for(const platform of ["linux","darwin","win32"] as const){
+    const plan=buildInstallerUpdatePlan({...base,installDir:"/stable/install",docker:false,channel:"releases",tag:"v1.2.3",platform,packageUpdates:true,repository:"f1shyondrugs/metis"});
+    assert.equal(plan.kind,"package");
+    assert.equal(plan.command,process.execPath);
+    assert.ok(plan.args.includes("/stable/install"));
+    assert.ok(plan.args.includes("f1shyondrugs/metis"));
+    assert.equal(plan.args.includes("--native"),false);
+    assert.match(plan.scriptSource,/package-update-runner.mjs$/);
+  }
+  assert.throws(()=>buildInstallerUpdatePlan({...base,docker:false,channel:"releases",tag:"../unsafe",packageUpdates:true}),/Invalid release/);
+  assert.throws(()=>buildInstallerUpdatePlan({...base,docker:false,channel:"releases",packageUpdates:true}),/verified release tag/);
+});
+
 test("native Linux settings updates run linux.sh non-interactively", () => {
   const plan = buildInstallerUpdatePlan({
     ...base,
@@ -93,11 +107,11 @@ test("macOS and Windows plans use the platform installer files", () => {
 
 test("copied installer scripts stay in dataDir, not systemd PrivateTmp", () => {
   const dest = installerUpdateScriptPath("/var/lib/metis/data", path.join(root, "install", "linux.sh"));
-  assert.equal(dest, "/var/lib/metis/data/metis-ai-update-run.sh");
+  assert.equal(dest, path.join("/var/lib/metis/data", "metis-ai-update-run.sh"));
   assert.equal(dest.includes("/tmp/"), false);
 });
 
-test("systemd-run environment carries Node and pnpm from an existing install", () => {
+test("systemd-run environment carries Node and pnpm from an existing install", { skip: process.platform === "win32" }, () => {
   const args = installerSystemdEnvironment(
     { PATH: "/bin", USER: "root", NODE_ENV: "test", METIS_NODE_HOME: "/opt/node", METIS_PNPM_HOME: "/opt/pnpm/bin" },
     "/opt/metis",
