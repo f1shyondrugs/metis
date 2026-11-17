@@ -13,6 +13,20 @@ Create skills that give Metis useful, non-obvious guidance without constraining 
 
 Use the available Metis file tools to create the complete skill folder, then register the package using [scripts/register_skill.py](scripts/register_skill.py), or import its SKILL.md through Agent Hub. Run the helper with the Metis workspace root: `python scripts/register_skill.py skills/manual/<skill-name> --root <workspace-root>`. Keep references, scripts and assets next to SKILL.md; do not store a package as a single flattened prompt. Use execute_command only when a helper script is needed. New skills are match-based unless the user explicitly asks for Always on.
 
+## Autonomous learning from experience
+
+After a substantial task reaches a verified result, and when a skill proves incomplete during use, briefly assess whether the work produced a reusable, non-obvious procedure. Examples include a tested workaround, a repeatable tool workflow, or a corrected assumption with a confirmed solution. Do this at meaningful milestones or before finishing, not after every tool call. Routine answers, untested guesses and one-off details do not need a skill.
+
+When the learning would materially help a future task, create or improve a skill without waiting for an explicit "save this as a skill" request. This is permission to preserve the learned procedure, not to expand the user's task or perform additional external actions. Finish the user's primary task first; keep the learning pass bounded and skip it when there is no useful lesson.
+
+- Inspect the enabled skill catalog and the relevant package first. Prefer a focused improvement to an existing locally maintained skill; avoid duplicates and never re-enable a disabled skill. For upstream/bundled packages, prefer a local companion skill unless the user requested changing that package.
+- Capture the validated method, when to use it, important failure conditions and how to verify success. Generalize incidental paths, IDs and example inputs. Preserve uncertainty; a failed attempt alone does not establish a reliable remedy. Add scripts or references only when they provide concrete reuse value.
+- Skills store **how to do something**. Owner facts and preferences belong in appropriately scoped memory; temporary progress belongs in chat working memory. Do not embed credentials, personal data, private transcripts or account-specific content in shared skill packages. Respect account/project boundaries and explicit no-learning instructions.
+- Use the normal package creation, validation and registration workflow below. Keep learned skills match-based, not Always on. Validate changed instructions and run any added or changed helper scripts safely; registration must succeed before claiming the skill is available. If persistence or validation is unavailable, report that limit rather than claiming the lesson was saved.
+- Learn only when the current mode and available tools permit file changes. Do not persist learning from Incognito chats, or create/update skills in Ask, Plan or other read-only contexts. Do not change system prompts, permissions or unrelated configuration as a learning side effect.
+
+After a successful save, mention the created or improved skill in one short sentence with its name and purpose. Otherwise do not add a ceremonial learning recap. This improves reusable instructions; it is not model-weight training and does not guarantee the agent will capture every lesson.
+
 ## Core Principles
 
 **Assume Metis is already capable.** Include only information that changes its decisions or improves its work. Remove generic advice, repeated instructions, speculative edge cases, and examples that do not materially clarify the task.

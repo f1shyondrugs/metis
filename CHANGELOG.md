@@ -4,6 +4,14 @@ All notable Metis AI releases are documented here. Release tags and GitHub
 releases are created locally with `pnpm release`; GitHub Actions does not
 publish releases.
 
+## v1.0.28 — 2026-11-17
+
+- Add the native calendar workspace with account-scoped events, two-way iCloud/Google synchronization, conflict handling and URL-backed navigation.
+- Consolidate workspace headers, shared notebook presence, interactive link previews and website favicons while preserving authenticated navigation and drafts.
+- Reduce desktop session rendering and offscreen media work; retain verified Quick Assistant origin routing and context-aware visual guidance.
+- Convert document copies between Notebooks, Canvas and Plan using the shared editor and spellcheck controls.
+- Correct protected sign-in form targeting and preserve private-browser screenshot behavior; include complete registered skill packages and tested skill-learning guidance.
+
 ## v1.0.27 — 2026-11-12
 
 - Give full-screen onboarding a longer coordinated dot entrance and bounded spatial wave feedback on pointer presses, with immediate Reduced Motion behavior.
