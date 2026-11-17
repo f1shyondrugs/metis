@@ -106,11 +106,11 @@ test("macOS and Windows plans use the platform installer files", () => {
 
 test("copied installer scripts stay in dataDir, not systemd PrivateTmp", () => {
   const dest = installerUpdateScriptPath("/var/lib/metis/data", path.join(root, "install", "linux.sh"));
-  assert.equal(dest, "/var/lib/metis/data/metis-ai-update-run.sh");
+  assert.equal(dest, path.join("/var/lib/metis/data", "metis-ai-update-run.sh"));
   assert.equal(dest.includes("/tmp/"), false);
 });
 
-test("systemd-run environment carries Node and pnpm from an existing install", () => {
+test("systemd-run environment carries Node and pnpm from an existing install", { skip: process.platform === "win32" }, () => {
   const args = installerSystemdEnvironment(
     { PATH: "/bin", USER: "root", NODE_ENV: "test", METIS_NODE_HOME: "/opt/node", METIS_PNPM_HOME: "/opt/pnpm/bin" },
     "/opt/metis",
