@@ -41,7 +41,7 @@ echo "Running release checks as $(git config user.name) <$(git config user.email
 pnpm test:release
 pnpm exec tsx --test tests/release-manifest.test.ts tests/github-releases.test.ts
 commit="$(git rev-parse HEAD)"
-METIS_RELEASE_TAG="$tag" METIS_RELEASE_VERSION="$expected_version" METIS_RELEASE_COMMIT="$commit" pnpm build
+# Platform builds run in native-packages.yml. Users never compile stable package updates.
 
 git tag -a "$tag" -m "Metis AI $tag"
 git push origin HEAD:master "$tag"
@@ -73,7 +73,7 @@ notes_file="$work_dir/release-notes.md"
   ' CHANGELOG.md
   bash scripts/release-install-notes.sh "$tag" "$repo"
 } > "$notes_file"
-gh release create "$tag" --title "Metis AI ${tag}" --notes-file "$notes_file" \
+gh release create "$tag" --draft --title "Metis AI ${tag}" --notes-file "$notes_file" \
   "$work_dir/metis-ai-${tag}.tar.gz" \
   "$work_dir/metis-install.sh" \
   "$work_dir/metis-install.ps1" \
@@ -81,4 +81,4 @@ gh release create "$tag" --title "Metis AI ${tag}" --notes-file "$notes_file" \
   "$work_dir/metis-macos.sh" \
   "$work_dir/metis-windows.ps1" \
   "$work_dir/SHA256SUMS"
-echo "Published ${tag} as ${owner}."
+echo "Created draft ${tag} as ${owner}; native-packages.yml publishes only after every platform succeeds."

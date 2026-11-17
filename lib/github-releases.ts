@@ -48,7 +48,7 @@ export function githubRepoFromRemoteUrl(url?: string | null): string {
   return match?.[1] || DEFAULT_GITHUB_REPO;
 }
 
-async function resolveGithubRepo(root: string): Promise<string> {
+export async function resolveGithubRepo(root: string): Promise<string> {
   try {
     const { stdout } = await execFileAsync("git", ["remote", "get-url", "origin"], { cwd: root, timeout: 2_000 });
     return githubRepoFromRemoteUrl(stdout);

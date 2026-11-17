@@ -12,6 +12,19 @@ const base = {
   dataDir: path.join(root, "data"),
 };
 
+test("capable native installs use prebuilt packages on each supported OS", () => {
+  for(const platform of ["linux","darwin","win32"] as const){
+    const plan=buildInstallerUpdatePlan({...base,installDir:"/stable/install",docker:false,channel:"releases",tag:"v1.2.3",platform,packageUpdates:true,repository:"f1shyondrugs/metis"});
+    assert.equal(plan.kind,"package");
+    assert.equal(plan.command,process.execPath);
+    assert.ok(plan.args.includes("/stable/install"));
+    assert.ok(plan.args.includes("f1shyondrugs/metis"));
+    assert.equal(plan.args.includes("--native"),false);
+    assert.match(plan.scriptSource,/package-update-runner.mjs$/);
+  }
+  assert.throws(()=>buildInstallerUpdatePlan({...base,docker:false,channel:"releases",tag:"../unsafe",packageUpdates:true}),/Invalid release/);
+});
+
 test("native Linux settings updates run linux.sh non-interactively", () => {
   const plan = buildInstallerUpdatePlan({
     ...base,

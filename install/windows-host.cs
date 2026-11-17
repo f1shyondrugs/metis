@@ -93,9 +93,9 @@ internal static class MetisHost {
                         string node = Env("METIS_NODE_BIN", "node.exe");
                         string tsx = "--import tsx ";
                         string[] commands = {
-                            tsx + "\"" + Path.Combine(root, "server.mjs") + "\"",
-                            tsx + "\"" + Path.Combine(root, "worker.ts") + "\"",
-                            "\"" + Path.Combine(root, "lib/mcp-core/gateway-core.mjs") + "\""
+                            "\"" + Path.Combine(root, "scripts/run-installed-service.cjs") + "\" app",
+                            "\"" + Path.Combine(root, "scripts/run-installed-service.cjs") + "\" worker",
+                            "\"" + Path.Combine(root, "scripts/run-installed-service.cjs") + "\" mcp"
                         };
                         string[] names = { "app", "worker", "mcp" };
                         if (docker) {

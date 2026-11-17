@@ -7,6 +7,7 @@ import {
   fetchReleaseByTag,
   loadLocalUpdateIdentity,
   resolveCurrentGitHead,
+  resolveGithubRepo,
   type UpdateChannel,
 } from "@/lib/github-releases";
 import { loadReleaseManifest } from "@/lib/release-manifest";
@@ -98,6 +99,8 @@ export async function POST(req: Request) {
       const commitSha = commit?.sha || requestedCommit;
       const job = await startInstallerUpdateJob({
         root: config.root,
+        installDir: config.installDir,
+        repository: await resolveGithubRepo(config.installDir),
         docker: config.docker,
         channel: pinnedChannel,
         tag,
@@ -134,6 +137,8 @@ export async function POST(req: Request) {
 
     const job = await startInstallerUpdateJob({
       root: config.root,
+        installDir: config.installDir,
+        repository: await resolveGithubRepo(config.installDir),
       docker: config.docker,
       channel,
       tag: channel === "releases" ? update.latestTag : undefined,

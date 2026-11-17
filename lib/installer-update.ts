@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { execFile, spawn } from "node:child_process";
 import { copyFile, mkdir, open, writeFile } from "node:fs/promises";
 import { createInstallerLogCursor, readBoundedInstallerLog, streamInstallerLog, updateLogFailure, updateLogSuccess } from "./installer-update-log";
@@ -13,6 +14,9 @@ export const INSTALLER_UPDATE_UNIT_SUFFIX = "-self-update";
 
 export type InstallerUpdateInput = {
   root: string;
+  installDir?: string;
+  packageUpdates?: boolean;
+  repository?: string;
   docker: boolean;
   channel: "releases" | "commits";
   tag?: string;
@@ -23,7 +27,7 @@ export type InstallerUpdateInput = {
 };
 
 export type InstallerUpdatePlan = {
-  kind: "native" | "docker";
+  kind: "native" | "docker" | "package";
   platform: "linux" | "darwin" | "win32";
   command: string;
   args: string[];
@@ -35,7 +39,7 @@ export type InstallerUpdatePlan = {
 export type InstallerUpdateResult = {
   tag: string;
   commit?: string;
-  method: "installer";
+  method: "installer" | "package";
   asset: string;
 };
 
@@ -121,6 +125,13 @@ export function buildInstallerUpdatePlan(input: InstallerUpdateInput): Installer
     throw new Error("Docker installations are no longer supported by the installer. Install natively in a separate directory and migrate your data separately.");
   }
 
+  if(input.packageUpdates && input.channel==="releases" && tag){
+    if(!/^v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(tag))throw new Error("Invalid release tag.");
+    const scriptSource=path.join(input.root,"scripts","package-update-runner.mjs");
+    return {kind:"package",platform,command:process.execPath,scriptSource,logFile,unitName,
+      args:[scriptSource,"--install-dir",input.installDir||input.root,"--data-dir",input.dataDir,"--tag",tag,"--service-name",input.serviceName,"--repo",input.repository||"f1shyondrugs/metis-ai"]};
+  }
+
   if (platform === "win32") {
     const scriptSource = path.join(input.root, "install", "windows.ps1");
     const args = [
@@ -132,7 +143,7 @@ export function buildInstallerUpdatePlan(input: InstallerUpdateInput): Installer
       "-NonInteractive",
       "-Native",
       "-InstallDir",
-      input.root,
+      input.installDir || input.root,
       "-ServiceName",
       input.serviceName,
     ];
@@ -154,7 +165,7 @@ export function buildInstallerUpdatePlan(input: InstallerUpdateInput): Installer
     "--non-interactive",
     "--native",
     "--install-dir",
-    input.root,
+    input.installDir || input.root,
     "--service-name",
     input.serviceName,
   ];
@@ -303,7 +314,7 @@ export function installerExitCommand(plan: InstallerUpdatePlan, args: string[]):
   if (plan.platform === "win32") {
     const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
     const script = `[IO.File]::AppendAllText(${quote(plan.logFile)}, ("[metis-update-pid:" + $PID + "]" + [Environment]::NewLine)); & ${[plan.command, ...args].map(quote).join(" ")}; $updateExit = $LASTEXITCODE; [IO.File]::AppendAllText(${quote(plan.logFile)}, ([Environment]::NewLine + "[metis-update-exit:" + $updateExit + "]" + [Environment]::NewLine)); exit $updateExit`;
-    return [plan.command, "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")];
+    return ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")];
   }
   return ["/bin/bash", "-c", 'printf "[metis-update-pid:%s]\\n" "$$"; "$@"; update_exit=$?; printf "\\n[metis-update-exit:%s]\\n" "$update_exit"; exit "$update_exit"', "--", plan.command, ...args];
 }
@@ -335,9 +346,11 @@ export async function runInstallerUpdate(
   input: InstallerUpdateInput,
   log: (message: string) => void,
 ): Promise<InstallerUpdateResult> {
-  const plan = buildInstallerUpdatePlan(input);
+  if(input.channel === "commits" && existsSync(path.join(input.installDir || input.root, ".metis-release.json"))) throw new Error("Commit-channel updates require a separate source checkout; this native installation uses prebuilt releases.");
+  const packageUpdates = input.packageUpdates ?? existsSync(path.join(input.installDir || input.root, ".metis-package-updates-v1"));
+  const plan = buildInstallerUpdatePlan({ ...input, packageUpdates });
   await mkdir(input.dataDir, { recursive: true });
-  const script = await copyScriptForUpdate(plan.scriptSource, input.dataDir);
+  const script = plan.kind === "package" ? plan.scriptSource : await copyScriptForUpdate(plan.scriptSource, input.dataDir);
   const args = plan.args.map((value) => (value === plan.scriptSource ? script : value));
   log(`Running ${plan.kind} installer: ${plan.command} ${args.join(" ")}`);
   if (plan.unitName && plan.platform === "linux") {
@@ -347,7 +360,7 @@ export async function runInstallerUpdate(
   }
   return {
     tag: input.tag || (input.channel === "commits" ? "master" : "latest"),
-    method: "installer",
+    method: plan.kind === "package" ? "package" : "installer",
     asset: path.basename(plan.scriptSource),
   };
 }

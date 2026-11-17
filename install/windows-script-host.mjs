@@ -107,10 +107,8 @@ function appendChildLog(name, chunk) {
 }
 function childCommand(name) {
   const node = config.METIS_NODE_BIN || "node.exe";
-  const rootPath = (value) => isAbsolute(value) ? value : join(installRoot, value);
-  if (name === "app") return { command: node, args: ["--import", "tsx", rootPath("server.mjs")] };
-  if (name === "worker") return { command: node, args: ["--import", "tsx", rootPath("worker.ts")] };
-  return { command: node, args: [rootPath("lib/mcp-core/gateway-core.mjs")] };
+  if (!["app", "worker", "mcp"].includes(name)) throw new Error("Unsupported service role");
+  return { command: node, args: [join(installRoot, "scripts", "run-installed-service.cjs"), name] };
 }
 function startChild(name) {
   const command = childCommand(name);

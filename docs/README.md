@@ -24,6 +24,8 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 | [NOTE-PIN-PERFORMANCE.md](./NOTE-PIN-PERFORMANCE.md) | Note pinning with many chats: measured bottlenecks and changed-only writes |
 | [NOTEBOOK-PRESENCE.md](./NOTEBOOK-PRESENCE.md) | Account avatars, notebook-wide presence and permission-scoped follow mode |
 | [RELEASE-TESTING.md](./RELEASE-TESTING.md) | Release and upgrade checks |
+| [NATIVE-UPDATER.md](./NATIVE-UPDATER.md) | Prebuilt native updates, recovery and desktop diagnostics |
+| [STORAGE-RETENTION.md](./STORAGE-RETENTION.md) | Safe update storage retention |
 
 ## Architecture (historical + current)
 

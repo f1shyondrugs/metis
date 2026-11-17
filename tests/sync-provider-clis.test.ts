@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -47,6 +47,21 @@ fs.writeFileSync(binary, "#!/usr/bin/env node\\nconsole.log('codex-cli " + selec
     const initial = JSON.parse(readFileSync(manifestPath, "utf8"));
     assert.equal(initial.tracking, "latest");
     assert.equal(initial.version, "0.156.1");
+
+    const cliRoot = path.dirname(manifestPath);
+    for (let i = 0; i < 20; i++) {
+      const version = path.join(cliRoot, "0.155." + i);
+      mkdirSync(path.join(version, "node_modules/@openai/codex"), { recursive: true });
+      writeFileSync(path.join(version, "node_modules/@openai/codex/package.json"), JSON.stringify({ version: "0.155." + i }));
+      const old = new Date(Date.now() - 3 * 86400000);
+      utimesSync(version, old, old);
+    }
+    assert.ok(run("0.156.2").includes("obsolete CLI versions"));
+    const upgraded = JSON.parse(readFileSync(manifestPath, "utf8"));
+    assert.equal(upgraded.previousVersion, "0.156.1");
+    assert.ok(existsSync(path.join(cliRoot, "0.156.1")), "rollback retained");
+    assert.ok(!existsSync(path.join(cliRoot, "0.155.0")), "old managed CLI removed");
+    assert.ok(!existsSync(path.join(cliRoot, ".sync.lock")));
 
     writeFileSync(manifestPath, JSON.stringify({ ...initial, tracking: "pinned" }));
     assert.ok(run("0.999.0").includes("codex: 0.156.1 (pinned)"));

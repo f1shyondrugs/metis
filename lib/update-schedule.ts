@@ -1,6 +1,6 @@
 import { getDatabase } from "@/lib/sqlite";
 import { config } from "@/lib/config";
-import { checkForUpdate } from "@/lib/github-releases";
+import { checkForUpdate, resolveGithubRepo } from "@/lib/github-releases";
 import { buildUpdateJobRange } from "@/lib/update-history";
 import { getUpdateJob, startInstallerUpdateJob } from "@/lib/update-job";
 
@@ -74,6 +74,8 @@ export function startUpdateScheduler() {
       if (update.updateAvailable) {
         const job = await startInstallerUpdateJob({
           root: config.root,
+          installDir: config.installDir,
+          repository: await resolveGithubRepo(config.installDir),
           docker: config.docker,
           channel: "releases",
           tag: update.latestTag,

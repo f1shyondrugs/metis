@@ -900,12 +900,12 @@ SystemCallArchitectures=native
 WantedBy=multi-user.target
 EOF
   }
-  write_unit "${service_name}.service" "Metis AI" full true "$install_dir/node_modules/tsx/dist/cli.mjs" "$install_dir/server.mjs"
-  write_unit "${service_name}-worker.service" "Metis AI worker" full true "$install_dir/node_modules/tsx/dist/cli.mjs" "$install_dir/worker.ts"
+  write_unit "${service_name}.service" "Metis AI" full true "$install_dir/scripts/run-installed-service.cjs" app
+  write_unit "${service_name}-worker.service" "Metis AI worker" full true "$install_dir/scripts/run-installed-service.cjs" worker
   # The MCP gateway is the explicit host-administration boundary. It keeps
   # system writes and privilege transitions available, while app/worker agents
   # run with a read-only system tree and no-new-privileges.
-  write_unit "${service_name}-mcp.service" "Metis AI MCP gateway" false false "$install_dir/lib/mcp-core/gateway-core.mjs"
+  write_unit "${service_name}-mcp.service" "Metis AI MCP gateway" false false "$install_dir/scripts/run-installed-service.cjs" mcp
   run_privileged systemctl daemon-reload
   run_privileged systemctl enable "${service_name}.service" "${service_name}-worker.service" "${service_name}-mcp.service"
   run_privileged systemctl restart "${service_name}.service" "${service_name}-worker.service" "${service_name}-mcp.service"
@@ -920,6 +920,7 @@ if command -v curl >/dev/null 2>&1; then
     die "The MCP gateway did not become healthy on port $mcp_port."
 fi
 
+printf '1\n' > "$install_dir/.metis-package-updates-v1"
 install_method="native"
 {
   printf '{'
