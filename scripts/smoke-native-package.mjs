@@ -15,6 +15,8 @@ try{
   await extractVerifiedPackage(archive,root);
   const tag=JSON.parse(fs.readFileSync(path.join(root,"package-manifest.json"),"utf8")).tag;
   const manifest=validatePackage(root,{tag});
+  const packageBefore=fs.readFileSync(path.join(root,"package.json"));
+  const lockBefore=fs.readFileSync(path.join(root,"pnpm-lock.yaml"));
   const port=await freePort(),mcp=await freePort();
   const env={PATH:process.env.PATH,HOME:home,USERPROFILE:home,SYSTEMROOT:process.env.SYSTEMROOT,APPDATA:home,LOCALAPPDATA:home,TEMP:temp,TMP:temp,NODE_ENV:"production",
     AI_CHAT_ROOT:root,AI_CHAT_INSTALL_DIR:root,CHAT_DATA_DIR:data,PORT:String(port),MCP_PORT:String(mcp),AI_CHAT_HOST:"127.0.0.1",AI_CHAT_PUBLIC_URL:"http://127.0.0.1:"+port,
@@ -45,7 +47,9 @@ try{
     await new Promise(resolve=>setTimeout(resolve,500));
   }
   if(!healthy)throw Error("Packaged app/worker/gateway did not become healthy: "+output);
+  if(!packageBefore.equals(fs.readFileSync(path.join(root,"package.json")))||!lockBefore.equals(fs.readFileSync(path.join(root,"pnpm-lock.yaml"))))throw Error("The native runtime attempted to install dependencies at startup");
   console.log("NATIVE_PACKAGE_REAL_APP_WORKER_GATEWAY_AND_ASSET_OK");
+  console.log("NO_RUNTIME_DEPENDENCY_INSTALL_OK");
 }finally{
   for(const child of children)if(child.pid)try{
     if(process.platform==="win32")execFileSync("taskkill.exe",["/PID",String(child.pid),"/T","/F"],{stdio:"ignore",windowsHide:true});

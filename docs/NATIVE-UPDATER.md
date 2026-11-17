@@ -16,6 +16,8 @@ Windows server updates use an on-demand Task Scheduler action so stopping the ol
 4. Atomically replace `.metis-release.json`, start the named services and verify app/worker/gateway health, actual served release identity and browser assets.
 5. On failure restore the old code pointer, restart and verify rollback. A durable transaction journal recovers interrupted activation on the next attempt. An unprovably stale lock is never stolen. Keep the active and previous release; referenced/recent versions are deferred by the shared retention helper.
 
+The package's Next configuration is emitted as JavaScript in CI before pruning development tools. It does not ship a TypeScript Next configuration that could trigger a compiler installation on the host; the packaged startup smoke test also checks that package/lock files remain unchanged.
+
 The old source installation remains untouched as the first rollback target. Application data and `.env` stay outside package releases. Code rollback does not blindly restore user data: the SQLite snapshot is preserved for explicit recovery if a migration makes old code incompatible. Rollback failure is reported as recovery-required, never success.
 
 Native package CI builds linux-x64, linux-arm64, darwin-arm64, darwin-x64 and win32-x64 with their own native dependencies and Node 22. Releases remain drafts until every platform package verifies. Linux x64 uses Ubuntu 22.04; ARM uses Ubuntu 24.04. Older libc/OS versions can fail native preflight without touching services. Windows CI uses a hoisted dependency layout to avoid requiring Developer Mode for package symlinks.

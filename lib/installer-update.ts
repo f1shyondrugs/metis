@@ -127,6 +127,7 @@ export function buildInstallerUpdatePlan(input: InstallerUpdateInput): Installer
     throw new Error("Docker installations are no longer supported by the installer. Install natively in a separate directory and migrate your data separately.");
   }
 
+  if(input.packageUpdates && input.channel==="releases" && !tag)throw new Error("A verified release tag is required for native package updates.");
   if(input.packageUpdates && input.channel==="releases" && tag){
     if(!/^v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(tag))throw new Error("Invalid release tag.");
     const scriptSource=path.join(input.root,"scripts","package-update-runner.mjs");

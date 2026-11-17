@@ -30,8 +30,23 @@ if (manifest.channel !== "stable" || manifest.isRelease !== true || manifest.com
 console.log("STABLE_MANIFEST_OK");
 NODE
 
+# Dry-run contracts are offline fixtures, not checks of GitHub's rate limit.
+mkdir -p "$work_dir/bin"
+cat > "$work_dir/bin/curl" <<'FIXTURE'
+#!/usr/bin/env bash
+for argument in "$@"; do
+  case "$argument" in
+    https://api.github.com/repos/*/releases/latest|https://api.github.com/repos/*/releases/tags/*)
+      printf '{"tag_name":"%s","draft":false,"prerelease":false,"assets":[{"name":"SHA256SUMS"}]}\n' "$METIS_RELEASE_FIXTURE_TAG"
+      exit 0 ;;
+  esac
+done
+printf 'Unexpected network operation in dry-run fixture\n' >&2
+exit 1
+FIXTURE
+chmod 700 "$work_dir/bin/curl"
 for platform in linux macos; do
-  bash "public/install/$platform.sh" --install-dir "$work_dir/$platform" --dry-run > "$work_dir/$platform.log"
+  PATH="$work_dir/bin:$PATH" METIS_RELEASE_FIXTURE_TAG="$release_tag" bash "public/install/$platform.sh" --install-dir "$work_dir/$platform" --dry-run > "$work_dir/$platform.log"
   grep -F "$work_dir/$platform" "$work_dir/$platform.log"
   [[ ! -e "$work_dir/$platform" ]]
   if bash "public/install/$platform.sh" --docker --dry-run > "$work_dir/rejected.log" 2>&1; then

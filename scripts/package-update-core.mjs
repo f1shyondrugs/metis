@@ -85,7 +85,8 @@ export async function extractVerifiedPackage(archive,destination,{maxBytes=12*10
 export function validatePackage(root,{tag,platform=process.platform,arch=process.arch}){
   const manifest=JSON.parse(fs.readFileSync(path.join(root,"package-manifest.json"),"utf8"));
   if(manifest.schemaVersion!==1||manifest.tag!==tag||manifest.platform!==platform||manifest.arch!==arch||manifest.nodeMajor!==22||!manifest.buildId||!/^[A-Za-z0-9_-]{1,128}$/.test(manifest.buildId))throw Error("Native package identity mismatch");
-  for(const file of ["server.mjs","worker.ts","node_modules/tsx/dist/cli.mjs","lib/mcp-core/gateway-core.mjs",".next/BUILD_ID",platform==="win32"?".runtime/node.exe":".runtime/node"]){
+  if(fs.existsSync(path.join(root,"next.config.ts")))throw Error("Native package must not install a compiler at startup");
+  for(const file of ["next.config.mjs","server.mjs","worker.ts","node_modules/tsx/dist/cli.mjs","lib/mcp-core/gateway-core.mjs",".next/BUILD_ID",platform==="win32"?".runtime/node.exe":".runtime/node"]){
     if(!fs.statSync(path.join(root,file)).isFile())throw Error("Incomplete native package");
   }
   if(fs.readFileSync(path.join(root,".next/BUILD_ID"),"utf8").trim()!==manifest.buildId)throw Error("Package build identity mismatch");

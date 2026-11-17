@@ -23,6 +23,7 @@ test("capable native installs use prebuilt packages on each supported OS", () =>
     assert.match(plan.scriptSource,/package-update-runner.mjs$/);
   }
   assert.throws(()=>buildInstallerUpdatePlan({...base,docker:false,channel:"releases",tag:"../unsafe",packageUpdates:true}),/Invalid release/);
+  assert.throws(()=>buildInstallerUpdatePlan({...base,docker:false,channel:"releases",packageUpdates:true}),/verified release tag/);
 });
 
 test("native Linux settings updates run linux.sh non-interactively", () => {

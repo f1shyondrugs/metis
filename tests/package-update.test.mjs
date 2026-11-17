@@ -18,7 +18,7 @@ async function fixture(){
   const home=fs.mkdtempSync(path.join(os.tmpdir(),"metis-package-test-"));
   const root=path.join(home,"install"),data=path.join(home,"data"),payload=path.join(home,"payload");
   fs.mkdirSync(root);fs.mkdirSync(data);fs.mkdirSync(payload);
-  for(const file of ["server.mjs","worker.ts","node_modules/tsx/dist/cli.mjs","lib/mcp-core/gateway-core.mjs",".next/BUILD_ID",process.platform==="win32"?".runtime/node.exe":".runtime/node"]){
+  for(const file of ["next.config.mjs","server.mjs","worker.ts","node_modules/tsx/dist/cli.mjs","lib/mcp-core/gateway-core.mjs",".next/BUILD_ID",process.platform==="win32"?".runtime/node.exe":".runtime/node"]){
     fs.mkdirSync(path.dirname(path.join(payload,file)),{recursive:true});
     fs.writeFileSync(path.join(payload,file),file===".next/BUILD_ID"?"test-build":"fixture");
   }

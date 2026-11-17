@@ -25,6 +25,10 @@ try{
     fs.cpSync(path.join(root,file),path.join(payload,file),{recursive:true,dereference:false});
   }
   fs.cpSync(path.join(root,dist),path.join(payload,".next"),{recursive:true,dereference:false,filter:source=>!source.startsWith(path.join(root,dist,"cache"))});
+  const runtimeConfig=path.join(root,dist,"runtime-next.config.mjs");
+  if(!fs.existsSync(runtimeConfig))throw Error("Emit the native runtime config before pruning build tools");
+  fs.copyFileSync(runtimeConfig,path.join(payload,"next.config.mjs"));
+  fs.rmSync(path.join(payload,"next.config.ts"),{force:true});
   fs.cpSync(path.join(root,"node_modules"),path.join(payload,"node_modules"),{recursive:true,dereference:false});
   // Rewrite pnpm links into portable relative links, never CI-machine paths.
   const rewrite=directory=>{

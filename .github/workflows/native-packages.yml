@@ -1,7 +1,7 @@
 name: Native server packages
 on:
   pull_request:
-    paths: ['.github/workflows/native-packages.yml', 'scripts/*package*.mjs', 'scripts/run-installed-service.cjs', 'install/**', 'lib/installer-update.ts', 'package.json', 'pnpm-lock.yaml', 'tests/package-update*']
+    paths: ['.github/workflows/native-packages.yml', 'scripts/*package*.mjs', 'scripts/run-installed-service.cjs', 'scripts/prepare-native-runtime.mjs', 'tests/native-runtime-config.test.mjs', 'install/**', 'lib/installer-update.ts', 'package.json', 'pnpm-lock.yaml', 'tests/package-update*']
   push:
     tags: ['v*']
   workflow_dispatch:
@@ -55,12 +55,14 @@ jobs:
       - name: Install native dependencies without symlink requirements
         run: pnpm install --frozen-lockfile --config.node-linker=hoisted
       - name: Verify updater transactions and native launchers
-        run: pnpm exec tsx --test tests/package-update.test.mjs tests/installer-update.test.ts
+        run: pnpm exec tsx --test tests/package-update.test.mjs tests/native-runtime-config.test.mjs tests/installer-update.test.ts
       - name: Typecheck and build
         shell: bash
         run: |
           pnpm exec tsc --noEmit --pretty false
           METIS_RELEASE_COMMIT="$(git rev-parse HEAD)" METIS_RELEASE_VERSION="${METIS_RELEASE_TAG#v}" pnpm build
+      - name: Emit JavaScript runtime config before removing build tools
+        run: node scripts/prepare-native-runtime.mjs
       - name: Retain production dependencies only
         run: pnpm prune --prod --config.node-linker=hoisted
       - name: Verify native runtime
