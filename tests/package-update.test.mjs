@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import * as tar from "tar";
 import { startDetachedProcess,windowsHostOperation,windowsStopProbe } from "../scripts/package-windows-service.mjs";
+import {scheduledUpdateScript} from "../scripts/package-windows-task.mjs";
 import { once } from "node:events";
 import { spawn,spawnSync,execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -28,6 +29,43 @@ async function fixture(){
   const manager={preflight:async()=>events.push("preflight"),stop:async()=>events.push("stop"),start:async()=>events.push("start"),health:async()=>{events.push("health");return true;}};
   return {root,data,home,payload,archive,events,manager,close:()=>fs.rmSync(home,{recursive:true,force:true})};
 }
+test("Windows updater uses an independent task with current identity and no implicit elevation",()=>{
+ const taskName="MetisUpdate-00000000-0000-0000-0000-000000000001";
+ const source=scheduledUpdateScript({command:"node.exe",args:["C:/install/scripts/package-update-runner.mjs"],logFile:"C:/User's folder/update.log",installRoot:"C:/install",packageUpdate:true,taskName});
+ assert.ok(source.includes("-UserId $sid")&&source.includes("if($elevated){'Highest'}else{'Limited'}"));
+ assert.ok(source.includes("SessionId -eq 0"));
+ assert.ok(!source.includes("-Password")&&!source.includes("S4U"));
+ assert.ok(source.includes("Start-ScheduledTask"));
+});
+test("Windows task registration syntax is valid without creating a task",{skip:process.platform!=="win32"},()=>{
+ const source=scheduledUpdateScript({command:"node.exe",args:["runner.mjs"],logFile:"C:/test/update.log",installRoot:"C:/test",packageUpdate:true,taskName:"MetisUpdate-00000000-0000-0000-0000-000000000001"});
+ const encoded=Buffer.from(source,"utf16le").toString("base64");
+ const check="$t=$null;$e=$null;[Management.Automation.Language.Parser]::ParseInput([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('"+encoded+"')),[ref]$t,[ref]$e)|Out-Null;if($e.Count){$e|ForEach-Object{$_.Message};exit 1};'TASK_SCRIPT_PARSE_OK'";
+ assert.match(execFileSync("powershell.exe",["-NoProfile","-NonInteractive","-Command",check],{encoding:"utf8",windowsHide:true}),/TASK_SCRIPT_PARSE_OK/);
+});
+test("Windows scheduler children survive the updater action, without inherited time limits",{skip:process.platform!=="win32"||process.env.GITHUB_ACTIONS!=="true"},async()=>{
+ const f=await fixture(),name="MetisUpdateFixture-"+crypto.randomUUID();
+ const entry=path.join(f.home,"task-child.cjs"),pidFile=path.join(f.home,"child.pid"),parentFile=path.join(f.home,"parent.pid"),ended=path.join(f.home,"parent-ended"),stop=path.join(f.home,"stop");
+ const q=value=>"'"+value.replaceAll("'","''")+"'";
+ const run=script=>execFileSync("powershell.exe",["-NoProfile","-NonInteractive","-EncodedCommand",Buffer.from(script,"utf16le").toString("base64")],{encoding:"utf8",windowsHide:true,timeout:15000});
+ const alive=pid=>{try{process.kill(pid,0);return true;}catch{return false;}};
+ try{
+  fs.writeFileSync(entry,"const fs=require('node:fs');fs.writeFileSync("+JSON.stringify(pidFile)+",String(process.pid));setInterval(()=>{if(fs.existsSync("+JSON.stringify(stop)+"))process.exit(0)},100);setTimeout(()=>process.exit(0),15000);");
+  const action="[IO.File]::WriteAllText("+q(parentFile)+",[string]$PID);$arg='\"'+"+q(entry)+"+'\"';Start-Process -FilePath "+q(process.execPath)+" -ArgumentList $arg -WindowStyle Hidden;Unregister-ScheduledTask -TaskName "+q(name)+" -Confirm:$false;[IO.File]::WriteAllText("+q(ended)+",'ended')";
+  const encoded=Buffer.from(action,"utf16le").toString("base64");
+  run("$ErrorActionPreference='Stop';$id=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;$p=New-ScheduledTaskPrincipal -UserId $id -LogonType S4U -RunLevel Limited;$a=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -NonInteractive -EncodedCommand "+encoded+"';$s=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero);Register-ScheduledTask -TaskName "+q(name)+" -Action $a -Principal $p -Settings $s|Out-Null;Start-ScheduledTask -TaskName "+q(name));
+  const deadline=Date.now()+10000;
+  while(Date.now()<deadline&&(!fs.existsSync(pidFile)||!fs.existsSync(ended)))await new Promise(resolve=>setTimeout(resolve,100));
+  assert.ok(fs.existsSync(pidFile)&&fs.existsSync(ended),"scheduled fixture must run and unregister its own definition");
+  const parent=Number(fs.readFileSync(parentFile,"utf8")),child=Number(fs.readFileSync(pidFile,"utf8"));
+  while(Date.now()<deadline&&alive(parent))await new Promise(resolve=>setTimeout(resolve,100));
+  assert.equal(alive(parent),false);assert.equal(alive(child),true,"the new host must outlive its updater action");
+ }finally{
+  fs.writeFileSync(stop,"stop");
+  try{run("Unregister-ScheduledTask -TaskName "+q(name)+" -Confirm:$false -ErrorAction SilentlyContinue");}catch{}
+  await new Promise(resolve=>setTimeout(resolve,300));f.close();
+ }
+});
 test("a detached service start resolves on spawn, not service termination",async()=>{
  const child=await startDetachedProcess(process.execPath,["-e","setInterval(()=>{},1000)"]);
  try{assert.ok(child.pid);assert.equal(child.exitCode,null);}

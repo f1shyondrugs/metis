@@ -1,3 +1,4 @@
+import { launchWindowsUpdateTask } from "../scripts/package-windows-task.mjs";
 import { existsSync } from "node:fs";
 import { execFile, spawn } from "node:child_process";
 import { copyFile, mkdir, open, writeFile } from "node:fs/promises";
@@ -34,6 +35,7 @@ export type InstallerUpdatePlan = {
   scriptSource: string;
   logFile: string;
   unitName?: string;
+  installRoot?: string;
 };
 
 export type InstallerUpdateResult = {
@@ -128,7 +130,7 @@ export function buildInstallerUpdatePlan(input: InstallerUpdateInput): Installer
   if(input.packageUpdates && input.channel==="releases" && tag){
     if(!/^v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(tag))throw new Error("Invalid release tag.");
     const scriptSource=path.join(input.root,"scripts","package-update-runner.mjs");
-    return {kind:"package",platform,command:process.execPath,scriptSource,logFile,unitName,
+    return {kind:"package",platform,command:process.execPath,scriptSource,logFile,unitName,installRoot:input.installDir||input.root,
       args:[scriptSource,"--install-dir",input.installDir||input.root,"--data-dir",input.dataDir,"--tag",tag,"--service-name",input.serviceName,"--repo",input.repository||"f1shyondrugs/metis-ai"]};
   }
 
@@ -151,6 +153,7 @@ export function buildInstallerUpdatePlan(input: InstallerUpdateInput): Installer
     if (input.channel === "commits" && input.commit) args.push("-Commit", input.commit);
     return {
       kind: "native",
+      installRoot: input.installDir || input.root,
       platform,
       command: "powershell.exe",
       args,
@@ -320,6 +323,19 @@ export function installerExitCommand(plan: InstallerUpdatePlan, args: string[]):
 }
 
 export async function runSpawnedInstaller(plan: InstallerUpdatePlan, args: string[], log: (message: string) => void) {
+  if(plan.platform==="win32"){
+    const task=await launchWindowsUpdateTask({command:plan.command,args,logFile:plan.logFile,installRoot:plan.installRoot||path.dirname(path.dirname(plan.scriptSource)),packageUpdate:plan.kind==="package"});
+    log("Started independent Windows update task "+task+".");
+    const deadline=Date.now()+60*60_000;
+    while(Date.now()<deadline){
+      const lines=await readBoundedInstallerLog(plan.logFile,200);
+      const current=lines.join("\n").slice(Math.max(0,lines.join("\n").lastIndexOf("[metis-update-job:")));
+      const code=installerExitCode(current);
+      if(code!==undefined){if(code!==0)throw new Error("Windows update exited with status "+code+".");return;}
+      await new Promise(resolve=>setTimeout(resolve,1000));
+    }
+    throw new Error("Windows update timed out after one hour.");
+  }
   const handle = await open(plan.logFile, "a", 0o600);
   try {
     const [command, ...wrappedArgs] = installerExitCommand(plan, args);

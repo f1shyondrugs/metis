@@ -6,6 +6,8 @@ Stable server updates use prebuilt OS/architecture packages. The initial native 
 
 The desktop keeps electron-updater 6. No Velopack/MSIX migration is performed.
 
+Windows server updates use an on-demand Task Scheduler action so stopping the old host's process tree cannot kill its updater. The task uses the current SID and already-effective elevation only; normal interactive accounts are never upgraded to Administrator. Built-in service identities retain their own identity. A custom non-interactive service account must use an operator-managed update task rather than borrowing credentials or silently changing logon rights. On Linux, managing existing system services still requires the OS authority configured by the installer; this change does not create a privileged helper or grant sudo rights.
+
 ## Server transaction
 
 1. Resolve the exact published tag and platform asset through GitHub. Require HTTPS and a matching GitHub SHA256 digest or exact checksum sidecar. Retry transient interrupted downloads, never bad checksums.

@@ -728,6 +728,7 @@ Get-Content -LiteralPath (Join-Path `$PSScriptRoot ".env") | Where-Object { `$_ 
   if (`$pair.Count -eq 2) { [Environment]::SetEnvironmentVariable(`$pair[0].Trim([char]0xFEFF), `$pair[1], "Process") }
 }
 Set-Location `$PSScriptRoot
+if (`$args.Count -eq 1 -and `$args[0] -eq "--metis-load-env-only") { return }
 `$node = `$env:METIS_NODE_BIN
 if (-not `$node -or -not (Test-Path -LiteralPath `$node)) { `$node = (Get-Command node).Source }
 & `$node @args
