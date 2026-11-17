@@ -60,6 +60,9 @@ test("Windows scheduler children survive the updater action, without inherited t
   const parent=Number(fs.readFileSync(parentFile,"utf8")),child=Number(fs.readFileSync(pidFile,"utf8"));
   while(Date.now()<deadline&&alive(parent))await new Promise(resolve=>setTimeout(resolve,100));
   assert.equal(alive(parent),false);assert.equal(alive(child),true,"the new host must outlive its updater action");
+  run("Unregister-ScheduledTask -TaskName "+q(name)+" -Confirm:$false -ErrorAction SilentlyContinue");
+  await new Promise(resolve=>setTimeout(resolve,200));
+  assert.equal(alive(child),true,"removing the updater task definition must not terminate its new host");
  }finally{
   fs.writeFileSync(stop,"stop");
   try{run("Unregister-ScheduledTask -TaskName "+q(name)+" -Confirm:$false -ErrorAction SilentlyContinue");}catch{}
