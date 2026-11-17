@@ -33,7 +33,7 @@ test("disconnected recovery is still visible without the participant row or avat
  assert.ok(!html.includes("Live editing"));assert.ok(!html.includes("People in this document"));
 });
 test("project marks reuse the saved glyph/color, uploaded logo or folder fallback",()=>{
- const project={id:"project",icon:"code",color:"#ffbb00",logoStoredName:null,updatedAt:"2026-11-15"};
+ const project={id:"project",icon:"code",color:"#ffbb00",logoStoredName:undefined,updatedAt:"2026-11-15"};
  const glyph=renderToStaticMarkup(<NotebookProjectIcon project={project}/>);
  assert.ok(glyph.includes('color:#ffbb00'));assert.ok(glyph.includes("<svg"));
  const other=renderToStaticMarkup(<NotebookProjectIcon project={{...project,icon:"rocket",color:"#0088aa"}}/>);
