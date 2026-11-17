@@ -42,12 +42,13 @@ export function renderIconFixture(Footer:React.ComponentType<{label:string}>){
     check(true,"automation editor reuses the native searchable icon picker");
     const color=document.querySelector<HTMLButtonElement>('[aria-label^="Icon color #"]')!;await press(color);const hex=color.getAttribute("aria-label")!.slice("Icon color ".length);
     await press(document.querySelector<HTMLButtonElement>('[data-page-icon][aria-label="Select Star"]'));await until(()=>!document.querySelector('[aria-label="Automation icon picker"]'),"icon chosen");
-    const original=window.fetch;let fail=true;window.fetch=async(input,init)=>{if(fail&&String(input).startsWith("/api/automations/")&&init?.method==="PATCH"){fail=false;return Response.json({error:"Synthetic icon save failure"},{status:503});}return original(input,init);};
+    const original=window.fetch;let fail=true,lastPatchKeys:string[]=[];window.fetch=async(input,init)=>{if(String(input).startsWith("/api/automations/")&&init?.method==="PATCH"){lastPatchKeys=Object.keys(JSON.parse(String(init.body)));if(fail){fail=false;return Response.json({error:"Synthetic icon save failure"},{status:503});}}return original(input,init);};
     const form=document.querySelector<HTMLFormElement>(".automation-edit-form")!;
     try{await until(()=>!form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled,"destinations loaded");form.requestSubmit();await until(()=>document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic icon save failure")===true,"save failure");
      check(!!document.querySelector(".automation-edit-form")&&glyph(trigger)===glyph(document.querySelector("[data-expected-star]")),"failed save keeps the chosen icon and editable draft");
      form.requestSubmit();await until(()=>!document.querySelector(".automation-edit-form"),"saved icon");
     }finally{window.fetch=original;}
+    check(lastPatchKeys.length===1&&lastPatchKeys[0]==="icon","an icon-only editor save never submits execution or schedule changes");
     const saved=await(await fetch("/api/automations/"+id)).json();check(saved.automation.icon==="lucide:star:"+hex,"selected glyph and color persist through the canonical API");
     await until(()=>glyph(document.querySelector(".automation-list-icon"))===glyph(document.querySelector("[data-expected-star]"))&&glyph(document.querySelector(".automation-detail-icon"))===glyph(document.querySelector("[data-expected-star]")),"saved glyph rendered");check(true,"saved custom icon appears in automation list and details");
     await category("Notes");await category("Automations");await until(()=>!!row("Morning report")&&glyph(row("Morning report")!.querySelector("[data-reference-result-icon]"))===glyph(document.querySelector("[data-expected-star]")),"updated reference icon");

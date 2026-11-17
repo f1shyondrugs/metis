@@ -385,6 +385,7 @@ export function AutomationsPanel({
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<EditDraft | null>(null);
+  const originalDraftRef=useRef<EditDraft|null>(null);
   const [editorStep, setEditorStep] = useState(0);
   const [targetChats, setTargetChats] = useState<ContextChat[]>([]);
   const [targetAgents, setTargetAgents] = useState<TargetAgent[]>([]);
@@ -624,7 +625,9 @@ export function AutomationsPanel({
   const beginEdit = useCallback((automation: Automation) => {
     setCreating(false);
     setSelectedId(automation.id);
-    setDraft(draftFromAutomation(automation, fallbackModeId, modelOptions));
+    const initialDraft=draftFromAutomation(automation,fallbackModeId,modelOptions);
+    originalDraftRef.current=initialDraft;
+    setDraft(initialDraft);
     setEditorError("");
     setEditing(true);
     if (!modelOptions.length) {
@@ -675,12 +678,13 @@ export function AutomationsPanel({
     setPendingAction("save");
     try {
       const automationId = creating ? null : currentDetail!.id;
+      const iconOnly=!creating&&originalDraftRef.current&&JSON.stringify({...draft,icon:undefined})===JSON.stringify({...originalDraftRef.current,icon:undefined});
       const response = await fetch(
         creating ? "/api/automations" : `/api/automations/${encodeURIComponent(automationId!)}`,
         {
           method: creating ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: JSON.stringify(iconOnly?{icon:draft.icon}:{
             name: draft.name.trim(),
             icon:draft.icon,
             prompt: draft.prompt.trim(),
