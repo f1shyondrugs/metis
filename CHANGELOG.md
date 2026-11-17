@@ -1,8 +1,16 @@
 # Changelog
 
-All notable Metis AI releases are documented here. Release tags and GitHub
-releases are created locally with `pnpm release`; GitHub Actions does not
-publish releases.
+All notable Metis AI releases are documented here. Release tags and draft
+releases are created with `pnpm release`. GitHub Actions publishes the release
+only after all five native server packages pass validation.
+
+## v1.0.29 — 2026-11-17
+
+- Deliver prebuilt server updates for Linux x64/ARM64, macOS Intel/Apple Silicon and Windows x64, with integrity checks and packaged app/worker/gateway smoke tests.
+- Stage updates before activation, retain a durable recovery journal and a private consistent database backup, and verify rollback after activation failures.
+- Bound old-release storage while preserving the active release, previous release and versions still referenced by running processes; remove disposable compiler caches after successful builds.
+- Run Windows updates independently of the old host process tree without changing the account or its effective privileges.
+- Add bounded administrator update diagnostics and preserve application data outside packaged releases.
 
 ## v1.0.28 — 2026-11-17
 
