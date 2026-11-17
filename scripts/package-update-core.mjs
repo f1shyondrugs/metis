@@ -74,7 +74,7 @@ export function validatePackage(root,{tag,platform=process.platform,arch=process
 export async function activatePackage({installRoot,dataDir,tag,archive,manager,platform=process.platform,arch=process.arch,record=()=>{}}){
   installRoot=fs.realpathSync(installRoot);
   const releases=path.join(installRoot,".metis-releases");
-  fs.mkdirSync(releases,{recursive:true,mode:0o700});
+  fs.mkdirSync(releases,{recursive:true,mode:0o755});
   if(fs.realpathSync(releases)!==releases)throw Error("Symlinked release storage");
   const lock=path.join(releases,".update.lock");
   try{fs.mkdirSync(lock);}
@@ -114,6 +114,9 @@ export async function activatePackage({installRoot,dataDir,tag,archive,manager,p
     const manifest=validatePackage(stage,{tag,platform,arch});
     await manager.preflight(stage,manifest);
     target=path.join(releases,tag+"-"+platform+"-"+arch+"-"+randomUUID().slice(0,8));
+    // Package code contains no configuration/credentials and must be readable
+    // by separately isolated agent OS users. Staging stays private until verified.
+    fs.chmodSync(stage,0o755);
     fs.renameSync(stage,target);save("prepared");
     // All download/extraction/native checks finish before touching any service.
     stopped=true;await manager.stop();save("stopped");

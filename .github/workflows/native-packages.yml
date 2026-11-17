@@ -1,5 +1,7 @@
 name: Native server packages
 on:
+  pull_request:
+    paths: ['.github/workflows/native-packages.yml', 'scripts/*package*.mjs', 'scripts/run-installed-service.cjs', 'install/**', 'lib/installer-update.ts', 'package.json', 'pnpm-lock.yaml', 'tests/package-update*']
   push:
     tags: ['v*']
   workflow_dispatch:
@@ -8,6 +10,11 @@ on:
         description: Existing release tag
         required: true
         type: string
+      publish:
+        description: Publish an existing draft only after all checks pass
+        required: false
+        default: false
+        type: boolean
 permissions:
   contents: read
 concurrency:
@@ -27,13 +34,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     env:
-      METIS_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      METIS_RELEASE_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
       NEXT_TELEMETRY_DISABLED: '1'
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref_name }}
+          ref: ${{ inputs.tag || github.ref }}
       - uses: pnpm/action-setup@v4
         with: { version: 9.15.4 }
       - uses: actions/setup-node@v4
@@ -41,7 +48,7 @@ jobs:
       - name: Validate platform and tag
         shell: bash
         run: |
-          node -e 'if(process.platform!==process.env.EXPECT_PLATFORM||process.arch!==process.env.EXPECT_ARCH||"v"+require("./package.json").version!==process.env.METIS_RELEASE_TAG)throw Error("Release identity mismatch")'
+          node -e 'const fs=require("node:fs"),tag=process.env.METIS_RELEASE_TAG||"v"+require("./package.json").version;if(process.platform!==process.env.EXPECT_PLATFORM||process.arch!==process.env.EXPECT_ARCH||"v"+require("./package.json").version!==tag)throw Error("Release identity mismatch");fs.appendFileSync(process.env.GITHUB_ENV,"METIS_RELEASE_TAG="+tag+"\n")'
         env:
           EXPECT_PLATFORM: ${{ matrix.platform }}
           EXPECT_ARCH: ${{ matrix.arch }}
@@ -69,6 +76,7 @@ jobs:
           path: native-dist/*
           retention-days: 7
   publish:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
     needs: package
     runs-on: ubuntu-latest
     permissions:
@@ -95,5 +103,6 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --title "Metis $TAG" --generate-notes
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true || { echo "Refusing to replace a published release"; exit 1; }
           gh release upload "$TAG" native-dist/* --clobber
           gh release edit "$TAG" --draft=false
