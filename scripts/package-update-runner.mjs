@@ -5,7 +5,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
-import { activatePackage, downloadVerified, packageAssetName, atomicJson } from "./package-update-core.mjs";
+import { activatePackage, downloadVerified, packageAssetName, atomicJson, acquireUpdateLock } from "./package-update-core.mjs";
 import { pruneManagedReleases } from "../public/install/release-retention.mjs";
 const run=promisify(execFile);
 const {values}=parseArgs({options:{"install-dir":{type:"string"},"data-dir":{type:"string"},tag:{type:"string"},"service-name":{type:"string"},repo:{type:"string"}}});
@@ -34,6 +34,10 @@ const manager={
     const result=await run(node,["--input-type=module","-e","import {createRequire} from 'node:module'; const require=createRequire(process.cwd()+'/package.json'); require('node:sqlite'); require('node-pty'); require.resolve('tsx'); console.log(process.versions.node.split('.')[0]);"],{cwd:stage,timeout:30000,maxBuffer:65536,windowsHide:true});
     if(result.stdout.trim()!=="22")throw Error("Native runtime preflight failed");
     const space=fs.statfsSync(root);if(space.bavail*space.bsize<256*1024**2)throw Error("Insufficient space for update activation");
+    const database=process.env.CHAT_DB_PATH||path.join(data,"chat.sqlite");
+    const bytes=[database,database+"-wal"].reduce((sum,file)=>sum+(fs.existsSync(file)?fs.statSync(file).size:0),0);
+    const backupSpace=fs.statfsSync(data);
+    if(backupSpace.bavail*backupSpace.bsize<bytes+256*1024**2)throw Error("Insufficient space for the pre-update database backup");
   },
   async snapshot(){
     const database=process.env.CHAT_DB_PATH||path.join(data,"chat.sqlite");
@@ -80,7 +84,10 @@ const manager={
     return false;
   },
 };
-const archive=path.join(data,"metis-package-"+process.pid+".tar.gz");
+const releaseRunnerLock=acquireUpdateLock(path.join(data,".metis-package-runner.lock"));
+const archive=path.join(data,"metis-package-download.tar.gz");
+// A dead updater can leave one partial archive; retries replace it, not append.
+fs.rmSync(archive,{force:true});
 try{
   record("lookup");
   const response=await fetch("https://api.github.com/repos/"+repo+"/releases/tags/"+encodeURIComponent(tag),{headers:{Accept:"application/vnd.github+json","User-Agent":"Metis-native-updater"},signal:AbortSignal.timeout(30000)});
@@ -114,7 +121,8 @@ try{
   try{
     const previous=result.previous===root?undefined:result.previous;
     const cleanup=pruneManagedReleases({root:path.join(root,".metis-releases"),active:result.active,previous,pattern:/^v[0-9][A-Za-z0-9_.-]+$/,requiredFiles:["package-manifest.json"]});
-    record("cleanup-"+cleanup.removed.length);
+    const staging=pruneManagedReleases({root:path.join(root,".metis-releases"),active:result.active,previous,pattern:/^staging-[a-f0-9-]{36}$/,requiredFiles:[]});
+    record("cleanup-"+(cleanup.removed.length+staging.removed.length));
   }catch{record("cleanup-deferred");}
   console.log("Metis AI installed successfully.");
 }catch(error){
@@ -122,4 +130,4 @@ try{
   record("failed",code);
   console.error("Native package update failed: "+(error instanceof AggregateError?"ROLLBACK_RECOVERY_REQUIRED":error.message));
   process.exitCode=1;
-}finally{fs.rmSync(archive,{force:true});}
+}finally{fs.rmSync(archive,{force:true});releaseRunnerLock();}

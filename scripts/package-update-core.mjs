@@ -71,22 +71,35 @@ export function validatePackage(root,{tag,platform=process.platform,arch=process
   if(fs.readFileSync(path.join(root,".next/BUILD_ID"),"utf8").trim()!==manifest.buildId)throw Error("Package build identity mismatch");
   return manifest;
 }
-export async function activatePackage({installRoot,dataDir,tag,archive,manager,platform=process.platform,arch=process.arch,record=()=>{}}){
-  installRoot=fs.realpathSync(installRoot);
-  const releases=path.join(installRoot,".metis-releases");
-  fs.mkdirSync(releases,{recursive:true,mode:0o755});
-  if(fs.realpathSync(releases)!==releases)throw Error("Symlinked release storage");
-  const lock=path.join(releases,".update.lock");
+function readLockOwner(lock){
+  const directory=fs.lstatSync(lock),file=path.join(lock,"owner.json");
+  if(!directory.isDirectory()||directory.isSymbolicLink())throw Error("Update lock is not a directory");
+  const entry=fs.lstatSync(file);
+  if(!entry.isFile()||entry.isSymbolicLink()||entry.size>1024)throw Error("Invalid update lock owner");
+  return JSON.parse(fs.readFileSync(file,"utf8"));
+}
+export function acquireUpdateLock(lock){
   try{fs.mkdirSync(lock);}
   catch(error){
     if(error.code!=="EEXIST")throw error;
-    const owner=JSON.parse(fs.readFileSync(path.join(lock,"owner.json"),"utf8"));
+    const owner=readLockOwner(lock);
     if(!Number.isSafeInteger(owner.pid)||owner.pid<1)throw Error("Update lock needs inspection");
     try{process.kill(owner.pid,0);throw Error("A native package update is already running");}
     catch(probe){if(probe.code!=="ESRCH")throw probe;}
     const stale=lock+".stale-"+randomUUID();fs.renameSync(lock,stale);fs.rmSync(stale,{recursive:true});fs.mkdirSync(lock);
   }
-  atomicJson(path.join(lock,"owner.json"),{pid:process.pid});
+  const token=randomUUID();atomicJson(path.join(lock,"owner.json"),{pid:process.pid,token});
+  return()=>{
+    const owner=readLockOwner(lock);
+    if(owner.pid===process.pid&&owner.token===token)fs.rmSync(lock,{recursive:true});
+  };
+}
+export async function activatePackage({installRoot,dataDir,tag,archive,manager,platform=process.platform,arch=process.arch,record=()=>{}}){
+  installRoot=fs.realpathSync(installRoot);
+  const releases=path.join(installRoot,".metis-releases");
+  fs.mkdirSync(releases,{recursive:true,mode:0o755});
+  if(fs.realpathSync(releases)!==releases)throw Error("Symlinked release storage");
+  const releaseLock=acquireUpdateLock(path.join(releases,".update.lock"));
   const pointer=path.join(installRoot,".metis-release.json");
   const journal=path.join(dataDir,"metis-package-transaction.json");
   let old=fs.existsSync(pointer)?JSON.parse(fs.readFileSync(pointer,"utf8")):null;
@@ -141,6 +154,6 @@ export async function activatePackage({installRoot,dataDir,tag,archive,manager,p
     throw error;
   }finally{
     fs.rmSync(stage,{recursive:true,force:true});
-    fs.rmSync(lock,{recursive:true});
+    releaseLock();
   }
 }

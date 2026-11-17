@@ -6,7 +6,7 @@ import path from "node:path";
 import * as tar from "tar";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { activatePackage,extractVerifiedPackage,downloadVerified,packageAssetName,atomicJson } from "../scripts/package-update-core.mjs";
+import { activatePackage,extractVerifiedPackage,downloadVerified,packageAssetName,atomicJson,acquireUpdateLock } from "../scripts/package-update-core.mjs";
 import { createRequire } from "node:module";
 const require=createRequire(import.meta.url);
 const {resolveService}=require("../scripts/run-installed-service.cjs");
@@ -26,6 +26,13 @@ async function fixture(){
   const manager={preflight:async()=>events.push("preflight"),stop:async()=>events.push("stop"),start:async()=>events.push("start"),health:async()=>{events.push("health");return true;}};
   return {root,data,home,payload,archive,events,manager,close:()=>fs.rmSync(home,{recursive:true,force:true})};
 }
+test("an owned live update lock is never stolen and releases only its own lock",async()=>{
+ const f=await fixture();try{
+  const lock=path.join(f.home,"lock"),release=acquireUpdateLock(lock);
+  assert.throws(()=>acquireUpdateLock(lock),/already running/);
+  assert.ok(fs.existsSync(lock));release();assert.ok(!fs.existsSync(lock));
+ }finally{f.close();}
+});
 test("asset names bind exact tag, OS and architecture",()=>{
   assert.equal(packageAssetName(tag,"linux","arm64"),"metis-server-v1.2.3-linux-arm64.tar.gz");
   assert.throws(()=>packageAssetName("../escape"),/Unsupported/);
