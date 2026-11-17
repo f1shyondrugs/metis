@@ -14,6 +14,11 @@ function resolveService(root,role,env=process.env){
     if(manifest.platform!==process.platform||manifest.arch!==process.arch||manifest.nodeMajor!==22)throw Error("Incompatible native release");
     node=path.join(source,".runtime",process.platform==="win32"?"node.exe":"node");
     childEnv.NEXT_DIST_DIR=".next";
+    // A package lives below the bootstrap Git checkout. Do not mistake that
+    // parent checkout commit for the identity of the running immutable package.
+    childEnv.GIT_CEILING_DIRECTORIES=[env.GIT_CEILING_DIRECTORIES,root].filter(Boolean).join(path.delimiter);
+    childEnv.METIS_NODE_BIN=node;
+    childEnv.PATH=[path.dirname(node),env.PATH].filter(Boolean).join(path.delimiter);
   }
   childEnv.AI_CHAT_ROOT=source;
   childEnv.CHAT_DATA_DIR=env.CHAT_DATA_DIR||path.join(root,"data");

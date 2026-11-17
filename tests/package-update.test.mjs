@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as tar from "tar";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { activatePackage,extractVerifiedPackage,downloadVerified,packageAssetName,atomicJson } from "../scripts/package-update-core.mjs";
 import { createRequire } from "node:module";
@@ -40,7 +41,22 @@ test("complete package switches pointer only after preflight and retains user da
     assert.equal(launch.cwd,result.active);assert.equal(launch.env.CHAT_DATA_DIR,f.data);
     assert.equal(launch.env.AI_CHAT_INSTALL_DIR,fs.realpathSync(f.root));
     assert.equal(launch.env.NEXT_DIST_DIR,".next");
+    assert.ok(launch.env.GIT_CEILING_DIRECTORIES.includes(fs.realpathSync(f.root)));
     assert.equal(JSON.parse(fs.readFileSync(path.join(f.data,"metis-package-transaction.json"))).phase,"complete");
+  }finally{f.close();}
+});
+test("package Git identity never inherits the bootstrap parent checkout",async()=>{
+  const f=await fixture();try{
+    for(const args of [["init","-q"],["config","user.name","fixture"],["config","user.email","fixture@example.invalid"]]){
+      const result=spawnSync("git",args,{cwd:f.root,encoding:"utf8"});assert.equal(result.status,0,result.stderr);
+    }
+    fs.writeFileSync(path.join(f.root,"tracked"),"fixture");
+    assert.equal(spawnSync("git",["add","tracked"],{cwd:f.root}).status,0);
+    assert.equal(spawnSync("git",["commit","-qm","fixture"],{cwd:f.root}).status,0);
+    const result=await activatePackage({installRoot:f.root,dataDir:f.data,tag,archive:f.archive,manager:f.manager});
+    const launch=resolveService(f.root,"app",{PATH:process.env.PATH,CHAT_DATA_DIR:f.data});
+    const git=spawnSync("git",["rev-parse","HEAD"],{cwd:result.active,env:launch.env,encoding:"utf8"});
+    assert.notEqual(git.status,0,"a packaged app must use its release manifest, not the old checkout");
   }finally{f.close();}
 });
 test("preflight failure never stops services or switches the pointer",async()=>{
