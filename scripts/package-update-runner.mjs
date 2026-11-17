@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { activatePackage, downloadVerified, packageAssetName, atomicJson, acquireUpdateLock, snapshotDatabase } from "./package-update-core.mjs";
+import { windowsHostOperation } from "./package-windows-service.mjs";
 import { pruneManagedReleases } from "../public/install/release-retention.mjs";
 const run=promisify(execFile);
 const {values}=parseArgs({options:{"install-dir":{type:"string"},"data-dir":{type:"string"},tag:{type:"string"},"service-name":{type:"string"},repo:{type:"string"}}});
@@ -20,14 +21,7 @@ async function command(executable,args){await run(executable,args,{cwd:root,time
 const units=[service+".service",service+"-worker.service",service+"-mcp.service"];
 const uid=typeof process.getuid==="function"?process.getuid():null;
 const plists=["app","worker","mcp"].map(role=>path.join(os.homedir(),"Library/LaunchAgents",service+"-"+role+".plist"));
-const oldNode=process.execPath;
-const host=path.join(root,"windows-script-host.mjs");
-function windowsHost(action){
-  if(fs.existsSync(path.join(root,"MetisHost.exe")))return command(path.join(root,"MetisHost.exe"),action==="stop"?["--stop"]:[]);
-  if(action==="stop")return command(oldNode,[host,"--stop"]);
-  const child=spawn(oldNode,[host],{cwd:root,env:process.env,detached:true,stdio:"ignore",windowsHide:true});child.unref();
-  return new Promise((resolve,reject)=>{child.once("spawn",resolve);child.once("error",reject);});
-}
+const windowsHost=action=>windowsHostOperation(root,action);
 const manager={
   async preflight(stage){
     const node=path.join(stage,".runtime",process.platform==="win32"?"node.exe":"node");

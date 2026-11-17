@@ -4,7 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as tar from "tar";
-import { spawnSync } from "node:child_process";
+import { startDetachedProcess,windowsHostOperation,windowsStopProbe } from "../scripts/package-windows-service.mjs";
+import { spawnSync,execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { activatePackage,extractVerifiedPackage,downloadVerified,packageAssetName,atomicJson,acquireUpdateLock,snapshotDatabase } from "../scripts/package-update-core.mjs";
 import { createRequire } from "node:module";
@@ -26,6 +27,32 @@ async function fixture(){
   const manager={preflight:async()=>events.push("preflight"),stop:async()=>events.push("stop"),start:async()=>events.push("start"),health:async()=>{events.push("health");return true;}};
   return {root,data,home,payload,archive,events,manager,close:()=>fs.rmSync(home,{recursive:true,force:true})};
 }
+test("a detached service start resolves on spawn, not service termination",async()=>{
+ const child=await startDetachedProcess(process.execPath,["-e","setInterval(()=>{},1000)"]);
+ try{assert.ok(child.pid);assert.equal(child.exitCode,null);}
+ finally{child.kill();}
+});
+test("Windows shutdown waits for only the scoped host processes without killing them",async()=>{
+ const f=await fixture();try{
+  let checks=0;const calls=[];
+  await windowsHostOperation(f.root,"stop",{sleep:async()=>{},run:async(command,args)=>{
+    calls.push({command,args});
+    if(command==="powershell.exe")return{stdout:++checks===1?"1":"0"};
+    return{stdout:""};
+  }});
+  assert.equal(checks,2);assert.ok(calls[0].args.includes("--stop"));
+  assert.ok(calls.every(call=>!call.command.includes("taskkill")));
+  const script=windowsStopProbe(f.root);
+  assert.ok(script.includes("Get-CimInstance")&&script.includes("ProcessId -ne "+process.pid));
+  assert.ok(!script.includes("Stop-Process"));
+ }finally{f.close();}
+});
+test("native Windows stop probe parses and ignores unrelated installations",{skip:process.platform!=="win32"},async()=>{
+ const f=await fixture();try{
+  const result=execFileSync("powershell.exe",["-NoProfile","-NonInteractive","-Command",windowsStopProbe(f.root)],{encoding:"utf8",windowsHide:true,timeout:10000});
+  assert.equal(result.trim(),"0");
+ }finally{f.close();}
+});
 test("SQLite snapshots include WAL rows, stay private and replace one bounded backup",async()=>{
  const f=await fixture();try{
   const {DatabaseSync}=await import("node:sqlite"),source=path.join(f.data,"db.sqlite"),target=path.join(f.data,"backup.sqlite");
