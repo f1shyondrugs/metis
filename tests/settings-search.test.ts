@@ -121,6 +121,21 @@ test("search respects host-admin visibility and calls the nonadmin area Chats", 
   assert.ok(searchSettings(regular, "archived").some(entry => entry.id === "settings-archived"));
 });
 
+test("Passkeys are a searchable Security overview peer for all account roles", () => {
+  for (const admin of [true, false]) {
+    assert.deepEqual(settingsOverviewSections("security", admin).map(section => section.id),
+      ["settings-passkeys", "settings-credential-vault"]);
+    const entries = settingsSearchEntries(admin);
+    for (const query of ["passkeys", "webauthn", "fingerprint", "security key", "Passschlüssel", "Fingerabdruck"]) {
+      const result = searchSettings(entries, query).find(entry => entry.id === "settings-passkeys");
+      assert.ok(result, query);
+      assert.equal(result.tab, "security");
+      assert.equal(result.sectionId, "settings-passkeys");
+      assert.equal(result.label, "Passkeys");
+    }
+  }
+});
+
 test("blank and unmatched searches return no results without mutating the shared index", () => {
   const entries = settingsSearchEntries(true);
   const before = structuredClone(entries);

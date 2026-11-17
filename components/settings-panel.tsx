@@ -381,6 +381,7 @@ type SettingsPaneId =
   | "tab"
   | "browser-storage"
   | "credential-vault"
+  | "passkeys"
   | "appearance"
   | "providers"
   | "versions"
@@ -404,6 +405,7 @@ type SettingsPaneId =
   | "updates";
 
 const SETTINGS_SECTION_TO_PANE: Partial<Record<string, Exclude<SettingsPaneId, "tab">>> = {
+  "settings-passkeys": "passkeys",
   "settings-credential-vault": "credential-vault",
   "settings-appearance": "appearance",
   "settings-browser-storage": "browser-storage",
@@ -448,6 +450,7 @@ function settingsCategoryLabel(tab: SettingsCategory, isHostAdmin: boolean, upda
 
 const SETTINGS_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   general: "Appearance, input and notifications",
+  security: "Passkeys and encrypted credentials",
   models: "Providers, usage and CLI versions",
   agent: "Runtime, delegation and memories",
   devices: "Remote clients and permissions",
@@ -2732,6 +2735,10 @@ export function SettingsPanel({
                     </div>
                   </div>
  </SettingsFeaturePane>
+ ) : settingsPane === "passkeys" ? (
+ <SettingsFeaturePane backLabel="Security" title="Passkeys" slot="passkey-settings" onBack={() => backToSettings("settings-passkeys")}>
+  <PasskeySettings />
+ </SettingsFeaturePane>
  ) : settingsPane === "credential-vault" ? (
  <SettingsFeaturePane backLabel="Security" title="Credential vault" slot="credential-vault-settings" onBack={() => backToSettings("settings-credential-vault")}>
   <SavedWebsiteLogins />
@@ -2747,9 +2754,9 @@ export function SettingsPanel({
  <>
 
 {desktopAvailable ? <TabsContent value="remote-client" className="mt-0"><DesktopClientSettings /></TabsContent> : null}
-<TabsContent value="security" className="mt-0 space-y-6">
- <PasskeySettings/>
+<TabsContent value="security" className="mt-0">
  <SettingsOverview title="Security">
+  <SettingsTile id="settings-passkeys" title="Passkeys" meta="Manage PIN, fingerprint and security key sign-in" icon={KeyRound} onOpen={() => openSettingsPane("passkeys")} />
   <SettingsTile id="settings-credential-vault" title="Credential vault" meta="Manage encrypted website and console logins" icon={ShieldCheck} onOpen={() => openSettingsPane("credential-vault")} />
  </SettingsOverview>
 </TabsContent>

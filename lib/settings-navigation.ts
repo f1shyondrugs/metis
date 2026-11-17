@@ -1,6 +1,9 @@
 export type SettingsSection = { id: string; label: string; keywords?: string; parentSectionId?: string };
 export const SETTINGS_SECTIONS: Record<string, SettingsSection[]> = {
-  security: [{ id: "settings-credential-vault", label: "Credential Vault", keywords: "password credentials login vault security sicherheit zugangsdaten" }],
+  security: [
+    { id: "settings-passkeys", label: "Passkeys", keywords: "passkey webauthn sign in login fingerprint biometrics security key pin passschlussel passschlüssel fingerabdruck sicherheitsschlüssel" },
+    { id: "settings-credential-vault", label: "Credential Vault", keywords: "password credentials login vault security sicherheit zugangsdaten" },
+  ],
   general: [
     { id: "settings-appearance", label: "Appearance", keywords: "theme colors colour midnight graphite nord forest sand paper gray grey dark light design custom json import export fonts spacing radius aussehen farben grau schrift abstand" },
     { id: "settings-attachments", label: "Attachments", keywords: "upload file size limit unlimited MB GB anhänge anhaenge dateigröße dateigrosse größe unbegrenzt" },
