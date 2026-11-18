@@ -1,3 +1,5 @@
+import { rememberAssistantOrigin } from "@/lib/assistant-origin-store";
+import { assistantOriginId } from "@/lib/desktop-assistant";
 import { materializeUploads } from "@/lib/file-upload-store";
 import { getAuthenticatedUser, isAuthenticated } from "@/lib/auth";
 import { captureApiError } from "@/lib/error-logs";
@@ -31,6 +33,7 @@ type ChatBody = {
   messageId?: string;
   sendQueuedNow?: boolean;
   referenceText?: string;
+  assistantDeviceId?: string;
   references?: Array<{
     kind?: unknown;
     id?: unknown;
@@ -132,6 +135,9 @@ export async function submitChat(req: Request) {
         return Response.json({ error: "This queued message was removed" }, { status: 409 });
       }
     }
+    const assistantDeviceId = assistantOriginId(sendQueuedNow
+      ? chat.queuedMessages?.find(item => item.id === requestedMessageId)?.assistantDeviceId ?? body.assistantDeviceId
+      : body.assistantDeviceId);
     const resolvedExplicit = resolveReferences(ownerId, chatId, references);
     const pinnedReferences = chat.incognito
       ? []
@@ -220,6 +226,7 @@ export async function submitChat(req: Request) {
         userId: ownerId,
         message,
         messageId,
+        ...(assistantDeviceId ? { assistantDeviceId } : {}),
         ...(chat.incognito
           ? {}
           : body.referenceText
@@ -235,6 +242,7 @@ export async function submitChat(req: Request) {
       }, {
         interruptActiveRun: sendQueuedNow,
         beforeInsert: () => {
+          rememberAssistantOrigin(ownerId,chatId,messageId,assistantDeviceId);
           if (storedAttachments.length) stored.push(...storedAttachments);
           if (attachments.length) {
             stored.push(...saveAttachments(chatId, attachments, ownerId).stored);
@@ -248,6 +256,7 @@ export async function submitChat(req: Request) {
               message ||
               `Attached ${resolvedAttachments.length} file${resolvedAttachments.length === 1 ? "" : "s"}`,
             ...(referenceText ? { referenceText } : {}),
+            ...(assistantDeviceId ? { assistantDeviceId } : {}),
             ...(references.length ? { references } : {}),
             ...(resolvedAttachments.length ? { attachments: resolvedAttachments } : {}),
           };

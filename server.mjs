@@ -30,6 +30,7 @@ const {
   cleanupBrowserSessions,
   performBrowserAction,
   getBrowserLoginContext,
+  getBrowserAgentContext,
   setBrowserViewport,
   browserEvents,
 } = await importServerModule("./lib/server-browser.ts");
@@ -177,7 +178,9 @@ async function performSharedBrowserAction(userId, chatId, action) {
     return { closed: true };
   }
   const result = await performBrowserAction(userId, chatId, action);
-  await persistBrowserContext(userId, chatId, result);
+  // Owner URLs/titles must not re-enter provider context through chat references.
+  const agentContext = action.source === "user" ? await getBrowserAgentContext(userId, chatId).catch(() => null) : result;
+  if (agentContext) await persistBrowserContext(userId, chatId, agentContext);
   return result;
 }
 

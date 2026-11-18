@@ -2,9 +2,10 @@ import { DatabaseSync } from "node:sqlite";
 import {parseProtectedLoginReply,requireProtectedInput,type ProtectedLoginReply} from "../../lib/protected-login-contract";
 import { randomUUID } from "node:crypto";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
-import { SecureBrowserInputs, CredentialFieldsNotVisible, browserInputSecrets, browserHasSecureInput, retainBrowserSecrets,type CredentialField } from "../../lib/browser-secure-input";
+import { SecureBrowserInputs, CredentialFieldsNotVisible, browserInputSecrets, browserUrlSecrets, browserHasSecureInput, retainBrowserSecrets,type CredentialField } from "../../lib/browser-secure-input";
 import { ProtectedLoginError } from "../../lib/protected-login-errors";
 import {screenshotPage} from "../../lib/browser-screenshot-policy";
+import {BROWSER_PUBLIC_URL_VALUE_SELECTOR,BROWSER_NAVIGATION_PARAMETER,createBrowserTextRedactor} from "../../lib/browser-redaction";
 import { publicBrowserProxy } from "./public-proxy";
 import { browserSecretRepresentations, loginNavigationOrigins, protectedRequestAllowed, withOperatorReturnOrigins } from "./navigation-policy";
 import {ScopedCredentials} from "./scoped-credentials";
@@ -55,8 +56,8 @@ export class SavedBrowserLogins {
   }
   private scrub<T>(page: Page, value: T): T {
     const secrets = browserInputSecrets(page);
-    const variants = secrets.flatMap(browserSecretRepresentations).sort((a,b) => b.length-a.length);
-    if (typeof value === "string") return variants.reduce((text, secret) => text.split(secret).join("[REDACTED]"), value) as T;
+    const redact=createBrowserTextRedactor(secrets.flatMap(browserSecretRepresentations),browserUrlSecrets(page).flatMap(browserSecretRepresentations));
+    if (typeof value === "string") return redact(value) as T;
     if (Array.isArray(value)) return value.map(item => this.scrub(page,item)) as T;
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key,item]) => [key,this.scrub(page,item)])) as T;
     return value;
@@ -130,17 +131,26 @@ export class SavedBrowserLogins {
     // must preserve school selection, identifier steps and authenticated state.
     session.used = Date.now(); return session;
   }
-  private async state(session: Session):Promise<ProtectedLoginReply> {
+  private async state(session: Session, ownerView = false):Promise<ProtectedLoginReply> {
     const {page} = session;
     if(page.isClosed())throw new ProtectedLoginError("session_unavailable");
     if(!page.url().startsWith("https://"))throw new ProtectedLoginError("navigation_blocked");
     retainBrowserSecrets(page,(await session.context.cookies()).map(cookie=>cookie.value));
-    retainBrowserSecrets(page,await page.locator('input[type="hidden"]').evaluateAll(elements=>elements.map(el=>(el as HTMLInputElement).value)).catch(()=>[]));
+    const hidden=await page.locator('input[type="hidden"]').evaluateAll((elements,publicUrl)=>({
+      secrets:elements.filter(el=>!el.matches(publicUrl)).map(el=>(el as HTMLInputElement).value),
+      navigation:elements.filter(el=>el.matches(publicUrl)).map(el=>(el as HTMLInputElement).value),
+    }),BROWSER_PUBLIC_URL_VALUE_SELECTOR).catch(()=>({secrets:[],navigation:[]}));
+    retainBrowserSecrets(page,hidden.secrets);
+    retainBrowserSecrets(page,hidden.navigation,true);
     const url=new URL(page.url());
-    retainBrowserSecrets(page,[...url.searchParams.values(),...new URLSearchParams(url.hash.slice(1)).values()]);
+    for(const [name,value] of [...url.searchParams,...new URLSearchParams(url.hash.slice(1))]){
+      retainBrowserSecrets(page,[value],BROWSER_NAVIGATION_PARAMETER.test(name));
+    }
     // Auth codes in redirect queries/fragments must never enter model context.
     const publicUrl=url.origin+url.pathname;
-    return this.scrub(page,{sessionId:"protected",tabId:"protected",activeTabId:"protected",url:publicUrl,title:await page.title(),tabs:[{id:"protected",url:publicUrl,title:await page.title()}],viewport:page.viewportSize()});
+    const visibleUrl=ownerView ? page.url() : publicUrl;
+    const state={sessionId:"protected",tabId:"protected",activeTabId:"protected",url:visibleUrl,title:await page.title(),tabs:[{id:"protected",url:visibleUrl,title:await page.title()}],viewport:page.viewportSize()};
+    return ownerView ? state : this.scrub(page,state);
   }
   async dispatch(payload: Payload, management: boolean) {
     if (!/^[\w-]{1,200}$/.test(payload.owner) || payload.chat && !/^[\w-]{1,200}$/.test(payload.chat)) throw Error("Invalid identity");
@@ -282,7 +292,9 @@ export class SavedBrowserLogins {
       this.requests.set(request.requestId,{owner,chat,origin});
       return {status:"input_required",secureInput:request};
     }
-    if (operation !== "action") throw Error("Denied");
+    // Only the peer-verified app can request owner output. input.source is not authority.
+    const ownerView = operation === "owner_action" && management;
+    if (operation !== "action" && !ownerView) throw Error("Denied");
     const session=await this.session(owner,chat),{page}=session;
     const action=input.action;
     if (action === "navigate") {
@@ -318,29 +330,33 @@ export class SavedBrowserLogins {
     else if (action === "download" || action === "batch" || action === "upload_file" || action === "upload_files" || action === "drop_files") throw new ProtectedLoginError("protected_action_unavailable");
     else if (!["screenshot","snapshot","extract_text","form_state","select_tab"].includes(action ?? "")) throw new ProtectedLoginError("protected_action_unavailable");
     if(action==="click"||action==="press")await page.waitForLoadState("domcontentloaded",{timeout:8000});
-    const result=await this.state(session);
+    const result=await this.state(session,ownerView);
     if (action==="form_state") {
       const reference = randomUUID();
-      const controls = await page.locator("input,textarea,select,button,a[href]").evaluateAll((elements, prefix) => elements.slice(0,300).map((el,index) => {
+      const controls = await page.locator("input,textarea,select,button,a[href]").evaluateAll((elements, {prefix,ownerView}) => elements.slice(0,300).map((el,index) => {
         el.setAttribute("data-metis-login-ref", `${prefix}-${index}`);
         return {
           index, selector:"", tag:el.tagName.toLowerCase(), type:(el as HTMLInputElement).type,
           visible:el.getBoundingClientRect().width>0 && el.getBoundingClientRect().height>0 && !["hidden","collapse"].includes(getComputedStyle(el).visibility),
           id:el.id, name:(el as HTMLInputElement).name, label:(el.textContent||"").slice(0,200),
-          value:el instanceof HTMLInputElement && el.type==="password" ? "[REDACTED]" : (el as HTMLInputElement).value,
+          value:!ownerView && el instanceof HTMLInputElement && el.type==="password" ? "[REDACTED]" : (el as HTMLInputElement).value,
           options:el instanceof HTMLSelectElement ? Array.from(el.options).map(option => ({value:option.value,text:option.text,selected:option.selected,disabled:option.disabled})) : undefined,
         };
-      }), reference);
-      result.form = this.scrub(page,{text:await page.locator("body").innerText(),controls});
+      }), {prefix:reference,ownerView});
+      const form={text:await page.locator("body").innerText(),controls};
+      result.form = ownerView ? form : this.scrub(page,form);
       // Only these engine-generated selectors bypass value redaction. Raw DOM
       // ids/names/options remain scrubbed, including secrets that are very short.
       result.form!.controls.forEach((control:Record<string,unknown>, index:number) => {
         control.selector = `[data-metis-login-ref="${reference}-${index}"]`;
       });
     }
-    if (["snapshot","extract_text"].includes(action ?? "") || input.includeSnapshot) result.snapshot=this.scrub(page,(await page.locator("body").innerText()).slice(0,120000));
-    // A vault session is not itself sensitive pixels. Use the same masking and
-    // reflection checks as ordinary screenshots, never the stale public tab.
+    if (["snapshot","extract_text"].includes(action ?? "") || input.includeSnapshot) {
+      const text=(await page.locator("body").innerText()).slice(0,120000);
+      result.snapshot=ownerView ? text : this.scrub(page,text);
+    }
+    // Capture the actual private page with the same image behavior as the ordinary
+    // browser, never a stale public tab.
     if(action==="screenshot"||input.includeScreenshot===true){
       try{
         result.screenshot=(await screenshotPage(page,{type:"jpeg",quality:Math.max(35,Math.min(90,Number(input.quality)||70))})).toString("base64");

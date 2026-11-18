@@ -37,6 +37,8 @@ export type AgentJob = {
   message: string;
   messageId?: string;
   referenceText?: string;
+  /** Current-turn Quick Assistant routing hint; resolve ownership/policy from the registry. */
+  assistantDeviceId?: string;
   references?: Array<{
     kind: string;
     id: string;

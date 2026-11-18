@@ -16,15 +16,33 @@ type Pending = SecureBrowserInput & {
 // Only the browser-engine process holds handles and transient secrets. No DB,
 // chat, question answer, tool arguments, profile or environment stores passwords.
 const retained = new WeakMap<BrowserContext, Set<string>>();
+const retainedUrlSecrets = new WeakMap<BrowserContext, Set<string>>();
 const passwordContexts = new WeakSet<BrowserContext>();
 const enteredPasswords = new WeakMap<BrowserContext, Set<string>>();
 export function browserPasswordSecrets(page: Page) { return [...(enteredPasswords.get(page.context()) ?? [])]; }
 export function browserInputSecrets(page: Page) { return [...(retained.get(page.context()) ?? [])]; }
+export function browserUrlSecrets(page: Page) { return [...(retainedUrlSecrets.get(page.context()) ?? [])]; }
 export function browserHasSecureInput(page: Page) { return passwordContexts.has(page.context()); }
-export function retainBrowserSecrets(page: Page, values: string[]) {
+export function retainBrowserSecrets(page: Page, values: string[], publicUrlValue = false) {
   const context=page.context(), secrets=retained.get(context) ?? new Set<string>();
-  for(const value of values)if(value && value.length<=8192 && secrets.size<512)secrets.add(value);
+  const urlSecrets=retainedUrlSecrets.get(context) ?? new Set<string>();
+  for(const value of values)if(value && value.length<=8192 && (secrets.has(value)||secrets.size<512)){
+    secrets.add(value);
+    if(!publicUrlValue)urlSecrets.add(value);
+    else {
+      // A public navigation target can itself carry an auth code or token.
+      // Only its path is exempt; retain any embedded private components.
+      try {
+        const url=new URL(value,"https://navigation.invalid");
+        const privateValues=[url.username,url.password,...url.searchParams.values(),url.hash.slice(1),...new URLSearchParams(url.hash.slice(1)).values()];
+        for(const item of privateValues)if(item&&item.length<=8192&&(secrets.has(item)||secrets.size<512)){
+          secrets.add(item);urlSecrets.add(item);
+        }
+      } catch { /* A login identity need not be a URL. */ }
+    }
+  }
   retained.set(context,secrets);
+  retainedUrlSecrets.set(context,urlSecrets);
 }
 
 export class SecureBrowserInputs {
@@ -91,7 +109,7 @@ export class SecureBrowserInputs {
         } else {
           // Explicit login selectors can name otherwise ordinary-looking inputs.
           // Mark the validated controls before any private-browser image is taken.
-          await Promise.all(targets.map(target=>target.field.evaluate(el=>el.setAttribute("data-metis-sensitive","true"))));
+          await Promise.all(targets.map(target=>target.field.evaluate((el,kind)=>{el.setAttribute("data-metis-sensitive","true");el.setAttribute("data-metis-credential-kind",kind);},target.kind)));
           const input = {requestId:randomUUID(), origin, expiresAt:new Date(Date.now() + this.ttl).toISOString(), fields:[...new Set(requested)]};
           this.requests.set(input.requestId, {...input, owner, chat, page, url:page.url(), field:targets[0].field, targets, filled:false});
           kept = true;
@@ -143,7 +161,9 @@ export class SecureBrowserInputs {
     if(values.password){const passwords=enteredPasswords.get(context)??new Set<string>();passwords.add(values.password);enteredPasswords.set(context,passwords);}
     const secrets = retained.get(context) ?? new Set<string>();
     if (secrets.size >= 512) throw new Error("Close browser before entering more passwords");
-    for(const [kind,value] of Object.entries(values))if(value){secrets.add(value);if(kind!=="password"){secrets.add(value.toLowerCase());secrets.add(value.normalize("NFKC"));}} retained.set(context, secrets);
+    for(const [kind,value] of Object.entries(values))if(value){
+      retainBrowserSecrets(input.page,kind==="password"?[value]:[value,value.toLowerCase(),value.normalize("NFKC")],kind!=="password");
+    }
     passwordContexts.add(context);
     // Consume before awaiting browser I/O: concurrent/replayed submissions cannot fill twice.
     input.filled = true;

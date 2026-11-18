@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { desktopShortcutFromEvent, desktopShortcutLabel } from "../lib/desktop-shortcuts";
-import { settingsSearchEntries, visibleSettingsTabs } from "../lib/settings-navigation";
+import { searchSettings, settingsSearchEntries, visibleSettingsTabs } from "../lib/settings-navigation";
 import { desktopCaptureContext, type DesktopCapture } from "../lib/desktop-assistant";
 import { partsFromFlat } from "../lib/chat-message-parts";
 test("shared chat fallback retains canonical tool identity, deferred payload links and actual status",()=>{
@@ -72,12 +72,15 @@ test("shortcut recording keeps physical keys and platform labels",()=>{
   assert.equal(desktopShortcutLabel("Super+Shift+Enter","win32"),"Win + Shift + Enter");
   assert.equal(desktopShortcutLabel("Super+Shift+Enter","darwin"),"Cmd + Shift + Enter");
 });
-test("local settings remain absent on the web and searchable in desktop for both roles",()=>{
-  for(const admin of [true,false]){
-    assert.ok(!visibleSettingsTabs(admin).some(tab=>tab.value==="remote-client"));
-    assert.ok(!settingsSearchEntries(admin).some(tab=>tab.tab==="remote-client"));
-    assert.equal(visibleSettingsTabs(admin,true).filter(tab=>tab.value==="remote-client").length,1);
-    assert.equal(settingsSearchEntries(admin,true).filter(tab=>tab.tab==="remote-client").length,1);
+test("settings navigation keeps remote device pairing without duplicating local app settings", () => {
+  for (const admin of [true, false]) {
+    const tabs = visibleSettingsTabs(admin).map<string>(tab => tab.value);
+    const entries = settingsSearchEntries(admin);
+    assert.ok(!tabs.includes("remote-client"));
+    assert.ok(tabs.includes("devices"));
+    assert.ok(!entries.some(entry => entry.tab === "remote-client"));
+    assert.ok(searchSettings(entries, "remote client").some(entry =>
+      entry.tab === "devices" && entry.sectionId === "settings-remote-clients"));
   }
 });
 test("screen context preserves origin, negative monitor coordinates and image ordering without duplicating pixels",()=>{

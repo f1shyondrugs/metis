@@ -4,6 +4,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { HtmlEmbed } from "../components/html-embed";
+import { ToolCallGroup } from "../components/tool-call-chip";
 
 const results: string[] = [];
 const report = document.createElement("pre");
@@ -58,5 +59,10 @@ const source = [
   "async function inspect(){let parentBlocked=false,cookieBlocked=false,storageBlocked=false,fetchBlocked=false;try{parent.document.body}catch{parentBlocked=true}try{cookieBlocked=!document.cookie.includes('parent-only')}catch{cookieBlocked=true}try{localStorage.getItem('html_fixture_sentinel')}catch{storageBlocked=true}try{await fetch('http://127.0.0.1:3219/offline-probe')}catch{fetchBlocked=true}const themed=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()==='#82b4ff';parent.postMessage({type:'fixture-diagnostics',parentBlocked,cookieBlocked,storageBlocked,fetchBlocked,themed},'*')};inspect();",
   "</script>",
 ].join("\n");
-createRoot(host).render(<HtmlEmbed source={source} />);
+createRoot(host).render(
+  <>
+    <ToolCallGroup tools={[{ id: "read-1", name: "read_file", kind: "read", status: "completed", path: "fixture.txt", result: "Example tool output" }]} />
+    <HtmlEmbed source={source} />
+  </>,
+);
 setTimeout(() => { if (!document.body.dataset.complete) report.textContent += "\nWAITING_FOR_WIDGET_BUTTON"; }, 1000);

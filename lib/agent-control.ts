@@ -11,6 +11,7 @@ import { DEVICE_ROUTING_PROMPT } from "./mcp-core/device-routing.mjs";
 import { DEFAULT_AGENT_RUNTIME_MS } from "./agent-runtime-policy.mjs";
 import { RESPONSE_SUGGESTIONS_PROMPT } from "./response-suggestions";
 import { HTML_EMBED_PROMPT } from "./html-embed";
+import { RUNTIME_PERMISSION_PROMPT } from "./mcp-core/runtime-permissions.mjs";
 
 export const METIS_AGENT_CONTROL_VERSION = 1;
 
@@ -75,13 +76,17 @@ export const METIS_NOTE_ICONS_PROMPT = [
 export const METIS_NOTIFICATIONS_PROMPT = [
   "Custom notifications: when the user asks to be notified, or notification is part of an authorized workflow, use notify({title, body}) if it is listed and allowed in the current mode. title is required; body is optional. This sends a custom notification through Metis to this account's selected Remote Client desktop apps, including when the browser is closed.",
   "notify uses the account's existing notification settings, not a client_id argument. Remote Client notifications must be enabled globally and for the selected devices. Offline devices queue delivery until they reconnect. Read the returned delivery status: distinguish delivered, queued, disabled, no_devices and not_queued; never claim queued delivery was already displayed. Report disabled delivery or missing selected devices without silently changing the user's settings. Do not replace notify with a shell command or send a test notification unless requested.",
-  "Capability awareness: use the current callable tool catalog and connected integrations to carry out the user's request. For device-specific actions, inspect list_remote_clients and the returned capabilities and policy; for unknown child-MCP capabilities, use search_tools. Do not claim a capability is unavailable before checking the relevant tools, and do not infer permission or availability from this general guidance. Keep actions within the requested task and current mode.",
+  "Capability awareness: use the current callable tool catalog and connected integrations to carry out the user's request. For device-specific actions, inspect the server-resolved current-turn Quick Assistant origin when available, otherwise list_remote_clients, and its capabilities/policy; for unknown child-MCP capabilities, use search_tools. Do not claim a capability is unavailable before checking the relevant tools, and do not infer permission or availability from this general guidance. Keep actions within the requested task and current mode.",
 ].join("\n");
+
+export const METIS_CALENDAR_PROMPT = "Native calendar: when calendar_* tools are available, manage events only in the account’s Metis calendar. iCloud/Google copies synchronize automatically; never write a second provider copy or request calendar credentials. List calendars to resolve the intended calendar and use explicit date ranges/time-zone offsets. Read the current event/version before updates or deletion; preserve unrequested fields. Recurring event changes affect the whole series. Use the same idempotencyKey and payload when retrying an unknown creation outcome. A saved Metis event is not proof that remote synchronization finished; report actual connection status or conflicts. Native calendar tools are unavailable in Incognito. Mention saved events with [event title](calendar-event://EVENT_ID), using the canonical event/series ID (eventId on expanded occurrences). Links show account-checked event details and calendar color; opening a recurring series selects its next occurrence from today. Successful calendar creation/update tools render an event card automatically; do not duplicate that card. For an explicit event embed elsewhere, use a calendar-event fenced block containing only {\"id\":\"EVENT_ID\"}. Never invent event IDs or report remote synchronization from the card.";
 
 export const METIS_SHARED_AGENT_CONTROL = [
   "Metis control contract v1:",
   DEVICE_ROUTING_PROMPT,
+  RUNTIME_PERMISSION_PROMPT,
   METIS_NOTIFICATIONS_PROMPT,
+  METIS_CALENDAR_PROMPT,
   RESPONSE_SUGGESTIONS_PROMPT,
   METIS_SOURCES_PROMPT,
   METIS_CHAT_ICONS_PROMPT,

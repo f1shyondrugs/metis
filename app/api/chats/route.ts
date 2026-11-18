@@ -1,3 +1,4 @@
+import { CHAT_LIST_PAGE_SIZE, CHAT_LIST_MAX_PAGE_SIZE, decodeChatListCursor, encodeChatListCursor } from "@/lib/chat-list-pagination";
 import { getProject } from "@/lib/projects";
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import { captureApiError } from "@/lib/error-logs";
@@ -16,14 +17,30 @@ export async function GET(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const includeArchived =
-      new URL(req.url).searchParams.get("includeArchived") === "true";
-    return Response.json({
-      chats: listChatsForUser(
-        (await getAuthenticatedUserId(req)) ?? undefined,
-        { includeArchived },
-      ),
+    const params = new URL(req.url).searchParams;
+    const limitValue = params.get("limit");
+    const limit = limitValue === null ? CHAT_LIST_PAGE_SIZE : Number(limitValue);
+    if (!Number.isInteger(limit) || limit < 1 || limit > CHAT_LIST_MAX_PAGE_SIZE) {
+      return Response.json({ error: "Invalid chat list limit" }, { status: 400 });
+    }
+    let after;
+    try {
+      if (params.has("cursor")) after = decodeChatListCursor(params.get("cursor")!);
+    } catch {
+      return Response.json({ error: "Invalid chat list cursor" }, { status: 400 });
+    }
+    const rows = listChatsForUser((await getAuthenticatedUserId(req)) ?? undefined, {
+      includeArchived: params.get("includeArchived") === "true",
+      limit: limit + 1,
+      after,
+      projectId: params.get("projectId") || undefined,
+      sidebar: params.get("sidebar") === "true",
     });
+    const chats = rows.slice(0, limit);
+    return Response.json({
+      chats,
+      nextCursor: rows.length > limit ? encodeChatListCursor(chats[chats.length - 1]) : null,
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     captureApiError("/api/chats GET", error, req);
     return Response.json({ error: "Could not list chats" }, { status: 500 });

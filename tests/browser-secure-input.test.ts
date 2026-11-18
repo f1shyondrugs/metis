@@ -92,7 +92,7 @@ test("real HTTPS browser: secure input, encrypted save, automatic per-owner/per-
   await assert.rejects(call("user_frame",{},true),'Unsupported raw export operations stay denied');
   await call("action",{action:"click",selector:"#submit"});assert.equal(received,password);
   const text=await call("action",{action:"extract_text"});assert(!JSON.stringify(text).includes(password));assert(!JSON.stringify(text).includes("TEST-ONLY-SESSION-COOKIE"));
-  await assert.rejects(call("action",{action:"screenshot"}),error=>error instanceof Error&&"code" in error&&error.code==="screenshot_unavailable");
+  assert.ok((await call("action",{action:"screenshot"})).screenshot,"reflected values no longer block images");
   assert.deepEqual((await call("list",{},true)).credentials?.map((site:{origin:string})=>site.origin),["https://portal.test"]);
   await core.close();core=new SavedBrowserLogins(key,database,proxyUrl);
   assert(!fs.readFileSync(database).includes(Buffer.from(password)));

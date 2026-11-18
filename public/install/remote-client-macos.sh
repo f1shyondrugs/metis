@@ -31,10 +31,16 @@ command -v curl >/dev/null || { printf 'curl is required\n' >&2; exit 1; }
 command -v tar >/dev/null || { printf 'tar is required\n' >&2; exit 1; }
 mkdir -p "$install_dir/releases"
 chmod 700 "$install_dir"
-stage="$(mktemp -d "$install_dir/releases/release.XXXXXX")"
+install_lock="$install_dir/.install.lock"
+mkdir "$install_lock" 2>/dev/null || { printf 'Another installer is active (or a stale .install.lock needs inspection).\n' >&2; exit 1; }
+stage=""
 committed=false
-cleanup() { if [[ "$committed" != true ]]; then rm -rf -- "$stage"; fi; }
+cleanup() {
+  if [[ "$committed" != true && -n "$stage" ]]; then rm -rf -- "$stage"; fi
+  rmdir "$install_lock"
+}
 trap cleanup EXIT
+stage="$(mktemp -d "$install_dir/releases/release.XXXXXX")"
 download() { curl --fail --location --silent --show-error --connect-timeout 15 --max-time 180 --retry 3 "$1" -o "$2"; }
 # A private, checksummed Node runtime removes Homebrew, PATH and global npm assumptions.
 runtime_url="https://nodejs.org/dist/latest-v22.x"
@@ -50,7 +56,7 @@ tar -xzf "$stage/$archive" -C "$stage"
 mv "$stage/${archive%.tar.gz}" "$stage/runtime"
 rm "$stage/$archive" "$stage/SHASUMS256.txt"
 export PATH="$stage/runtime/bin:$PATH"
-for file in remote-client.mjs file-edit.mjs computer-use.mjs computer-use-worker.mjs computer-use-unix.mjs desktop-preview.mjs desktop-preview-command.mjs metis-desktop-helper.swift remote-client-uninstall.sh; do
+for file in release-retention.mjs remote-client.mjs file-edit.mjs computer-use.mjs computer-use-worker.mjs computer-use-unix.mjs desktop-preview.mjs desktop-preview-command.mjs metis-desktop-helper.swift remote-client-uninstall.sh; do
   download "$base_url/install/$file" "$stage/$file"
 done
 mv "$stage/remote-client.mjs" "$stage/client.mjs"
@@ -119,5 +125,21 @@ if [[ "$connected" != true ]]; then
   printf 'No authenticated connection after 30 seconds. Check the server URL and network. Previous release restored when available.\n' >&2
   exit 1
 fi
+# Prune only after this exact new release authenticated. Preserve one rollback,
+# recent/in-use releases, and unrelated directories. Cleanup failure is non-fatal.
+node --input-type=module - "$stage/release-retention.mjs" "$install_dir/releases" "$stage" "$previous" <<'NODE' || printf 'Old-release cleanup deferred.\n' >&2
+import { pathToFileURL } from "node:url";
+import fs from "node:fs";
+import path from "node:path";
+const [moduleFile, root, active, previous] = process.argv.slice(2);
+if (fs.realpathSync(path.join(root, "..", "current")) !== fs.realpathSync(active)) throw new Error("Active release changed");
+const { pruneManagedReleases } = await import(pathToFileURL(moduleFile));
+const result = pruneManagedReleases({
+  root, active, previous: previous ? path.resolve(root, "..", previous) : undefined,
+  pattern: /^release\.[A-Za-z0-9]{6}$/,
+  requiredFiles: ["client.mjs", "config.json", "runtime/bin/node"],
+});
+console.log("Obsolete client releases removed: " + result.removed.length + (result.reason ? " (cleanup deferred: " + result.reason + ")" : ""));
+NODE
 printf 'Remote client authenticated: %s (%s)\n' "$client_id" "$os_name"
 printf 'Start manually: %s/run-client.sh\nRemove this install: bash "%s/current/uninstall.sh" "%s"\n' "$install_dir" "$install_dir" "$install_dir"

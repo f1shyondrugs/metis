@@ -1,6 +1,7 @@
 import { officePreviewResponse } from "@/lib/office-preview";
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import { getChat } from "@/lib/db-store";
+import { findChatAttachmentForPreview } from "@/lib/chat-attachment-preview-store";
 import { resolveUploadPath } from "@/lib/uploads";
 
 export const runtime = "nodejs";
@@ -16,9 +17,7 @@ export async function GET(req: Request, { params }: Params) {
   if (!chat) return Response.json({ error: "Not found" }, { status: 404 });
 
   const storedName = decodeURIComponent(name);
-  const attachment = chat.messages
-    .flatMap((message) => message.attachments ?? [])
-    .find((item) => item.storedName === storedName);
+  const attachment = findChatAttachmentForPreview(chat, storedName, ownerId);
   const filePath = resolveUploadPath(chatId, storedName, ownerId);
   if (!attachment || !filePath) return Response.json({ error: "File not found" }, { status: 404 });
 

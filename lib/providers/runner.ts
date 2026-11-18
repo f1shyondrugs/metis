@@ -1,6 +1,6 @@
 import { requestModelChainFallback } from "@/lib/model-chain-runtime";
 import { deferProviderLimitedJob } from "@/lib/db-jobs";
-import { commitPendingModelSwitch } from "@/lib/model-switch";
+import { commitPendingModelSwitch, hasPendingModelSwitch } from "@/lib/model-switch";
 import { requestTaskContinuation } from "@/lib/task-continuation";
 import { researchContinuationForJob } from "@/lib/research-completion";
 import { requestProviderRetry, runWithProviderRetries } from "@/lib/provider-retry-runner";
@@ -149,8 +149,7 @@ async function runAlternativeProviderAttempt(
   };
   const cancellationWatcher = setInterval(() => {
     const currentJob = getJob(job.id);
-    const pendingModelId = currentJob?.pendingModelId?.trim();
-    if (pendingModelId && pendingModelId !== job.modelId) {
+    if (hasPendingModelSwitch(currentJob, job.modelId)) {
       abortCause = "model_switch";
       controller.abort();
       return;

@@ -2,16 +2,17 @@
 
 The Composer and the shared Notebooks editor accept category shortcuts:
 
-- `@chats` opens Chats; `@chats:Mathe` searches only conversations.
+- `@chats` opens Chats; `@chats Mathe` searches only conversations.
+  The existing `@chats:Mathe` syntax is also supported.
 - Other shortcuts: `@files`, `@canvases`, `@plans`, `@notes`, `@issues`,
-  `@browser`, `@terminals`, `@memories`. Each accepts `:search terms`.
+  `@browser`, `@terminals`, `@memories`. Each accepts ` search terms` or `:search terms`.
 - Names are case-insensitive; singular names and German aliases (Dateien,
   Notizen, Pläne, Erinnerungen) are also recognized. Unknown prefixes stay
   ordinary search text. These are reserved category words, not a new query language.
 - Typing into the picker retains the resolved category. Back clears it.
   Existing keyboard selection, composition guards and dismissal remain.
 - Keep the raw mention text/range separate from the parsed search scope:
-  replacing a selection removes the whole `@category:query`, not only the query.
+  replacing a selection removes the whole `@category query` or `@category:query`, not only the query.
 
 Saved user references render through `ReferenceLink` in both the message text
 and its reference chips. They are real anchors with a kind icon, dotted

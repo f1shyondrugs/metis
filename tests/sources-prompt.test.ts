@@ -5,6 +5,7 @@ import path from "node:path";
 import test, { after } from "node:test";
 import { METIS_NOTE_ICONS_PROMPT, METIS_NOTIFICATIONS_PROMPT, METIS_SHARED_AGENT_CONTROL, METIS_SOURCES_PROMPT } from "../lib/agent-control";
 import { HTML_EMBED_PROMPT } from "../lib/html-embed";
+import { RUNTIME_MODES, RUNTIME_PERMISSION_PROMPT } from "../lib/mcp-core/runtime-permissions.mjs";
 
 const dir = mkdtempSync(path.join(os.tmpdir(), "metis-sources-prompt-"));
 Object.assign(process.env,{CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"test.sqlite"),AI_CHAT_ROOT:dir,AGENT_CWD:dir});
@@ -18,9 +19,12 @@ test("actual provider prompts include sources, HTML previews and notification gu
   getDatabase().prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(userId,userId,"unused",now);
   const chat=store.createChat("Sources",undefined,userId);
   assert.ok(METIS_SHARED_AGENT_CONTROL.includes(METIS_SOURCES_PROMPT));
-  for(const modeId of ["agent","ask","plan","deep-research"]) for(const incognito of [false,true]) {
+  for(const modeId of ["agent","ask","plan","deep-research"]) for(const incognito of [false,true]) for(const runtimeMode of RUNTIME_MODES) {
+    store.updateChat(chat.id, { runtimeMode }, userId);
     const prompt=buildProviderPrompt({job:{id:"sources-job",chatId:chat.id,userId,message:"Research this",modeId,incognito,status:"running",attempts:1,createdAt:now,updatedAt:now}});
     assert.equal(prompt.split(METIS_SOURCES_PROMPT).length-1,1);
+    assert.equal(prompt.split(RUNTIME_PERMISSION_PROMPT).length-1,1);
+    assert.ok(prompt.includes(`Current runtime permissions: ${runtimeMode}`));
     assert.equal(prompt.split(HTML_EMBED_PROMPT).length-1,1, "HTML previews are documented in each actual provider prompt");
     assert.equal(prompt.split(METIS_NOTE_ICONS_PROMPT).length-1,1, "Notebook page icons are requested in the actual provider prompt");
     assert.equal(prompt.split(METIS_NOTIFICATIONS_PROMPT).length-1,1, "Custom Remote Client notifications are documented in each actual provider prompt");

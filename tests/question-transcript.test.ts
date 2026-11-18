@@ -28,6 +28,20 @@ test("answer sits immediately after ask_user, before later tools and final text,
   assert.equal(projectChatTranscript(projected).filter(item => item.kind === "message").length, 5);
 });
 
+test("runtime permission confirmations anchor answers before subsequent work", () => {
+  for (const name of ["request_runtime_mode_change", "request_mode_change"]) {
+    const message: Message = { id: "assistant", role: "assistant", content: "Before.", parts: [
+      text("Before."), { type: "tool", id: "permission-call", name: "mcp__metis_ai__" + name, status: "running" },
+    ] };
+    const anchor = questionAnswerAnchor([message], "permission-q");
+    assert.deepEqual(anchor, { assistantMessageId: "assistant", toolCallId: "permission-call", cursor: { partIndex: 2 } });
+    const response = { ...answer("permission-q"), questionAnswer: { questionId: "permission-q", ...anchor } };
+    message.parts = [...message.parts!, text("After.")];
+    message.content += "After.";
+    assert.deepEqual(projectQuestionTranscript([message, response]).map(m => m.content), ["Before.", "Answer permission-q", "After."]);
+  }
+});
+
 test("wrapped MCP questions split live continuation before the result arrives and survive reload", () => {
   for (const tool of [
     { ...ask("wrapped"), name: "mcp", input: JSON.stringify({ toolName: "ask_user", arguments: { questions: [{ question: "Which option?" }] } }) },

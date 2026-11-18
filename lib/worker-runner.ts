@@ -1,3 +1,4 @@
+import { assistantOriginPrompt } from "@/lib/assistant-origin";
 import { modeById } from "@/lib/modes";
 import { memoryWorkingPrompt } from "@/lib/mcp-core/memory-instructions.mjs";
 import { SECURE_CREDENTIAL_INSTRUCTIONS } from "@/lib/mcp-core/credential-question-policy.mjs";
@@ -7,7 +8,7 @@ import { isProviderUsageLimit } from "@/lib/provider-rate-limit";
 import { initializeJobModelChain, requestModelChainFallback } from "@/lib/model-chain-runtime";
 import { deferProviderLimitedJob } from "@/lib/db-jobs";
 import { isolatedCursor } from "@/lib/providers/cursor-runtime";
-import { commitPendingModelSwitch } from "@/lib/model-switch";
+import { commitPendingModelSwitch, hasPendingModelSwitch } from "@/lib/model-switch";
 import { requestTaskContinuation } from "@/lib/task-continuation";
 import { researchContinuationForJob } from "@/lib/research-completion";
 import { requestProviderRetry, runWithProviderRetries } from "@/lib/provider-retry-runner";
@@ -917,6 +918,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
       hasVisualReference: Boolean(job.attachments?.some((attachment) => attachment.kind === "image")),
     }),
       `Current agent mode: ${activeMode.name}\n${activeMode.instructions}`,
+      `Current runtime permissions: ${runtimeModeForChat(chat)}. Agent mode and runtime permissions are independent.`,
       formatChatGoal(chat.sessionState, job.userId, chat.id, Boolean(job.incognito || chat.incognito)),
       "Working style: precise, technically fluent, proactive. Act with your tools instead of describing steps. Reply in the user's language — German in, German out. No filler phrases. On clear orders decide and act yourself; ask back only when genuinely ambiguous or destructive.",
       "Execution efficiency: batch related read-only inspection instead of issuing many tiny calls; reuse the known project/repository cwd instead of rediscovering it; run targeted checks while iterating and the expensive full test/build pass only once after the working tree has stopped changing. Parallelize independent lightweight reads when safe, but do not run competing heavyweight builds. Keep progress narration to short milestone updates rather than one message per tool call.",
@@ -934,7 +936,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
         ? ["Incognito mode: do not use or mention personal context, memories, chat metadata, notes, or workspaces. Incognito-only tool restrictions are enforced server-side."]
         : job.automationId
           ? [
-              "Automation run: execute autonomously without waiting for the user. All tools allowed by the configured mode remain available, including the MCP gateway and child MCPs, remote tools, subagents, and the persistent Metis in-app browser. Use them normally whenever they help complete the task. Never call ask_user, request_mode_change, wait, subagent_status, or any confirmation/user-approval tool. If information is missing, make a safe reasonable assumption and continue; if the task cannot be completed safely, explain that in the final response.",
+              "Automation run: execute autonomously without waiting for the user. All tools allowed by the configured mode remain available, including the MCP gateway and child MCPs, remote tools, subagents, and the persistent Metis in-app browser. Use them normally whenever they help complete the task. Never call ask_user, request_mode_change, request_runtime_mode_change, wait, subagent_status, or any confirmation/user-approval tool. If information is missing, make a safe reasonable assumption and continue; if the task cannot be completed safely, explain that in the final response.",
               "Automation browser state is durable for this run and seeded from the automation context chat. Prefer the shared Metis browser tools for real web interaction so login/session state and live browser visibility remain consistent. Do not launch a detached browser through shell or Playwright.",
               "Automation persistence: treat the current chat as this run's durable transcript. Keep tool/Todo progress current and checkpoint useful intermediate work; long runs may be resumed after worker or process interruptions without repeating completed actions.",
               job.automationContext ? `Automation-level context from the source chat and prior completed runs. Use it as durable background context, but keep this run's transcript separate:\n${job.automationContext}` : "",
@@ -960,6 +962,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
       ]),
       "You can create a follow-up chat by outputting exactly one or more fenced blocks in this format:\n```chat title=\"Short title\"\nMessage to send in the new chat\n```\nThe block creates a new chat for the current user, sends the message there, and starts an agent run. Do not claim a chat was created without outputting this block.",
       METIS_SHARED_AGENT_CONTROL,
+      assistantOriginPrompt(job.userId, job.assistantDeviceId, job),
       subagentModelInstruction,
       `Your private AI workspace is:\n${agentCwd}\nUse this directory as the working directory for project files and commands. Do not use another user's workspace.`,
       ...(job.incognito || chat.incognito
@@ -1275,8 +1278,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
     };
     const cancellationWatcher = setInterval(() => {
       const currentJob = getJob(job.id);
-      const pendingModelId = currentJob?.pendingModelId?.trim();
-      if (pendingModelId && pendingModelId !== requestedModelId) {
+      if (hasPendingModelSwitch(currentJob, requestedModelId)) {
         void activeRun?.cancel().catch(() => undefined);
         return;
       }
@@ -1375,8 +1377,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
       for await (const event of run.stream()) {
         resetInactivityTimer();
         const currentJob = getJob(job.id);
-        const pendingModelId = currentJob?.pendingModelId?.trim();
-        if (pendingModelId && pendingModelId !== requestedModelId) {
+        if (hasPendingModelSwitch(currentJob, requestedModelId)) {
           await run.cancel().catch(() => undefined);
           break;
         }

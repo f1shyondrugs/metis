@@ -3,6 +3,7 @@ import { getChatActivity, recordMessageActivity, recordAttentionActivity, acknow
 import { projectModelOverride } from "@/lib/project-model-server";
 import { isChatWaitingForUser } from "@/lib/user-input-resume";
 import { randomUUID } from "node:crypto";
+import { CHAT_LIST_MAX_PAGE_SIZE, type ChatListCursor } from "@/lib/chat-list-pagination";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { hashSharePassword, verifySharePassword } from "@/lib/share-password";
@@ -28,6 +29,9 @@ import type {
   WorkspaceItem,
 } from "@/lib/store";
 import { chatUploadDir, resolveUploadPath } from "@/lib/uploads";
+import { retainDraftAttachmentPreviews } from "@/lib/chat-attachment-preview-store";
+import { rememberAssistantOrigin } from "@/lib/assistant-origin-store";
+import { assistantOriginId } from "@/lib/desktop-assistant";
 import { BoundedSnapshotCache } from "@/lib/snapshot-cache";
 import { readChatVersion } from "@/lib/chat-version-index";
 import { RUNTIME_MODES } from "@/lib/runtime-mode";
@@ -303,17 +307,45 @@ export function getChatNotePins(chatId: string, userId?: string): Pick<ChatSessi
 
 export function listChatsForUser(
   ownerId?: string,
-  options: { includeArchived?: boolean } = {},
+  options: { includeArchived?: boolean; limit?: number; after?: ChatListCursor; projectId?: string; sidebar?: boolean } = {},
 ): ChatIndexEntry[] {
   // Expiry deletion runs in the background worker; sidebar reads never wait for a writer.
   const db = getDatabase();
   const dataVersion=JSON.stringify(db.prepare("PRAGMA data_version").get());
-  const cacheKey = `${ownerId || "*"}:${options.includeArchived ? "all" : "active"}:${dataVersion}`;
+  const cacheKey = JSON.stringify([ownerId || "*", options, dataVersion]);
   if (chatIndexCache?.key === cacheKey && chatIndexCache.expiresAt > Date.now()) {
     return ownerId ? chatIndexCache.chats.filter(chat => canAccessChat(chat.id,ownerId)).map(chat => chatIndexForUser(chat,ownerId)) : chatIndexCache.chats;
   }
-  const rows = ownerId
-    ? db.prepare(
+  // Apply visibility and keyset bounds before LIMIT, not after reading the entire list.
+  const conditions = [
+    "incognito = 0",
+    "(automation_run_id IS NULL OR automation_run_id = '')",
+    "(? = 1 OR archived = 0)",
+  ];
+  const params: (string | number)[] = [options.includeArchived ? 1 : 0];
+  if (ownerId) {
+    conditions.push(`((owner_id = ? AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.id=chat_list.project_id))
+      OR EXISTS(SELECT 1 FROM projects p WHERE p.id=chat_list.project_id AND
+        (p.owner_id=? OR EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=p.id AND m.user_id=?))))`);
+    params.push(ownerId, ownerId, ownerId);
+  }
+  if (options.projectId) {
+    conditions.push("project_id = ?");
+    params.push(options.projectId);
+  } else if (options.sidebar) {
+    conditions.push(`NOT EXISTS(SELECT 1 FROM projects p
+      LEFT JOIN project_user_settings s ON s.project_id=p.id AND s.user_id=?
+      WHERE p.id=chat_list.project_id AND
+        COALESCE(json_extract(s.data,'$.hideChatsFromAll'), json_extract(p.data,'$.hideChatsFromAll'),0)=1)`);
+    params.push(ownerId || "");
+  }
+  if (options.after) {
+    conditions.push("(pinned, COALESCE(last_message_sent, created_at), id) < (?, ?, ?)");
+    params.push(options.after.pinned, options.after.sentAt, options.after.id);
+  }
+  const limit = options.limit === undefined ? undefined : Math.max(1, Math.min(CHAT_LIST_MAX_PAGE_SIZE + 1, Math.floor(options.limit)));
+  if (limit !== undefined) params.push(limit);
+  const rows = db.prepare(
       `SELECT id, owner_id AS ownerId, created_at AS createdAt, updated_at AS updatedAt,
                 last_message_sent AS lastMessageSent, title, keywords, agent_id AS agentId,
                 model_id AS modelId, run_status AS runStatus, run_updated_at AS runUpdatedAt,
@@ -324,29 +356,10 @@ export function listChatsForUser(
                 automation_run_id AS automationRunId, incognito, project_id AS projectId,
                 agent_title_locked AS agentTitleLocked
          FROM chat_list
-         WHERE (owner_id = ? OR EXISTS(SELECT 1 FROM projects p WHERE p.id=chat_list.project_id AND
-           (p.owner_id=? OR EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=p.id AND m.user_id=?))))
-           AND incognito = 0
-           AND (automation_run_id IS NULL OR automation_run_id = '')
-           AND (? = 1 OR archived = 0)
-         ORDER BY pinned DESC, COALESCE(last_message_sent, created_at) DESC`,
-      ).all(ownerId, ownerId, ownerId, options.includeArchived ? 1 : 0)
-    : db.prepare(
-      `SELECT id, owner_id AS ownerId, created_at AS createdAt, updated_at AS updatedAt,
-                last_message_sent AS lastMessageSent, title, keywords, agent_id AS agentId,
-                model_id AS modelId, run_status AS runStatus, run_updated_at AS runUpdatedAt,
-                queue_message AS queueMessage, queued_message_count AS queuedMessageCount, pending_question AS pendingQuestion,
-                pending_approval AS pendingApproval, badge, pinned, archived, share,
-                COALESCE((SELECT revision FROM chat_activity WHERE chat_id = chat_list.id), 0) AS activityRevision,
-                COALESCE((SELECT read_revision FROM chat_activity WHERE chat_id = chat_list.id), 0) AS readRevision,
-                automation_run_id AS automationRunId, incognito, project_id AS projectId,
-                agent_title_locked AS agentTitleLocked
-         FROM chat_list
-         WHERE incognito = 0
-           AND (automation_run_id IS NULL OR automation_run_id = '')
-           AND (? = 1 OR archived = 0)
-         ORDER BY pinned DESC, COALESCE(last_message_sent, created_at) DESC`,
-      ).all(options.includeArchived ? 1 : 0);
+         WHERE ${conditions.join(" AND ")}
+         ORDER BY pinned DESC, COALESCE(last_message_sent, created_at) DESC, id DESC
+         ${limit === undefined ? "" : "LIMIT ?"}`,
+      ).all(...params);
   const result: ChatIndexEntry[] = rows.flatMap((row) => {
       const item = row as Record<string, unknown>;
       const archived = Boolean(item.archived);
@@ -645,6 +658,7 @@ export function updateChat(
       id: string;
       text: string;
       referenceText?: string;
+      assistantDeviceId?: string;
       references?: ChatMessage["references"];
         attachments?: ChatMessage["attachments"];
       }> | null;
@@ -704,11 +718,15 @@ export function updateChat(
     else if (patch.modelParams) next.modelParams = patch.modelParams;
     if (patch.queuedMessages === null) delete next.queuedMessages;
     else if (patch.queuedMessages) {
+      for (const item of patch.queuedMessages) {
+        if(item && typeof item.id === "string")rememberAssistantOrigin(ownerId,id,item.id.slice(0,200),item.assistantDeviceId);
+      }
       const queued = patch.queuedMessages
         .filter((item) => item && typeof item.id === "string" && typeof item.text === "string")
         .map((item) => ({
           id: item.id.slice(0, 200),
           text: item.text.slice(0, 100_000),
+          ...(assistantOriginId(item.assistantDeviceId) ? { assistantDeviceId: assistantOriginId(item.assistantDeviceId) } : {}),
           ...(typeof item.referenceText === "string" && item.referenceText.trim()
             ? { referenceText: item.referenceText.slice(0, 100_000) }
             : {}),
@@ -1073,7 +1091,7 @@ export function cloneChatByShareId(shareId: string, password: string | undefined
 }
 
 
-export function removeQueuedMessage(chatId: string, messageId: string, ownerId?: string) {
+export function removeQueuedMessage(chatId: string, messageId: string, ownerId?: string, options?: { retainDraftPreviews?: boolean }) {
   return transaction(() => {
     const chat = getChat(chatId, ownerId);
     if (!chat) return null;
@@ -1081,7 +1099,10 @@ export function removeQueuedMessage(chatId: string, messageId: string, ownerId?:
     getDatabase().prepare(
       "INSERT OR IGNORE INTO queue_message_removals (chat_id, message_id) VALUES (?, ?)",
     ).run(chatId, messageId);
-    const nextQueue = (chat.queuedMessages ?? []).filter((message) => message.id !== messageId);
+    const queue = chat.queuedMessages ?? [];
+    const edited = options?.retainDraftPreviews && queue.find((message) => message.id === messageId);
+    if (ownerId && edited) retainDraftAttachmentPreviews(chatId, ownerId, edited.attachments);
+    const nextQueue = queue.filter((message) => message.id !== messageId);
     const next = { ...chat };
     if (nextQueue.length) next.queuedMessages = nextQueue;
     else delete next.queuedMessages;
@@ -1106,6 +1127,7 @@ export function claimQueuedMessageInTransaction(chatId: string, ownerId?: string
         ? `Attached ${message.attachments.length} file${message.attachments.length === 1 ? "" : "s"}`
         : ""),
       ...(message.referenceText ? { referenceText: message.referenceText } : {}),
+      ...(message.assistantDeviceId ? { assistantDeviceId: message.assistantDeviceId } : {}),
       ...(message.references?.length ? { references: message.references } : {}),
       ...(message.attachments?.length ? { attachments: message.attachments } : {}),
       createdAt: now(),

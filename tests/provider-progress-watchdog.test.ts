@@ -21,7 +21,7 @@ for (const name of [
   "AI_CHAT_PROVIDER_TOOL_IDLE_MS",
 ]) delete process.env[name];
 
-async function fixture(t: import("node:test").TestContext) {
+async function fixture(t: import("node:test").TestContext, modelParams?: Array<{ id: string; value: string }>) {
   const { getDatabase } = await import("../lib/sqlite");
   const { upsertProviderConnection } = await import("../lib/provider-connections");
   const { createChat, getChat } = await import("../lib/db-store");
@@ -39,7 +39,7 @@ async function fixture(t: import("node:test").TestContext) {
   assert.ok(connection, "the test connection was created");
   const modelId = `codex:${connection.id}:watchdog-fixture`;
   const chat = createChat("Watchdog test", undefined, userId, { id: modelId });
-  const queued = enqueueJob({ chatId: chat.id, userId, modelId, message: "Test" });
+  const queued = enqueueJob({ chatId: chat.id, userId, modelId, modelParams, message: "Test" });
   const job = updateJob(queued.id, { status: "running" })!;
   let context!: ProviderContext;
   let finish!: () => void;
@@ -104,6 +104,47 @@ test("model switching hands off buffered generation within the existing poll int
   const continuation = f.getJob(f.job.id)?.resumePrompt || "";
   assert.match(continuation, /Continue only unfinished work/);
   assert.match(continuation, /Do not repeat completed (?:work|tools)/);
+});
+
+for (const id of ["effort", "reasoning"]) test(`reasoning-only ${id} switch interrupts, checkpoints and resumes with the new selection`, async t => {
+  const f = await fixture(t, [{ id, value: "high" }]);
+  const { requestJobModelSwitch, listRunEvents } = await import("../lib/db-jobs");
+  const params = [{ id, value: "low" }];
+  requestJobModelSwitch(f.chat.id, f.job.userId, f.job.modelId!, params);
+  t.mock.timers.tick(250);
+  await f.run;
+  assert.equal(f.context.signal!.aborted, true);
+  const switched = f.getJob(f.job.id)!;
+  assert.equal(switched.status, "switching");
+  assert.equal(switched.modelId, f.job.modelId);
+  assert.deepEqual(switched.modelParams, params);
+  assert.deepEqual(f.getChat(f.chat.id)?.modelParams, params);
+  assert.equal(switched.pendingModelId, undefined);
+  const events = f.getChat(f.chat.id)!.messages.flatMap(message => message.parts || []);
+  const event = events.find(part => part.type === "model-switch");
+  assert.ok(event && event.type === "model-switch");
+  assert.equal(event.fromReasoning, "high");
+  assert.equal(event.toReasoning, "low");
+  assert.equal(event.fromModelId, event.toModelId);
+  const live = listRunEvents(f.chat.id, f.job.userId, 0, f.job.id).filter(row => "event" in row && row.event === "run-event");
+  assert.equal(live.length, 1);
+  assert.deepEqual(live[0].data, event);
+  assert.match(switched.resumePrompt || "", /reasoning changed from high to low/);
+  assert.match(switched.resumePrompt || "", /Do not repeat completed/);
+});
+
+test("returning reasoning to the active value cancels a pending handoff", async t => {
+  const params = [{ id: "effort", value: "high" }];
+  const f = await fixture(t, params);
+  const { requestJobModelSwitch } = await import("../lib/db-jobs");
+  requestJobModelSwitch(f.chat.id, f.job.userId, f.job.modelId!, []);
+  requestJobModelSwitch(f.chat.id, f.job.userId, f.job.modelId!, params);
+  t.mock.timers.tick(250);
+  assert.equal(f.context.signal!.aborted, false);
+  f.finish();
+  await f.run;
+  assert.equal(f.getJob(f.job.id)?.status, "completed");
+  assert.equal(f.getChat(f.chat.id)!.messages.flatMap(message => message.parts || []).some(part => part.type === "model-switch"), false);
 });
 
 test("user cancellation interrupts buffered generation within the existing poll interval", async (t) => {

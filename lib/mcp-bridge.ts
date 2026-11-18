@@ -308,6 +308,7 @@ export const CORE_MCP_TOOL_ALLOWLIST = [
   "notify",
   "ask_user",
   "request_mode_change",
+  "request_runtime_mode_change",
   "delegate_subagent",
   "project_handoff",
   "subagent_status",

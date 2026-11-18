@@ -1,7 +1,7 @@
 import type { Chat } from "@/lib/store";
 
 export type AssistantQueuedMessage = NonNullable<Chat["queuedMessages"]>[number];
-export type AssistantDraft = Pick<AssistantQueuedMessage,"text"|"referenceText"|"references"|"attachments">;
+export type AssistantDraft = Pick<AssistantQueuedMessage,"text"|"referenceText"|"references"|"attachments"|"assistantDeviceId">;
 export type AssistantPanelSize = {width:number;height:number};
 export type AssistantSession = {version:number;chatId:string|null;draft:AssistantDraft;panelSize:AssistantPanelSize};
 export type AssistantSessionPatch = {chatId?:string|null;draftText?:string;clearContext?:boolean;panelSize?:AssistantPanelSize};

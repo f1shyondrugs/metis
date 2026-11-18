@@ -13,6 +13,8 @@ test("Skill Creator content is injected on every turn and explicit overrides rem
     assert.equal(prompt.split("Always-on skill skill-creator is active").length - 1, 1);
     assert.match(prompt, /# Skill Creator/);
     assert.match(prompt, /Metis integration/);
+    assert.match(prompt, /## Autonomous learning from experience/);
+    assert.match(prompt, /without waiting for an explicit/);
     assert.doesNotMatch(skillsCatalogPrompt(), /- skill-creator /);
   }
   assert.doesNotMatch(buildSkillContext("Hello", { enabledSkills: { "skill-creator": false } }), /Always-on skill skill-creator|# Skill Creator/);
@@ -44,6 +46,8 @@ test("fresh installation injects the bundled Creator before the provider user tu
       "assert.equal(skillModule.isAlwaysOnSkill('skill-creator'),true);",
       "assert.match(prompt,/Always-on skill skill-creator is active/);",
       "assert.match(prompt,/# Skill Creator/);",
+      "assert.match(prompt,/## Autonomous learning from experience/);",
+      "assert.match(prompt,/Do not persist learning from Incognito chats/);",
       "assert.equal(prompt.split('# Skill Creator').length-1,1);",
       "assert.match(contextModule.buildSkillContext('Continue'),/# Skill Creator/);",
       "console.log('FRESH_INSTALL_CREATOR_CONTEXT_OK');",
@@ -55,6 +59,37 @@ test("fresh installation injects the bundled Creator before the provider user tu
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /FRESH_INSTALL_CREATOR_CONTEXT_OK/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("registered learned packages are discoverable on the next turn without becoming Always on", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "metis-learned-skill-"));
+  try {
+    const folder = path.join(root, "skills/manual/tested-workflow");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(path.join(folder, "SKILL.md"), "---\nname: tested-workflow\ndescription: Reuse a verified fixture workflow.\n---\n\n# Tested workflow\nVerify the fixture result before recording success.\n");
+    const registered = spawnSync("python3", [
+      path.resolve("skills/bundled/skill-creator/scripts/register_skill.py"),
+      folder, "--root", root,
+    ], { encoding: "utf8" });
+    assert.equal(registered.status, 0, registered.stderr);
+    assert.match(registered.stdout, /Registered skill: tested-workflow/);
+    const result = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+      import assert from 'node:assert/strict';
+      import { writeFileSync } from 'node:fs';
+      import skillModule from './lib/skills.ts';
+      import contextModule from './lib/skill-context.ts';
+      const first = contextModule.buildSkillContext('Hello');
+      assert.match(first, /tested-workflow .*SKILL.md/);
+      assert.doesNotMatch(first, /Always-on skill tested-workflow/);
+      assert.equal(skillModule.isAlwaysOnSkill('tested-workflow'), false);
+      writeFileSync(${JSON.stringify(path.join(folder, "SKILL.md"))}, '# Updated verified procedure');
+      assert.equal(skillModule.readSkillMarkdown('tested-workflow'), '# Updated verified procedure');
+      assert.doesNotMatch(contextModule.buildSkillContext('Hello', {enabledSkills:{'tested-workflow':false}}), /tested-workflow/);
+      console.log('LEARNED_SKILL_NEXT_TURN_OK');
+    `], { cwd: process.cwd(), env: { ...process.env, AI_CHAT_ROOT: root, AI_CHAT_INSTALL_DIR: root, CHAT_DATA_DIR: path.join(root, "data"), CHAT_DB_PATH: path.join(root, "data/chat.sqlite") }, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /LEARNED_SKILL_NEXT_TURN_OK/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -2,12 +2,28 @@
 
 import { useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { StickyActions } from "@/components/ui/sticky-actions";
+import { ActivityDisclosureTrigger } from "@/components/activity-disclosure-trigger";
 import { FieldDictationButton, FieldDictationContext } from "@/components/field-dictation";
 import { embedDictationFields, type EmbedDictationField } from "@/lib/html-embed-dictation";
 import {
   HTML_EMBED_MAX_LENGTH, HTML_EMBED_THEME_KEYS, htmlEmbedDocument, htmlEmbedHeight,
   type HtmlEmbedTheme,
 } from "@/lib/html-embed";
+
+function HtmlSource({ source }: { source: string }) {
+  const sourceId = useId();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="mt-2 flex min-w-0 flex-col">
+      <ActivityDisclosureTrigger expanded={expanded} controls={sourceId} onClick={() => setExpanded((value) => !value)}>
+        <span className="truncate">View HTML</span>
+      </ActivityDisclosureTrigger>
+      <div id={sourceId} hidden={!expanded} className="mt-1 pl-4">
+        {expanded ? <pre tabIndex={0} className="m-0 max-h-80 overflow-auto whitespace-pre rounded-lg border border-border/60 p-3 text-xs focus-visible:outline-2 focus-visible:outline-ring"><code>{source}</code></pre> : null}
+      </div>
+    </div>
+  );
+}
 
 export function HtmlEmbed({ source, streaming = false }: { source: string; streaming?: boolean }) {
   const baseId = useId();
@@ -83,9 +99,6 @@ export function HtmlEmbed({ source, streaming = false }: { source: string; strea
         </div>
         {failed ? <p role="alert" className="mt-2 text-xs text-destructive">Part of this interactive response could not run. You can inspect its HTML below.</p> : null}
       </>}
-    {!streaming && !empty ? <details className="mt-2 text-xs text-muted-foreground">
-      <summary className="w-fit cursor-pointer rounded px-1 py-1 focus-visible:outline-2 focus-visible:outline-ring">View HTML</summary>
-      <pre className="mt-2 max-h-80 overflow-auto whitespace-pre rounded-lg border border-border/60 p-3 text-xs"><code>{source}</code></pre>
-    </details> : null}
+    {!streaming && !empty ? <HtmlSource source={source} /> : null}
   </div>;
 }

@@ -135,7 +135,7 @@ function backendHarness(capture: (attempt: number) => Promise<StreamFrame>, acti
   };
 }
 
-test("vault sessions stream private masked frames, including restoration by explicit tab identity",async()=>{
+test("vault sessions stream private frames, including restoration by explicit tab identity",async()=>{
   for(const explicitTab of [false,true]){
     const h=backendHarness(async()=>streamFrame());
     if(!explicitTab)await h.protectedBrowserRouting.prepare("owner","chat",{tabId:"protected"});

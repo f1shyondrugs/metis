@@ -148,7 +148,7 @@ async function runInstaller(platform, mode, systemd = false) {
   const testHome = path.join(directory, "home");
   for (const file of [install, bin, testHome]) fs.mkdirSync(file);
   const executable = (name, lines) => fs.writeFileSync(path.join(bin, name), lines.join("\n") + "\n", { mode: 0o755 });
-  for (const name of ["bash", "mkdir", "chmod", "nohup", "grep", "awk", "tail", "id", "cat", "mktemp", "mv", "tar", "gzip", "rm", "cksum", "sha256sum", "shasum", "readlink", "ln"]) {
+  for (const name of ["bash", "mkdir", "rmdir", "chmod", "nohup", "grep", "awk", "tail", "id", "cat", "mktemp", "mv", "tar", "gzip", "rm", "cksum", "sha256sum", "shasum", "readlink", "ln"]) {
     fs.symlinkSync(executablePath(name), path.join(bin, name));
   }
   executable("uname", ["#!/bin/sh", "if [ \"$1\" = -s ]; then echo " + (platform === "macos" ? "Darwin" : "Linux") + "; else echo x86_64; fi"]);
@@ -228,6 +228,18 @@ async function runInstaller(platform, mode, systemd = false) {
   }
   if (mode === "stale") fs.writeFileSync(path.join(install, "client.log"), "old-session authenticated new-client\n");
 
+  const releases = path.join(install, "releases");
+  fs.mkdirSync(releases);
+  for (let i = 0; i < 20; i++) {
+    const version = path.join(releases, "release." + String(i).padStart(6, "0"));
+    fs.mkdirSync(path.join(version, "runtime/bin"), { recursive: true });
+    fs.writeFileSync(path.join(version, "client.mjs"), "");
+    fs.writeFileSync(path.join(version, "config.json"), "{}");
+    fs.writeFileSync(path.join(version, "runtime/bin/node"), "");
+    const old = new Date(Date.now() - 3 * 86400000);
+    fs.utimesSync(version, old, old);
+  }
+  if (mode === "success") fs.symlinkSync(path.join(releases, "release.000019"), path.join(install, "current"));
   let authCount = 0;
   const server = http.createServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
@@ -280,6 +292,15 @@ async function runInstaller(platform, mode, systemd = false) {
         fs.copyFileSync(unit, path.join(process.env.METIS_TEST_EVIDENCE_DIR, "installer-generated.service"));
       }
     }
+    if (mode === "success") {
+      const retained = fs.readdirSync(releases);
+      assert.equal(retained.length, 2, output);
+      assert.ok(retained.includes("release.000019"), "previous working release must survive");
+      assert.match(output, /Obsolete client releases removed: 19/);
+    } else {
+      assert.equal(fs.readdirSync(releases).length, 21, "failed authentication must never prune old releases");
+    }
+    assert.ok(!fs.existsSync(path.join(install, ".install.lock")), "installer must release its own lock");
     return { exitCode, output, authCount };
   } finally {
     clearTimeout(timer);

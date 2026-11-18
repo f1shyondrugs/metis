@@ -41,7 +41,7 @@
       "source": "custom",
       "sourceType": "local",
       "skillPath": "skills/manual/metis-development/SKILL.md",
-      "computedHash": "25f4c7c9c4d1941ea9df1dfeeceafe8e820fd9f762952671e2546767b56df11f"
+      "computedHash": "9669b001f82d511cb41c65cf4c025e7eec9579ca3d5ba02c0673a055c269479d"
     },
     "pdf": {
       "source": "anthropics/skills",
@@ -65,7 +65,7 @@
       "source": "openai/skills (Metis adaptation)",
       "sourceType": "bundled",
       "skillPath": "skills/bundled/skill-creator/SKILL.md",
-      "computedHash": "4ee426f1c45139912942835882d8cc212cc873a6cfaeaf71da335abc8f3af3a9"
+      "computedHash": "835968f07e189d729f258ce24ac9e37f42dd3be84d7c17b18723fa56d868698e"
     },
     "xlsx": {
       "source": "anthropics/skills",
@@ -240,6 +240,18 @@
       "skillPath": "skills/manual/sw-workflow/SKILL.md",
       "computedHash": "1e51911c81123196dfcfe4a4a5712d09483745f626a75c832bda2188c53e24d8",
       "sourceSkillPath": "plugins/screenwriting/skills/sw-workflow/SKILL.md"
+    },
+    "emil-design-eng": {
+      "source": "custom",
+      "sourceType": "local",
+      "skillPath": "skills/manual/emil-design-eng/SKILL.md",
+      "computedHash": "b8dc4aabfad41e704c9c44788436d78f7fc5a08749e21fe0056199efc7c5d806"
+    },
+    "social-video-downloader": {
+      "source": "custom",
+      "sourceType": "local",
+      "skillPath": "skills/manual/social-video-downloader/SKILL.md",
+      "computedHash": "28f0b892b987cf49e115f55ef4d4f039b6fa7bfc98599c1a9b638908dc6659a9"
     }
   }
 }

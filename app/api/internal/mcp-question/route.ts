@@ -10,6 +10,8 @@ import { normalizeAskUserInput, QuestionValidationError, type AskUserInput } fro
 import { bearerTokenMatches } from "@/lib/security";
 import { performSharedBrowserAction } from "@/lib/shared-browser-client";
 import { z } from "zod";
+import { RUNTIME_MODES, RUNTIME_MODE_DETAILS } from "@/lib/mcp-core/runtime-permissions.mjs";
+import { runtimeModeForChat, type RuntimeMode } from "@/lib/runtime-mode";
 import {prepareMcpInput} from "@/lib/mcp-protected-input";
 import {parseProtectedLoginReply,type ProtectedLoginReply} from "@/lib/protected-login-contract";
 import {browserLoginRequest} from "@/lib/browser-login-client";
@@ -36,10 +38,31 @@ export async function POST(req: Request) {
   if (!chat || !jobId) return Response.json({ error: "Invalid chat context" }, { status: 400 });
 
   let input: AskUserInput;
+  let runtimeModeChange: { previous: RuntimeMode; target: RuntimeMode } | undefined;
   let secureBrowserInput: {requestId:string;origin:string;expiresAt:string;kind?:"console"|"mcp";envFields?:string[];sessionId?:string;fields?:Array<"password"|"username"|"email">}|undefined;
   try {
     const raw=await req.json();
-    if(raw.mcpInput){
+    if (raw.runtimeModeChange) {
+      // Generic ask_user arguments must not tunnel around a disabled control tool.
+      if (req.headers.get("x-ai-chat-control-tool") !== "request_runtime_mode_change") return Response.json({ error: "Use the runtime permission control tool." }, { status: 403 });
+      const job = getJob(jobId);
+      if (automation || job?.automationId || job?.parentJobId || job?.projectHandoffId) return Response.json({ error: "Runtime permission changes require the interactive parent chat." }, { status: 403 });
+      const change = z.object({ runtimeModeChange: z.object({ runtimeMode: z.enum(RUNTIME_MODES), reason: z.string().max(1000).optional() }).strict() }).strict().parse(raw).runtimeModeChange;
+      const previous = runtimeModeForChat(chat);
+      if (previous === change.runtimeMode) return Response.json({ switched: false, runtimeMode: previous, reason: "already_active" });
+      runtimeModeChange = { previous, target: change.runtimeMode };
+      const current = RUNTIME_MODE_DETAILS[previous];
+      const target = RUNTIME_MODE_DETAILS[change.runtimeMode];
+      input = normalizeAskUserInput({
+        title: "Change runtime permissions",
+        description: `Current: ${current.label}.\nRequested: ${target.label}. ${target.description}${change.reason ? "\nReason: " + change.reason : ""}\nThis changes this chat only, not Agent/Plan/Ask, account or Remote Device restrictions.`,
+        submitLabel: "Submit decision",
+        questions: [{
+          key: "decision", type: "radio", question: `Switch to ${target.label}?`, required: true, icon: "shield",
+          options: [{ label: `Accept ${target.label}`, value: "approve" }, { label: "Keep current permissions", value: "deny" }],
+        }],
+      });
+    } else if(raw.mcpInput){
       if(automation)return Response.json({error:"MCP credential changes require interactive protected input."},{status:403});
       secureBrowserInput=await prepareMcpInput(userId!,chatId,jobId,raw.mcpInput);
       input=normalizeAskUserInput({title:"Configure MCP credentials securely",description:`Connection: ${secureBrowserInput.origin}`,questions:[{key:"secure_login",type:"text",question:"Protected MCP input",required:false}],responseTemplate:"MCP credentials configured securely."});
@@ -146,6 +169,21 @@ export async function POST(req: Request) {
   if (!internalRunContextAuthorized(req, jobId)) return new Response(null, { status: 499 });
   updateJob(jobId, { status: "running" });
   updateChat(chatId, { runStatus: "running", pendingQuestion: null }, userId);
+  if (runtimeModeChange) {
+    const latest = getChat(chatId, userId);
+    if (!latest) return Response.json({ error: "Chat not found" }, { status: 404 });
+    const current = runtimeModeForChat(latest);
+    // Only the exact typed answer to this server-built form can authorize the
+    // captured target. Custom prose, cancellation and stale forms never elevate.
+    if (resolved.cancelled || resolved.status !== "answered" || resolved.values?.decision !== "approve") {
+      return Response.json({ questionId: pending.questionId, switched: false, runtimeMode: current, cancelled: Boolean(resolved.cancelled), reason: "not_approved" });
+    }
+    if (current !== runtimeModeChange.previous) return Response.json({ questionId: pending.questionId, switched: false, runtimeMode: current, reason: "permissions_changed_while_waiting" });
+    const updated = updateChat(chatId, { runtimeMode: runtimeModeChange.target }, userId);
+    if (!updated) return Response.json({ error: "Chat not found" }, { status: 404 });
+    appendRunEvent(jobId, chatId, userId, "runtime_mode_changed", { runtimeMode: runtimeModeChange.target, previousRuntimeMode: current, questionId: pending.questionId });
+    return Response.json({ questionId: pending.questionId, switched: true, runtimeMode: runtimeModeChange.target, previousRuntimeMode: current, currentRun: true, instruction: "Continue the original task using Metis tools. The gateway applies the confirmed permission level now; native provider sandbox settings refresh on the next run. Other security policies remain in force." });
+  }
   return Response.json({ questionId: pending.questionId, answers, values: resolved.values, summary: resolved.summary, ...(resolved.cancelled ? { status: "cancelled", cancelled: true } : {}) });
 }
 
@@ -161,7 +199,9 @@ export async function GET(req: Request) {
   }
   try {
     await waitForJobUserInput(jobId, userId, req.signal);
-    return Response.json({ waitingForUser: false });
+    const chat = getChat(chatId, userId);
+    if (!chat || !internalRunContextAuthorized(req, jobId)) return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ waitingForUser: false, runtimeMode: runtimeModeForChat(chat) });
   } catch {
     return Response.json({ error: "The run is waiting for an answer or has been stopped." }, { status: req.signal.aborted ? 499 : 409 });
   }

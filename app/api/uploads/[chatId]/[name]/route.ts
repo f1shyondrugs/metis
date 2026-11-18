@@ -1,6 +1,7 @@
 import { fileResponse } from "@/lib/file-response";
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import { getChat } from "@/lib/db-store";
+import { findChatAttachmentForPreview } from "@/lib/chat-attachment-preview-store";
 import { resolveUploadPath } from "@/lib/uploads";
 
 export const runtime = "nodejs";
@@ -21,9 +22,7 @@ export async function GET(req: Request, { params }: Params) {
   }
 
   const storedName = decodeURIComponent(name);
-  const meta = chat.messages
-    .flatMap((m) => m.attachments ?? [])
-    .find((a) => a.storedName === storedName);
+  const meta = findChatAttachmentForPreview(chat, storedName, ownerId);
 
   const full = resolveUploadPath(chatId, storedName, ownerId);
   if (!full || !meta) {

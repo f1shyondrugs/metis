@@ -7,7 +7,7 @@ import { mergeQueuedFollowUps } from "../lib/composer-send";
 import { saveQueuedFollowUps, updateChatQueue } from "../lib/queue-client";
 
 const file = ts.createSourceFile("app-shell.tsx", readFileSync("components/app-shell.tsx", "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const names = ["queueCurrentMessage", "persistQueuedFollowUps", "applyServerQueuedMessages"];
+const names = ["queueCurrentMessage", "persistQueuedFollowUps", "applyServerQueuedMessages", "clearPendingFiles"];
 const handlers: string[] = [];
 function visit(node: ts.Node) {
   if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? "")) handlers.push(node.getText(file));
@@ -15,7 +15,7 @@ function visit(node: ts.Node) {
 }
 visit(file);
 const js = ts.transpileModule(handlers.join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
-type Item = { id: string; text: string; files: Array<{ id: string; uploadTaskId: string; file: File }>; uploadIds?: string[]; storedAttachments?: unknown[] };
+type Item = { id: string; text: string; files: Array<{ id: string; uploadTaskId: string; file: File; previewUrl?: string; fromQueue?: true }>; uploadIds?: string[]; storedAttachments?: unknown[] };
 function fixture() {
   let queue: Item[] = [], cleared = 0;
   const saved: Array<{ queuedMessages: Array<Record<string, unknown>> }> = [], errors: string[] = [];
@@ -25,12 +25,14 @@ function fixture() {
     stateRef: { current: { chatId: "chat", queueChatId: "chat", messages: [], queuedMessages: queue } },
     queuedSendRef: { current: new Set() }, removedIdsFor: () => new Set(),
     referenceText: "", references: [], restoredAttachments: [],
+    URL, pendingByChatRef: { current: new Map() }, pendingFilesRef: { current: [] },
+    setVisiblePendingFiles: () => { cleared++; },
     getCompletedUploadResult: (id: string) => id === "task" ? { id: "server-upload" } : undefined,
     fetch: async (_url: string, request: RequestInit) => { saved.push(JSON.parse(String(request.body))); return Response.json({}); },
     setQueuedMessages: (update: Item[] | ((current: Item[]) => Item[])) => { queue = typeof update === "function" ? update(queue) : update; context.queuedMessages = queue; context.queuedState.messages = queue; },
     setQueuedState: (updater: any) => { context.queuedState = updater(context.queuedState); queue = context.queuedState.messages; context.queuedMessages = queue; context.stateRef.current.queuedMessages = queue; },
     setInputGuarded: () => { cleared++; }, setComposerSyncNonce: () => {}, setReferenceText: () => {},
-    setReferences: () => {}, clearPendingFiles: () => {}, setRestoredAttachments: () => {},
+    setReferences: () => {}, setRestoredAttachments: () => {},
     fileInputRef: { current: null }, toast: { error: (s: string) => errors.push(s) },
     mergeQueuedFollowUps, saveQueuedFollowUps, updateChatQueue,
   };
@@ -50,15 +52,23 @@ for (const state of ["empty", "consumed", "removed"] as const) {
   });
 }
 
-test("the real queue handler persists a finished photo upload with its prompt and clears only after attaching it", () => {
+test("queuing a finished upload replaces the composer blob with an authenticated preview before revoking it", async () => {
   const f = fixture();
-  const photo = { id: "pending", uploadTaskId: "task", file: new File(["photo"], "photo.png", { type: "image/png" }) };
+  const file = new File(["photo"], "photo.png", { type: "image/png" });
+  const photo = { id: "pending", uploadTaskId: "task", file, previewUrl: URL.createObjectURL(file) };
+  f.context.pendingByChatRef.current.set("chat", [photo]);
+  assert.equal(await (await fetch(photo.previewUrl)).text(), "photo");
   f.queueCurrentMessage("Inspect photo", [photo]);
   assert.equal(f.queue().length, 1);
   assert.deepEqual(Array.from(f.queue()[0].uploadIds!), ["server-upload"]);
   assert.deepEqual(f.saved[0].queuedMessages[0].uploadIds, ["server-upload"]);
-  assert.equal(f.queue()[0].files[0], photo);
-  assert.equal(f.cleared(), 1);
+  assert.equal(f.queue()[0].files[0].file, file);
+  assert.equal(f.queue()[0].files[0].uploadTaskId, photo.uploadTaskId, "Editing must reuse the finished upload");
+  assert.equal(f.queue()[0].files[0].previewUrl, "/api/file-uploads/server-upload/file");
+  assert.equal(f.queue()[0].files[0].fromQueue, true);
+  await assert.rejects(fetch(photo.previewUrl), "The old composer blob must not be kept alive");
+  assert.equal(f.context.pendingFilesRef.current.length, 0);
+  assert.equal(f.cleared(), 2);
 });
 for (const failure of ["http", "network"]) {
   test(`queue persistence reports ${failure} failures without dropping the local message`, async () => {

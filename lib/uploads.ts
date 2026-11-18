@@ -215,7 +215,7 @@ export function buildAttachmentPrompt(
   let previewBytes = 0;
   const lines = stored.map((a) => {
     const abs = resolveUploadPath(chatId,a.storedName,ownerId);
-    const metadata = `- ${a.name} (${a.kind}, ${a.mimeType}, ${a.size} bytes)\n  path: ${abs}`;
+    const metadata = `- ${a.name} (${a.kind}, ${a.mimeType}, ${a.size} bytes)\n  id: ${a.id}\n  path: ${abs}`;
     if (!abs||!isTextAttachment(a) || previewBytes >= 400_000) return metadata;
     try {
       const fd = openSafeRead(abs);

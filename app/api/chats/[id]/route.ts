@@ -181,11 +181,12 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!chat) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
-  const modelSwitch = requestedModelId
+  const switchModelId = projectModel?.modelId || requestedModelId || (body.modelParams !== undefined ? chat.modelId : undefined);
+  const modelSwitch = switchModelId
     ? requestJobModelSwitch(
         id,
         ownerId,
-        projectModel?.modelId || requestedModelId,
+        switchModelId,
         body.modelParams || undefined,
       )
     : null;

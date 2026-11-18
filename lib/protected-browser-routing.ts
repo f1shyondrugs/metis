@@ -2,7 +2,7 @@ import type {SharedBrowserAction} from "./shared-browser-client";
 import type {ProtectedLoginReply} from "./protected-login-contract";
 import { ProtectedLoginError } from "./protected-login-errors";
 
-type LoginRequest = (owner: string, chat: string, operation: string, input?: Record<string, unknown>) => Promise<ProtectedLoginReply>;
+type LoginRequest = (owner: string, chat: string, operation: string, input?: Record<string, unknown>, management?: boolean) => Promise<ProtectedLoginReply>;
 type TrustedLoginTarget=string|{url:string;entryOrigin?:string};
 type LoginTarget = (owner: string, chat: string, tabId?: string) => TrustedLoginTarget | Promise<TrustedLoginTarget>;
 
@@ -33,7 +33,7 @@ export class ProtectedBrowserRouting {
     }
   }
   async captureFrame(owner:string,chat:string,quality=70){
-    const {screenshot,...state}=await this.action(owner,chat,{action:"screenshot",tabId:"protected",includeScreenshot:true,quality});
+    const {screenshot,...state}=await this.action(owner,chat,{action:"screenshot",tabId:"protected",includeScreenshot:true,quality,source:"user"});
     if(typeof screenshot!=="string"||!screenshot)throw new ProtectedLoginError("screenshot_unavailable");
     return {...state,tabId:"protected",activeTabId:"protected",data:Buffer.from(screenshot,"base64")};
   }
@@ -43,7 +43,8 @@ export class ProtectedBrowserRouting {
     this.chats.add(key);
     const closing=action.action==="close"||action.action==="close_tab";
     try {
-      const result = await this.request(owner, chat, closing ? "close" : "action", action);
+      const ownerView = !closing && action.source === "user";
+      const result = await this.request(owner, chat, closing ? "close" : ownerView ? "owner_action" : "action", action, ownerView);
       if (closing) this.chats.delete(key);
       return result;
     } catch (error) {

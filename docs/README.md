@@ -19,11 +19,13 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 | [MCP-CREDENTIALS.md](./MCP-CREDENTIALS.md) | Protected MCP environment input, encrypted connection settings and session-preserving rollout |
 | [PROTECTED-LOGINS.md](./PROTECTED-LOGINS.md) | Protected credential forms, encrypted browser/console reuse and deployment requirements |
 | [NATIVE-RUNTIME-ISOLATION.md](./NATIVE-RUNTIME-ISOLATION.md) | Native provider isolation and protected file boundaries |
+| [RUNTIME-PERMISSIONS.md](./RUNTIME-PERMISSIONS.md) | Confirmed permission changes, live gateway policy and Codex approval delegation |
 | [CONTEXT-EFFICIENCY.md](./CONTEXT-EFFICIENCY.md) | Native Codex instruction replacement and bounded project-memory retrieval |
 | [LONG-CHAT-PERFORMANCE.md](./LONG-CHAT-PERFORMANCE.md) | Long-history pagination, data preservation and performance measurements |
 | [NOTE-PIN-PERFORMANCE.md](./NOTE-PIN-PERFORMANCE.md) | Note pinning with many chats: measured bottlenecks and changed-only writes |
 | [NOTEBOOK-PRESENCE.md](./NOTEBOOK-PRESENCE.md) | Account avatars, notebook-wide presence and permission-scoped follow mode |
 | [RELEASE-TESTING.md](./RELEASE-TESTING.md) | Release and upgrade checks |
+| [STORAGE-RETENTION.md](./STORAGE-RETENTION.md) | Update retention, compiler caches, and safe cleanup boundaries |
 
 ## Architecture (historical + current)
 

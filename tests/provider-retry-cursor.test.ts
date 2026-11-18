@@ -14,7 +14,7 @@ Object.assign(process.env, {
 for (const name of ["AI_CHAT_JOB_ID", "AI_CHAT_WORKER_ID", "AI_CHAT_JOB_LEASE_TOKEN"]) delete process.env[name];
 after(() => rmSync(dir, { recursive: true, force: true }));
 
-for (const incognito of [false, true]) for (const phase of ["create", "send", "send-with-tool", "result", "usage-reset", "switch-send", "switch-result"] as const) {
+for (const incognito of [false, true]) for (const phase of ["create", "send", "send-with-tool", "result", "usage-reset", "switch-send", "switch-result", "reasoning-send", "reasoning-result"] as const) {
   test(`real Cursor runner preserves the task through ${phase} failure (incognito ${incognito})`, async t => {
     const require = createRequire(import.meta.url);
     const sdk = require("@cursor/sdk") as typeof import("@cursor/sdk");
@@ -41,7 +41,10 @@ for (const incognito of [false, true]) for (const phase of ["create", "send", "s
     })!;
     discovery.persistDiscoveredModels(connection.id, [{ id: "fixture-model", displayName: "Fixture" }, { id: "fixture-next", displayName: "Next fixture" }]);
     const modelId = `cursor:${connection.id}:fixture-model`;
-    const switching = phase === "switch-send" || phase === "switch-result";
+    const reasoningSwitch = phase === "reasoning-send" || phase === "reasoning-result";
+    const switching = phase === "switch-send" || phase === "switch-result" || reasoningSwitch;
+    const nextModelId = reasoningSwitch ? modelId : `cursor:${connection.id}:fixture-next`;
+    const nextParams = reasoningSwitch ? [{ id: "effort", value: "high" }] : undefined;
     const chat = store.createChat("Cursor retry", undefined, userId, { id: modelId });
     const originalTask = "Read alpha.txt and report its exact SHA256 digest.";
     const suppliedAnswer = "The user answered: use the directory worktree-b.";
@@ -62,8 +65,8 @@ for (const incognito of [false, true]) for (const phase of ["create", "send", "s
         prompts.push(prompt);
         assert.ok(prompt.includes(originalTask), "the actual SDK prompt must retain the original task");
         if (phase === "create") assert.ok(prompt.includes(suppliedAnswer), "a supplied answer must survive the retry");
-        if (sends === 1 && phase === "switch-send") {
-          jobs.requestJobModelSwitch(chat.id, userId, `cursor:${connection.id}:fixture-next`);
+        if (sends === 1 && (phase === "switch-send" || phase === "reasoning-send")) {
+          jobs.requestJobModelSwitch(chat.id, userId, nextModelId, nextParams);
           throw new Error("Provider stopped during model handoff");
         }
         if (sends === 1 && phase === "usage-reset") throw new Error("Usage limit reached", {
@@ -79,7 +82,7 @@ for (const incognito of [false, true]) for (const phase of ["create", "send", "s
         return {
           async *stream() {},
           async wait() {
-            if (sends === 1 && phase === "switch-result") jobs.requestJobModelSwitch(chat.id, userId, `cursor:${connection.id}:fixture-next`);
+            if (sends === 1 && (phase === "switch-result" || phase === "reasoning-result")) jobs.requestJobModelSwitch(chat.id, userId, nextModelId, nextParams);
             return sends === 1 && phase === "result"
               ? { status: "error", error: { message: "Model is under capacity" } }
               : { status: "completed", result: "Finished remaining work." };
@@ -91,12 +94,13 @@ for (const incognito of [false, true]) for (const phase of ["create", "send", "s
     });
     t.mock.method(sdk.Agent, "create", async (options: Parameters<typeof sdk.Agent.create>[0]) => {
       creates++;
-      if (switching && creates === 2) assert.equal(typeof options.model === "string" ? options.model : options.model?.id, "fixture-next");
+      if (switching && creates === 2) assert.equal(typeof options.model === "string" ? options.model : options.model?.id, reasoningSwitch ? "fixture-model" : "fixture-next");
       if (creates === 1 && phase === "create") throw new Error("Model is under capacity");
       return makeAgent() as unknown as Awaited<ReturnType<typeof sdk.Agent.create>>;
     });
-    t.mock.method(sdk.Agent, "resume", async (agentId: string) => {
+    t.mock.method(sdk.Agent, "resume", async (agentId: string, options: Parameters<typeof sdk.Agent.resume>[1]) => {
       assert.equal(agentId, "fixture-session");
+      if (reasoningSwitch) assert.deepEqual(typeof options?.model === "object" ? options.model.params : undefined, nextParams);
       assert.equal(disposals, 1, "the failed attempt must finish disposal before retry");
       resumes++;
       return makeAgent() as unknown as Awaited<ReturnType<typeof sdk.Agent.resume>>;
@@ -108,7 +112,12 @@ for (const incognito of [false, true]) for (const phase of ["create", "send", "s
       const switched = events.find(event => event.type === "model-switch");
       assert.ok(switched && switched.type === "model-switch");
       assert.equal(switched.fromModelId, modelId);
-      assert.equal(switched.toModelId, `cursor:${connection.id}:fixture-next`);
+      assert.equal(switched.toModelId, nextModelId);
+      if (reasoningSwitch) {
+        assert.equal(switched.fromReasoning, null);
+        assert.equal(switched.toReasoning, "high");
+        assert.deepEqual(jobs.getJob(job.id)?.modelParams, nextParams);
+      }
       jobs.requeueSwitchingJob(job.id);
       const next = jobs.claimNextJob()!;
       assert.equal(next.id, job.id);
@@ -140,8 +149,8 @@ for (const incognito of [false, true]) for (const phase of ["create", "send", "s
       assert.ok(terminalTool >= 0 && terminalTool < retry, "the live tool must stop before the retry status");
     }
     assert.equal(sends, phase === "create" ? 1 : 2);
-    assert.equal(creates, phase === "create" || switching ? 2 : 1);
-    assert.equal(resumes, phase === "create" || switching ? 0 : 1);
+    assert.equal(creates, phase === "create" || (switching && !reasoningSwitch) ? 2 : 1);
+    assert.equal(resumes, phase === "create" || (switching && !reasoningSwitch) ? 0 : 1);
     assert.equal(disposals, phase === "create" ? 1 : 2);
     assert.match(prompts.at(-1)!, /Do not repeat completed tools/);
     assert.equal(jobs.getJob(job.id)?.status, "completed", jobs.getJob(job.id)?.error);

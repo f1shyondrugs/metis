@@ -544,6 +544,11 @@ export function getDatabase(): DatabaseSync {
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     data TEXT NOT NULL, PRIMARY KEY(chat_id,user_id)
   );
+  CREATE TABLE IF NOT EXISTS chat_draft_attachment_previews (
+    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    attachments TEXT NOT NULL, PRIMARY KEY(chat_id,user_id)
+  );
   CREATE TABLE IF NOT EXISTS notification_reads (
     notification_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     read_at TEXT NOT NULL, PRIMARY KEY(notification_id,user_id)

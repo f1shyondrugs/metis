@@ -19,7 +19,7 @@ type TranscriptMessage = {
 };
 
 function isQuestionTool(part: Part) {
-  return /(?:^|__|[/.])(?:ask_user|research_plan)$/.test(innerToolName(part.name ?? "", part.input, part.result));
+  return /(?:^|__|[/.])(?:ask_user|research_plan|request_mode_change|request_runtime_mode_change)$/.test(innerToolName(part.name ?? "", part.input, part.result));
 }
 
 function partsFor(message: TranscriptMessage): Part[] {

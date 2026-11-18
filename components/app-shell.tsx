@@ -1,4 +1,7 @@
 "use client";
+
+import { useChatList } from "@/components/use-chat-list";
+import { ChatListLoadMore } from "@/components/chat-list-load-more";
 import { Link2 } from "lucide-react";
 import { useModelChains, useChatModelChain, notifyModelChainsChanged } from "@/components/use-model-chains";
 import type { ModelChain } from "@/lib/model-chain-types";
@@ -142,6 +145,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { FileEmbed } from "@/components/file-embed";
+import { ChatAttachmentPreviews, QueuedAttachmentPreview, chatAttachmentUrl, type ChatAttachment } from "@/components/chat-attachment-previews";
 import { FileWorkspaceContext } from "@/components/file-workspace-actions";
 import { ImageViewer } from "@/components/image-viewer";
 import { canAutoRevealBrowser } from "@/lib/browser-auto-reveal";
@@ -427,15 +431,7 @@ type ThinkingPart = Extract<MsgPart, { type: "thinking" }>;
 type ToolMsgPart = Extract<MsgPart, { type: "tool" }>;
 type Suggestion = { label: string; prompt: string };
 
-type MsgAttachment = {
-  id: string;
-  name: string;
-  mimeType: string;
-  kind: "image" | "file";
-  storedName?: string;
-  size?: number;
-  previewUrl?: string; // client-only
-};
+type MsgAttachment = ChatAttachment;
 
 type Msg = {
   authorId?: string;
@@ -472,7 +468,19 @@ type PendingFile = {
   uploadTaskId?: string;
   file: File;
   previewUrl?: string;
+  fromQueue?: true;
 };
+
+function pendingFileAttachment(pending: PendingFile, previewUrl = pending.previewUrl): MsgAttachment {
+  return {
+    id: pending.id,
+    name: pending.file.name,
+    mimeType: pending.file.type || "application/octet-stream",
+    kind: pending.file.type.startsWith("image/") ? "image" : "file",
+    size: pending.file.size,
+    previewUrl,
+  };
+}
 
 type QueuedMessage = {
   id: string;
@@ -1543,7 +1551,7 @@ function AttachmentViewer({
   onOpenChange: (open: boolean) => void;
 }) {
   const attachment = active?.attachment;
-  const url = attachment?.storedName && active?.chatId ? `/api/uploads/${active.chatId}/${encodeURIComponent(attachment.storedName)}` : attachment?.previewUrl;
+  const url = attachment && chatAttachmentUrl(attachment, active?.chatId);
   if (attachment && url && fileViewKind(attachment.mimeType,attachment.name) === "image")
     return <ImageViewer image={{src:url,alt:attachment.name,name:attachment.name}} onOpenChange={onOpenChange}/>;
   return <Dialog open={Boolean(active)} onOpenChange={onOpenChange}>
@@ -1586,8 +1594,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const workspaceDefaultCwd = status?.agentCwd?.trim() || defaultCwd.trim() || clientConfig.defaultCwd;
   const chatCacheScope = status?.agentCwd?.trim() || clientConfig.storagePrefix;
 
-  const [chats, setChats] = useState<ChatIndexEntry[]>([]);
-  const [chatsLoaded, setChatsLoaded] = useState(false);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const projectedTranscript = useMemo(() => projectChatTranscript(projectQuestionTranscript(messages)), [messages]);
@@ -1714,6 +1720,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [projectHomeId, setProjectHomeId] = useState<string | null>(null);
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const [sidebarAllProjects, setSidebarAllProjects] = useState(true);
+  const sidebarProjectId = sidebarAllProjects ? null : projectHomeId || draftProjectId;
+  const { chats, setChats, loaded: chatsLoaded, loading: chatsLoading, error: chatsError,
+    nextCursor: chatsNextCursor, refresh: loadChats, loadMore: loadMoreChats } = useChatList(authed === true, sidebarProjectId);
   const draftProjectIdRef = useRef<string | null>(null);
   const [sidebarProjects, setSidebarProjects] = useState<Array<{
     mode?: "chat" | "agents";
@@ -1978,7 +1987,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     () => hasUnfinishedComposerUploads(pendingFiles, getUploadStatus),
     () => false,
   );
-  const [restoredAttachments, setRestoredAttachments] = useState<MsgAttachment[]>([]);
+  const [restoredAttachmentsByChat, setRestoredAttachmentsByChat] = useState<Map<string | null, MsgAttachment[]>>(() => new Map());
+  const restoredAttachments = restoredAttachmentsByChat.get(activeChatId) ?? [];
   const [activeAttachment, setActiveAttachment] = useState<{
     attachment: MsgAttachment;
     chatId?: string;
@@ -2335,7 +2345,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }).then(response => {
       if (!response.ok && acknowledgedActivityRef.current.get(id) === revision) acknowledgedActivityRef.current.delete(id);
     }).catch(() => { if (acknowledgedActivityRef.current.get(id) === revision) acknowledgedActivityRef.current.delete(id); });
-  }, []);
+  }, [setChats]);
 
   // A snapshot is acknowledged only after its messages have rendered in a visible chat.
   useEffect(() => { if (activeChatId) clearUnread(activeChatId); }, [activeChatId, messages, clearUnread]);
@@ -3592,21 +3602,16 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }
   }, []);
 
-  const loadChats = useCallback(async () => {
-    try {
-      const res = await fetchReadWithRetry("/api/chats", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to load chats");
-      const data = (await res.json()) as { chats: ChatIndexEntry[] };
-      for (const chat of data.chats) latestActivityRef.current.set(chat.id, chat.activityRevision ?? 0);
-      setChats(data.chats);
-      const serverUnreadIds = data.chats.filter(chat =>
+  useEffect(() => {
+      for (const chat of chats) latestActivityRef.current.set(chat.id, chat.activityRevision ?? 0);
+      const serverUnreadIds = chats.filter(chat =>
         (chat.unread ?? chat.badge === "blue") &&
         (chat.activityRevision === undefined || chat.activityRevision > (acknowledgedActivityRef.current.get(chat.id) ?? -1))
       ).map(chat => chat.id);
       setUnreadChatIds(serverUnreadIds);
       saveUnreadChatIds(serverUnreadIds);
-      const attentionChats = data.chats.filter(chat => chat.pendingQuestion || chat.pendingApproval);
-      setAttentionChatIds(data.chats.filter(chat => chatActivityIndicator(chat) === "question" || chatActivityIndicator(chat) === "error").map(chat => chat.id));
+      const attentionChats = chats.filter(chat => chat.pendingQuestion || chat.pendingApproval);
+      setAttentionChatIds(chats.filter(chat => chatActivityIndicator(chat) === "question" || chatActivityIndicator(chat) === "error").map(chat => chat.id));
       for (const chat of attentionChats) {
         const question = chat.pendingQuestion;
         if (!question) continue;
@@ -3615,12 +3620,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           : `${question.questions.length} questions need your input.`;
         notifyAttentionRef.current(chat.id, question.questionId, body);
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load chats");
-    } finally {
-      setChatsLoaded(true);
-    }
-  }, [markUnread]);
+  }, [chats]);
 
   const loadMemories = useCallback(async () => {
     const res = await fetch("/api/memories", { cache: "no-store" });
@@ -4969,7 +4969,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   useEffect(() => {
     if (!authed) return;
-    void loadChats();
     void loadModes();
     void loadMemories();
     void loadModels();
@@ -6455,13 +6454,14 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   async function confirmRevert() {
     const target = revertTarget;
-    if (!target || reverting) return;
+    const chatId = activeChatIdRef.current;
+    if (!target || reverting || !chatId) return;
     if (busy) await stopAgent({ forRevert: true });
     const reverted = await revertMessage(target, {
       keepMessage: false,
       successMessage: "Message and following changes reverted",
     });
-    if (reverted) {
+    if (reverted && activeChatIdRef.current === chatId) {
       setInput(target.content);
       setComposerSyncNonce((current) => current + 1);
       setReferences(target.references ?? []);
@@ -6548,6 +6548,18 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : `Could not attach ${file.name}.`);
     }
+  }
+
+  function setRestoredAttachments(next: MsgAttachment[] | ((previous: MsgAttachment[]) => MsgAttachment[])) {
+    const chatId = activeChatIdRef.current;
+    setRestoredAttachmentsByChat((previous) => {
+      const attachments = typeof next === "function" ? next(previous.get(chatId) ?? []) : next;
+      if (!attachments.length && !previous.has(chatId)) return previous;
+      const updated = new Map(previous);
+      if (attachments.length) updated.set(chatId, attachments);
+      else updated.delete(chatId);
+      return updated;
+    });
   }
 
   function setPendingFiles(next: PendingFile[] | ((previous: PendingFile[]) => PendingFile[])) {
@@ -6773,6 +6785,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     if (activeChatIdRef.current !== activeChatId || loadingChatId || queuedState.chatId !== activeChatId ||
       stateRef.current.chatId !== activeChatId || stateRef.current.queueChatId !== activeChatId || stateRef.current.loadingChatId) return;
     const uploadIds: string[] = [];
+    const queuedFiles: PendingFile[] = [];
     for (const pending of files) {
       const uploaded = pending.uploadTaskId ? getCompletedUploadResult(pending.uploadTaskId) : undefined;
       if (!uploaded) {
@@ -6780,6 +6793,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         return;
       }
       uploadIds.push(uploaded.id);
+      // The composer releases its blob URL when cleared. A completed upload's
+      // authenticated URL stays usable in the queue and on moving it back to edit.
+      queuedFiles.push({ ...pending, previewUrl: `/api/file-uploads/${encodeURIComponent(uploaded.id)}/file`, fromQueue: true });
     }
     const current = stateRef.current.queuedMessages.filter((item) => !activeChatId || !removedIdsFor(activeChatId).has(item.id));
     if (!files.length && !restoredAttachments.length && text && current.some((item) => item.text === text && !item.files.length && !item.storedAttachments?.length && !item.uploadIds?.length)) return;
@@ -6788,7 +6804,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       {
         id: `q-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         text,
-        files,
+        files: queuedFiles,
         ...(uploadIds.length ? { uploadIds } : {}),
         ...(referenceText.trim() ? { referenceText: referenceText.trim() } : {}),
         ...(references.length ? { references: [...references] } : {}),
@@ -6880,6 +6896,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       return await removeQueuedFollowUp({
         chatId,
         messageId: message.id,
+        retainDraftPreviews: Boolean(onRemoved),
         removedIds: removedIdsFor(chatId ?? ""),
         removeLocally: () => {
           setQueuedMessages((current) => current.filter((item) => item.id !== message.id));
@@ -7354,14 +7371,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
     const localAttachments: MsgAttachment[] = [
       ...storedAttachmentsToSend,
-      ...filesToSend.map((p) => ({
-      id: p.id,
-      name: p.file.name,
-      mimeType: p.file.type || "application/octet-stream",
-        kind: (p.file.type.startsWith("image/") ? "image" : "file") as "image" | "file",
-      size: p.file.size,
-      previewUrl: p.previewUrl,
-      })),
+      ...filesToSend.map((pending) => {
+        const uploaded = pending.uploadTaskId && getCompletedUploadResult(pending.uploadTaskId);
+        return pendingFileAttachment(pending, uploaded ? `/api/file-uploads/${encodeURIComponent(uploaded.id)}/file` : pending.previewUrl);
+      }),
     ];
 
     const localCreatedAt = new Date().toISOString();
@@ -8484,7 +8497,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     );
   }
 
-  const canSend = !chainSelectionBusy && Boolean(input.trim() || pendingFiles.length);
+  const canSend = !chainSelectionBusy && Boolean(input.trim() || pendingFiles.length || restoredAttachments.length);
   const transcriptPinned = !showScrollDown;
   const transcriptMessages = useMemo(() => visibleTranscriptMessages(projectedTranscript, transcriptPinned), [projectedTranscript, transcriptPinned]);
   const hiddenTranscriptCount = hiddenTranscriptMessageCount(projectedTranscript.length, transcriptMessages.length);
@@ -8862,96 +8875,104 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   const queuedList = queuedMessages.length > 0 ? (
     <div className="space-y-1.5 px-1">
-      {queuedMessages.map((message, index) => (
-        <div
-          key={message.id}
-          tabIndex={0}
-          aria-label={`Queued message ${index + 1}`}
-          onDragOver={(event) => {
-            event.preventDefault();
-            if (draggedQueueId !== message.id) setDragOverQueueId(message.id);
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            dropQueuedMessage(message.id);
-            setDraggedQueueId(null);
-            setDragOverQueueId(null);
-          }}
-          className={cn(
-            "group/queue flex items-start gap-2 rounded-lg border bg-muted/20 px-2.5 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            dragOverQueueId === message.id ? "border-primary/70 bg-primary/10" : "border-border/40",
-            draggedQueueId === message.id && "opacity-50",
-          )}
-        >
-          <span
-            draggable
-            role="button"
-            tabIndex={0}
-            aria-label={`Reorder queued message ${index + 1}`}
-            title="Drag to reorder"
-            onDragStart={(event) => {
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData("text/plain", message.id);
-              setDraggedQueueId(message.id);
-            }}
-            onDragEnd={() => {
-              setDraggedQueueId(null);
-              setDragOverQueueId(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      {queuedMessages.map((message, index) => {
+        const attachments = [
+          ...message.files.map((pending) => pendingFileAttachment(pending)),
+          ...(message.storedAttachments ?? []),
+        ];
+        return (
+          <QueuedAttachmentPreview key={message.id} attachments={attachments} chatId={activeChatId} suspended={Boolean(draggedQueueId)}>
+            <div
+              tabIndex={0}
+              aria-label={`Queued message ${index + 1}`}
+              onDragOver={(event) => {
                 event.preventDefault();
-                moveQueuedMessage(message.id, event.key === "ArrowUp" ? -1 : 1);
-              }
-            }}
-            className="flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground active:cursor-grabbing"
-          >
-            <GripVertical className="size-3.5" aria-hidden="true" />
-          </span>
-          <div className="min-w-0 flex-1 pt-1.5">
-            <QueuedPromptPreview
-              text={`${index + 1}. ${message.text || `Attached ${Math.max(message.files.length, message.uploadIds?.length ?? 0) + (message.storedAttachments?.length ?? 0)} file(s)`}`}
-            />
-            {message.referenceText || message.references?.length || message.storedAttachments?.length || message.files.length ? (
-              <div className="mt-1 flex min-w-0 flex-wrap gap-1 text-[10px] text-muted-foreground/80">
-                {message.referenceText ? (
-                  <span className="max-w-full truncate rounded border border-primary/20 bg-primary/[0.06] px-1.5 py-0.5">
-                    Referenced: {message.referenceText}
-                  </span>
+                if (draggedQueueId !== message.id) setDragOverQueueId(message.id);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                dropQueuedMessage(message.id);
+                setDraggedQueueId(null);
+                setDragOverQueueId(null);
+              }}
+              className={cn(
+                "group/queue flex items-start gap-2 rounded-lg border bg-muted/20 px-2.5 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                dragOverQueueId === message.id ? "border-primary/70 bg-primary/10" : "border-border/40",
+                draggedQueueId === message.id && "opacity-50",
+              )}
+            >
+              <span
+                draggable
+                role="button"
+                tabIndex={0}
+                aria-label={`Reorder queued message ${index + 1}`}
+                title="Drag to reorder"
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", message.id);
+                  setDraggedQueueId(message.id);
+                }}
+                onDragEnd={() => {
+                  setDraggedQueueId(null);
+                  setDragOverQueueId(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                    event.preventDefault();
+                    moveQueuedMessage(message.id, event.key === "ArrowUp" ? -1 : 1);
+                  }
+                }}
+                className="flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground active:cursor-grabbing"
+              >
+                <GripVertical className="size-3.5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1 pt-1.5">
+                <QueuedPromptPreview
+                  text={`${index + 1}. ${message.text || `Attached ${Math.max(message.files.length, message.uploadIds?.length ?? 0) + (message.storedAttachments?.length ?? 0)} file(s)`}`}
+                />
+                {message.referenceText || message.references?.length || attachments.length ? (
+                  <div className="mt-1 flex min-w-0 flex-wrap gap-1 text-[10px] text-muted-foreground/80">
+                    {message.referenceText ? (
+                      <span className="max-w-full truncate rounded border border-primary/20 bg-primary/[0.06] px-1.5 py-0.5">
+                        Referenced: {message.referenceText}
+                      </span>
+                    ) : null}
+                    {message.references?.map((reference) => (
+                      <span
+                        key={`${reference.kind}-${reference.id}`}
+                        className="max-w-full truncate rounded border border-border/50 bg-muted/30 px-1.5 py-0.5"
+                      >
+                        @{reference.label}
+                      </span>
+                    ))}
+                    {attachments.map((attachment) => (
+                      <button
+                        key={attachment.id}
+                        type="button"
+                        aria-label={`Preview ${attachment.name}`}
+                        title={attachment.name}
+                        className="max-w-full truncate rounded border border-border/50 bg-muted/30 px-1.5 py-0.5 text-left hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                        onClick={() => setActiveAttachment({ attachment, chatId: activeChatId ?? undefined })}
+                      >
+                        {attachment.name}
+                      </button>
+                    ))}
+                  </div>
                 ) : null}
-                {message.references?.map((reference) => (
-                  <span
-                    key={`${reference.kind}-${reference.id}`}
-                    className="max-w-full truncate rounded border border-border/50 bg-muted/30 px-1.5 py-0.5"
-                  >
-                    @{reference.label}
-                  </span>
-                ))}
-                {message.files.map((pending) => (
-                  <span key={pending.id} className="max-w-full truncate rounded border border-border/50 bg-muted/30 px-1.5 py-0.5">{pending.file.name}</span>
-                ))}
-                {message.storedAttachments?.map((attachment) => (
-                  <span
-                    key={attachment.id}
-                    className="max-w-full truncate rounded border border-border/50 bg-muted/30 px-1.5 py-0.5"
-                  >
-                    {attachment.name}
-                  </span>
-                ))}
               </div>
-            ) : null}
-          </div>
-          <Button type="button" size="xs" variant="ghost" className="h-7 shrink-0 px-2 text-xs" disabled={Boolean(pendingQuestion) || answeringQuestion} title={pendingQuestion ? "Answer the agent's question first" : undefined} onClick={() => sendQueuedMessage(message)}>
-            Send now
-          </Button>
-          <Button type="button" size="icon-xs" variant="ghost" className="size-7 shrink-0 max-md:min-h-11 max-md:min-w-11" aria-label="Edit queued message" title="Edit queued message" onClick={() => editQueuedMessage(message)}>
-            <Pencil className="size-3.5" />
-          </Button>
-          <Button type="button" size="icon-xs" variant="ghost" className="size-7 shrink-0 max-md:min-h-11 max-md:min-w-11" aria-label="Remove queued message" onClick={() => { void removeMessageFromQueue(message); }}>
-            <X className="size-3.5" />
-          </Button>
-        </div>
-      ))}
+              <Button type="button" size="xs" variant="ghost" className="h-7 shrink-0 px-2 text-xs" disabled={Boolean(pendingQuestion) || answeringQuestion} title={pendingQuestion ? "Answer the agent's question first" : undefined} onClick={() => sendQueuedMessage(message)}>
+                Send now
+              </Button>
+              <Button type="button" size="icon-xs" variant="ghost" className="size-7 shrink-0 max-md:min-h-11 max-md:min-w-11" aria-label="Edit queued message" title="Edit queued message" onClick={() => editQueuedMessage(message)}>
+                <Pencil className="size-3.5" />
+              </Button>
+              <Button type="button" size="icon-xs" variant="ghost" className="size-7 shrink-0 max-md:min-h-11 max-md:min-w-11" aria-label="Remove queued message" onClick={() => { void removeMessageFromQueue(message); }}>
+                <X className="size-3.5" />
+              </Button>
+            </div>
+          </QueuedAttachmentPreview>
+        );
+      })}
     </div>
   ) : null;
 
@@ -9152,26 +9173,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           </Button>
         </div>
       ) : null}
-      {restoredAttachments.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5 px-1" aria-label="Restored attachments">
-          {restoredAttachments.map((attachment) => (
-            <span
-              key={attachment.id}
-              className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-secondary/60 px-2 py-1 text-xs text-muted-foreground"
-            >
-              <span className="max-w-48 truncate">{attachment.name}</span>
-              <button
-                type="button"
-                className="rounded-sm p-0.5 hover:bg-muted hover:text-foreground"
-                onClick={() => setRestoredAttachments((current) => current.filter((item) => item.id !== attachment.id))}
-                aria-label={`Remove ${attachment.name}`}
-              >
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
+      <ChatAttachmentPreviews attachments={restoredAttachments} chatId={activeChatId} label="Restored attachments" className="px-1"
+        onRemove={(id) => setRestoredAttachments((current) => current.filter((item) => item.id !== id))} />
       {references.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 px-1" aria-label="Selected references">
           {references.map((reference) => (
@@ -9243,23 +9246,18 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             addPendingFiles(Array.from(selectedFiles).slice(0, MAX_PENDING_FILES));
           }}
         />
-        {pendingFiles.length > 0 ? (
+        <ChatAttachmentPreviews attachments={pendingFiles.filter((pending) => pending.fromQueue).map((pending) => pendingFileAttachment(pending))}
+          label="Attachments from the queue" className="px-1 pt-1" onRemove={removePendingFile} />
+        {pendingFiles.some((pending) => !pending.fromQueue) ? (
           <div className="flex max-w-full gap-2 overflow-x-auto overscroll-x-contain px-1 pt-1 pb-1">
-            {pendingFiles.map((p) => (
+            {pendingFiles.filter((pending) => !pending.fromQueue).map((p) => (
               <div
                 key={p.id}
                 role="button"
                 tabIndex={0}
                 title={`Open ${p.file.name}`}
                 onClick={() => setActiveAttachment({
-                  attachment: {
-                    id: p.id,
-                    name: p.file.name,
-                    mimeType: p.file.type || "application/octet-stream",
-                    kind: p.file.type.startsWith("image/") ? "image" : "file",
-                    size: p.file.size,
-                    previewUrl: p.previewUrl,
-                  },
+                  attachment: pendingFileAttachment(p),
                   chatId: activeChatId ?? undefined,
                 })}
                 onKeyDown={(event) => {
@@ -9657,7 +9655,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   
  const activeProjectId = projectHomeId || chats.find(chat => chat.id === activeChatId)?.projectId || draftProjectId || null;
  // Chat membership identifies its context; only explicit navigation selects the sidebar filter.
- const sidebarProjectId = sidebarAllProjects ? null : projectHomeId || draftProjectId;
  const isAgentChat = !notesOpen && !automationsOpen && !projectHomeId && Boolean(activeChatId && sidebarProjects.find(project => project.id === activeProjectId)?.mode === "agents");
 
  function queuedCountForChat(chatId: string) {
@@ -9903,7 +9900,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                     {c.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
                     {c.pinned ? "Unpin" : "Pin"}
                   </DropdownMenuItem>
-                  {c.incognito ? null : (
+                  {chat.incognito ? null : (
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
                         <FolderInput className="size-3.5" />
@@ -10009,6 +10006,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         onCollapseNav={() => setMobileNavOpen(false)}
             />
           )}
+          <ChatListLoadMore hasMore={Boolean(chatsNextCursor)} loading={chatsLoaded && chatsLoading}
+            error={chatsError} onLoadMore={loadMoreChats} onRetry={loadChats} />
         </div>
       </div>
 
@@ -10705,7 +10704,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                           </div>
                         ) : null}
                         {editingMessageId === m.id ? (
-                          <div className="w-full max-w-[85%] space-y-2 rounded-xl border border-border/60 bg-secondary/45 p-3">
+                          <div className="w-full min-w-0 max-w-[92%] space-y-2 rounded-xl border border-border/60 bg-secondary/45 p-3 sm:max-w-[85%]">
+                            <ChatAttachmentPreviews attachments={m.attachments} chatId={activeChatId} />
                             <Textarea
                               value={editValue}
                               onChange={(event) => setEditValue(event.target.value)}
@@ -10746,17 +10746,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                         ) : (
                         <div className="min-w-0 max-w-[92%] space-y-2 rounded-lg bg-secondary/70 px-3.5 py-2.5 text-[15px] leading-[1.55] [overflow-wrap:anywhere] sm:max-w-[85%] sm:px-4">
                           <ProjectMessageAuthor members={messageProjectMembers} authorId={m.authorId} authorName={m.authorName} />
-                          {m.attachments && m.attachments.length > 0 ? (
-                            <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
-                              {m.attachments.map((att) => {
-                                const href =
-                                  att.storedName && activeChatId
-                                    ? `/api/uploads/${activeChatId}/${encodeURIComponent(att.storedName)}`
-                                    : att.previewUrl;
-                                return href ? <FileEmbed key={att.id} file={{...att,url:href}} className="w-80 max-w-full shrink-0 rounded-lg border border-border/40 bg-background/40 max-h-96"/> : null;
-                              })}
-                            </div>
-                          ) : null}
+                          <ChatAttachmentPreviews attachments={m.attachments} chatId={activeChatId} />
                           {m.content ? (
                             (() => {
                               const userMessageLineCount = m.content.split(/\r?\n/).length;
