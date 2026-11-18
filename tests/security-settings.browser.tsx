@@ -57,16 +57,19 @@ if(appFixture && new URLSearchParams(location.search).has("verify")) {
  function check(value:unknown,label:string){results.push((value?"PASS ":"FAIL ")+label);}
  async function run(){
    const app=await until(()=>document.querySelector<HTMLElement>('[data-slot="desktop-app-settings"]'));
-   const settings=app.closest("section[aria-label=Settings]")!;
-   const bounds=settings.getBoundingClientRect();
+   const settings=app.closest<HTMLElement>("section[aria-label=Settings]")!;
+   const [width,height]=[settings.offsetWidth,settings.offsetHeight];
    const sidebar=Array.from(document.querySelectorAll<HTMLElement>('[role="tablist"]')).find(element=>element.getBoundingClientRect().width>0);
    check(innerWidth<1024 || sidebar?.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.trim()==="Devices","uses the real side tabs with Devices selected");
-   check(document.documentElement.scrollWidth<=innerWidth+1 && bounds.width<=innerWidth,"settings are responsive without horizontal overflow");
+   check(document.documentElement.scrollWidth<=innerWidth+1 && width<=innerWidth,"settings are responsive without horizontal overflow");
    check(!!desktopBridge()&&!!settings.querySelector('[role="combobox"][aria-label="Search settings"]'),"shared Settings search is present");
    (await until(()=>find("Check for updates"))).click();
    await until(()=>updateChecks===1);
    check(updateChecks===1,"native update button calls the existing bridge once");
-   const streams=await until(()=>document.querySelector<HTMLButtonElement>("#client-streams"));
+   const streams=await until(()=>{
+     const candidate=document.querySelector<HTMLButtonElement>("#client-streams");
+     return candidate && !candidate.disabled ? candidate : null;
+   });
    streams.click();await until(()=>captureChanges===1);
    await until(()=>streams.getAttribute("aria-checked")==="true");
    check(!hideOverlayFromCapture,"desktop preferences are saved with the existing bridge");
@@ -80,8 +83,8 @@ if(appFixture && new URLSearchParams(location.search).has("verify")) {
    const next=await until(()=>Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(e=>e.textContent?.includes("Appearance")));
    next.click();
    const general=await until(()=>document.querySelector('[data-slot="appearance-manager"]'));
-   const otherBounds=general.closest("section[aria-label=Settings]")!.getBoundingClientRect();
-   check(Math.abs(bounds.width-otherBounds.width)<1&&Math.abs(bounds.height-otherBounds.height)<1,"App settings and other Settings use identical bounds");
+   const other=general.closest<HTMLElement>("section[aria-label=Settings]")!;
+   check(other===settings && width===other.offsetWidth && height===other.offsetHeight,"App settings and other Settings use identical bounds");
    search.focus();
    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(search,"app settings");
    search.dispatchEvent(new Event("input",{bubbles:true}));
