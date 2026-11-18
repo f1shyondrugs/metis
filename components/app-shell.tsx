@@ -1727,6 +1727,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [projectHomeId, setProjectHomeId] = useState<string | null>(null);
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const [sidebarAllProjects, setSidebarAllProjects] = useState(true);
+  // Chat membership identifies its context; only explicit navigation selects the sidebar filter.
   const sidebarProjectId = sidebarAllProjects ? null : projectHomeId || draftProjectId;
   const { chats, setChats, loaded: chatsLoaded, loading: chatsLoading, error: chatsError,
     nextCursor: chatsNextCursor, refresh: loadChats, loadMore: loadMoreChats } = useChatList(authed === true, sidebarProjectId);
@@ -8415,8 +8416,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const selectedMode = modes.find((mode) => mode.id === modeId) || modes.find(mode => mode.id === "agent") || modes[0];
   const projectModelLock = projectModel ? projectModelLockMessage(modeProject?.name || "this project") : undefined;
  const activeProjectId = projectHomeId || chats.find(chat => chat.id === activeChatId)?.projectId || draftProjectId || null;
- // Chat membership identifies its context; only explicit navigation selects the sidebar filter.
- const sidebarProjectId = sidebarAllProjects ? null : projectHomeId || draftProjectId;
  const isAgentChat = !notesOpen && !automationsOpen && !projectHomeId && Boolean(activeChatId && sidebarProjects.find(project => project.id === activeProjectId)?.mode === "agents");
 
   const workspaceCommandTabs = WORKSPACE_COMMAND_TABS.filter(tab => (tab.id !== "browser" || browserEnabled) && (tab.id !== "team" || isAgentChat));
