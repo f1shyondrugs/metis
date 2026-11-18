@@ -25,6 +25,7 @@ function fixture(chatId: string | null = "chat") {
   let files = [] as typeof message.files, references = [] as typeof message.references;
   let attachments = [] as typeof message.storedAttachments, referenceText = "";
   let calls = 0, finish!: (response: Response) => void;
+  const requestUrls: string[] = [];
   const removed = new Set<string>(), errors: string[] = [], cancelled: number[] = [], timers: Array<() => void> = [];
   const context = {
     activeChatId: chatId, activeChatIdRef: { current: chatId }, loadingChatId: null as string | null,
@@ -45,7 +46,7 @@ function fixture(chatId: string | null = "chat") {
     setReferences: (value: typeof references) => { references = value; },
     setPendingFiles: (value: typeof files) => { files = value; },
     setRestoredAttachments: (value: typeof attachments) => { attachments = value; },
-    setReferenceMenu: () => {}, setSlashQuery: () => {},
+    setReferenceMenu: () => {}, setSlashMenu: () => {},
     fileInputRef: { current: { value: "previous-file" } },
     textareaRef: { current: { focus: () => { focuses++; } } },
     window: { clearTimeout: (timer: number) => { cancelled.push(timer); }, setTimeout: (callback: () => void) => { timers.push(callback); } },
@@ -54,13 +55,13 @@ function fixture(chatId: string | null = "chat") {
   };
   // The real removal helper uses fetch; inject the transport without replacing its behavior.
   context.removeQueuedFollowUp = (options: Parameters<typeof removeQueuedFollowUp>[0]) => removeQueuedFollowUp({
-    ...options, request: async () => { calls++; return new Promise<Response>(resolve => { finish = resolve; }); },
+    ...options, request: async (url) => { requestUrls.push(String(url)); calls++; return new Promise<Response>(resolve => { finish = resolve; }); },
   });
   const methods = vm.runInNewContext(js + "; ({editQueuedMessage, send})", context) as {
     editQueuedMessage: (item: typeof message) => Promise<void>;
     send: () => Promise<void>;
   };
-  return { message, kept, context, errors, cancelled, removed, ...methods,
+  return { message, kept, context, errors, cancelled, removed, requestUrls, ...methods,
     finish: (ok = true) => finish(Response.json({}, {status: ok ? 200 : 500})),
     type: (value: string) => { input = value; context.draftInputRef.current = value; context.stateRef.current.input = value; },
     flushFocus: () => { timers.splice(0).forEach(callback => callback()); },
@@ -81,6 +82,7 @@ test("queued text, references and files reach the composer before the DELETE ack
   assert.equal(state.attachments, f.message.storedAttachments);
   assert.equal(state.referenceText, f.message.referenceText);
   assert.equal(state.calls, 1);
+  assert.deepEqual(f.requestUrls, ["/api/chats/chat/queue/q?edit=1"], "Edit retains preview access after removing the prompt");
   assert.equal(f.context.sendInFlightKeysRef.current.has("chat"), true, "Sending waits for original removal while editing remains immediate");
   assert.deepEqual(f.cancelled, [42]);
   assert.equal(f.context.inputCommitTimerRef.current, 0);

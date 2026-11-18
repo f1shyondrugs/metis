@@ -24,15 +24,17 @@ test("agent note links escape titles and render as navigable internal links",()=
   assert.doesNotMatch(html,/\.md/);
 });
 
-test("note tools render inside a collapsed shared activity group with direct saved-note navigation",()=>{
+test("note tools reveal direct saved-note navigation when the activity group opens",()=>{
   const note={id:"note-42",title:"Planning.md",content:"Long report"};
   const tools=[
     {id:"list",name:"list_notes",kind:"note" as const,status:"completed",result:JSON.stringify({notes:[note]})},
     {id:"create",name:"create_note",kind:"note" as const,status:"completed",result:JSON.stringify({content:[{type:"text",text:JSON.stringify({note})}]})},
   ];
-  const html=renderToStaticMarkup(<ToolCallGroup tools={tools}/>);
-  assert.match(html,/aria-expanded="false"/);
-  assert.match(html,/hidden=""/);
+  const closed=renderToStaticMarkup(<ToolCallGroup tools={tools}/>);
+  assert.match(closed,/aria-expanded="false"/);
+  assert.doesNotMatch(closed,/data-tool-call-row/);
+  const html=renderToStaticMarkup(<ToolCallGroup tools={tools} autoExpand/>);
+  assert.match(html,/aria-expanded="true"/);
   assert.match(html,/href="note:\/\/note-42"/);
   assert.match(html,/aria-label="Open note Planning"/);
   assert.doesNotMatch(html,/Note ready|No note details|Planning\.md/);
