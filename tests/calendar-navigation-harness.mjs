@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import ts from "typescript";
 const file=ts.createSourceFile("app-shell.tsx",fs.readFileSync(new URL("../components/app-shell.tsx",import.meta.url),"utf8"),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-const handlers={};let effect="",reset="",navigate="",href="",calendar="",eventCallback="";
+const handlers={};let effect="",reset="",navigate="",href="",calendar="",eventCallback="",openCalendar="";
 function visit(n){
  if(ts.isVariableDeclaration(n)&&n.name.getText(file)==="openLinkedCalendarEvent")eventCallback=n.initializer.getText(file);
  if(ts.isFunctionDeclaration(n)&&n.name?.text==="chatHref")href=n.getText(file);
+ if(ts.isFunctionDeclaration(n)&&n.name?.text==="openCalendar")openCalendar=n.getText(file);
  if(ts.isVariableDeclaration(n)&&n.name.getText(file)==="calendarOpen")calendar=n.initializer.getText(file);
  if(ts.isVariableDeclaration(n)&&n.name.getText(file)==="navigateChat")navigate=n.initializer.arguments[0].getText(file);
  if(ts.isJsxElement(n)&&n.openingElement.tagName.getText(file)==="button"){
@@ -23,7 +24,7 @@ function visit(n){
  ts.forEachChild(n,visit);
 }
 visit(file);
-if(!effect||!reset||!navigate||!href||!calendar||Object.keys(handlers).length!==3)throw Error("Missing real calendar route, history or sidebar callbacks");
+if(!effect||!reset||!navigate||!href||!calendar||!openCalendar||Object.keys(handlers).length!==3)throw Error("Missing real calendar route, history or sidebar callbacks");
 export function calendarNavigationHarnessSource(){
  const code=[
  "function createCalendarNavigationHarness(window) {",href,
@@ -45,6 +46,7 @@ export function calendarNavigationHarnessSource(){
  'const query=new URLSearchParams(window.location.search);routeChatId=query.get("c");routeView=query.get("view");calendarOpen='+calendar+";",
  "resetAccount();apply();",
  "}",
+ openCalendar,
  "const openEventCallback="+eventCallback+";",
  "const callbacks={"+Object.entries(handlers).map(([k,v])=>k+":"+v).join(",")+"};",
  "return {state,get calendarOpen(){return calendarOpen;},get chatId(){return activeChatIdRef.current;},reconcile,",
