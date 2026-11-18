@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChartNoAxesCombined, ChevronsUpDown, Settings, UserRound, Puzzle, Bell, LogOut, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DesktopAppSettingsDialog } from "@/components/desktop-app-settings-dialog";
 import { useDesktopAvailable } from "@/lib/desktop-bridge";
 import { useDesktopState } from "@/lib/use-desktop-state";
 import type { AccountIdentity, AccountProfile } from "@/lib/account-types";
@@ -27,16 +28,19 @@ export function ProfileAvatar({profile,name,className}: {profile:AccountIdentity
     <AvatarFallback className="bg-muted text-foreground">{(profile?.displayName || name).slice(0,2).toUpperCase()}</AvatarFallback>
   </Avatar>;
 }
-export function AccountMenu({profile,username,updateAvailable,onSettings,onProfile,onUsage,onAgentHub,unreadCount=0,onNotifications,onLogout,onAppSettings}: {
+export function AccountMenu({profile,username,updateAvailable,onSettings,onProfile,onUsage,onAgentHub,unreadCount=0,onNotifications,onLogout,onReplayOnboarding,mobile=false}: {
   profile:AccountProfile|null;username:string;updateAvailable:boolean;
-  onSettings:()=>void;onProfile:()=>void;onUsage:()=>void;onLogout:()=>void;onAgentHub?:()=>void;unreadCount?:number;onNotifications?:()=>void;onAppSettings?:()=>void;
+  onSettings:()=>void;onProfile:()=>void;onUsage:()=>void;onLogout:()=>void;onAgentHub?:()=>void;unreadCount?:number;onNotifications?:()=>void;onReplayOnboarding?:()=>void;mobile?:boolean;
 }) {
   const desktop=useDesktopAvailable();
   const {state}=useDesktopState();
   const appUpdateAvailable=desktop&&state?.appUpdate?.available===true;
-  return <DropdownMenu>
+  const [appSettingsOpen,setAppSettingsOpen]=useState(false);
+  const appSettingsRequested=useRef(false);
+  const accountTrigger=useRef<HTMLButtonElement>(null);
+  return <><DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button variant="ghost" className="h-12 w-full justify-start gap-2.5 px-2.5" aria-label="Open account menu">
+      <Button ref={accountTrigger} variant="ghost" className="h-12 w-full justify-start gap-2.5 px-2.5" aria-label="Open account menu">
         <span className="relative shrink-0"><ProfileAvatar profile={profile} name={username} className="size-8" />
           {updateAvailable||appUpdateAvailable ? <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-primary ring-2 ring-background" aria-label={appUpdateAvailable?"App update available":"Update available"} /> : null}
           {unreadCount > 0 ? <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-destructive ring-2 ring-background" aria-label={`${unreadCount} unread notifications`} /> : null}
@@ -45,11 +49,16 @@ export function AccountMenu({profile,username,updateAvailable,onSettings,onProfi
         <ChevronsUpDown className="size-3.5 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent side="top" align="start" sideOffset={8} className="min-w-52">
+    <DropdownMenuContent side="top" align="start" sideOffset={8} className="min-w-52" onCloseAutoFocus={event=>{
+      if (!appSettingsRequested.current) return;
+      event.preventDefault();
+      appSettingsRequested.current=false;
+      setAppSettingsOpen(true);
+    }}>
       <div className="truncate px-2 py-2 text-xs text-muted-foreground">{username}</div>
       <DropdownMenuSeparator />
-      {desktop&&onAppSettings?<>
-        <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onAppSettings}><Monitor /> App settings{appUpdateAvailable?<span className="ml-auto size-2 shrink-0 rounded-full bg-primary" aria-label="App update available"/>:null}</DropdownMenuItem>
+      {desktop?<>
+        <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={()=>{appSettingsRequested.current=true;}}><Monitor /> App settings{appUpdateAvailable?<span className="ml-auto size-2 shrink-0 rounded-full bg-primary" aria-label="App update available"/>:null}</DropdownMenuItem>
         <DropdownMenuSeparator />
       </>:null}
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onProfile}><UserRound /> Profile</DropdownMenuItem>
@@ -60,5 +69,8 @@ export function AccountMenu({profile,username,updateAvailable,onSettings,onProfi
       <DropdownMenuSeparator />
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onLogout}><LogOut /> Logout</DropdownMenuItem>
     </DropdownMenuContent>
-  </DropdownMenu>;
+  </DropdownMenu>
+  {desktop ? <DesktopAppSettingsDialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen} mobile={mobile}
+    returnFocus={()=>accountTrigger.current} onReplayOnboarding={onReplayOnboarding} /> : null}
+  </>;
 }

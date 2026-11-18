@@ -2047,11 +2047,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }
   const [settingsTab, setSettingsTab] = useState("general");
   const [settingsSectionRequest, setSettingsSectionRequest] = useState<string | null>(null);
-  function openAppSettings() {
-    setSettingsTab("devices");
-    setSettingsSectionRequest("settings-app");
-    openAccountPage("settings");
-  }
   const [settingsUpdateAvailable, setSettingsUpdateAvailable] = useState(false);
   const [chatLogsOpen, setChatLogsOpen] = useState(false);
   const [chatLogs, setChatLogs] = useState<ChatLogEntry[]>([]);
@@ -10130,7 +10125,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       <div className="shrink-0 p-2" data-onboarding-target="settings">
         <AccountMenu profile={accountProfile} username={username} updateAvailable={settingsUpdateAvailable} unreadCount={unreadNotifications} onNotifications={() => openAccountPage("notifications")}
           onSettings={() => openAccountPage("settings")}
-          onAppSettings={openAppSettings}
+          mobile={isMobileSettings}
+          onReplayOnboarding={replayOnboarding ? () => { setMobileNavOpen(false); replayOnboarding(); } : undefined}
           onAgentHub={() => openAccountPage("agent-hub")}
           onProfile={() => openAccountPage("profile")}
           onUsage={() => openAccountPage("usage")}

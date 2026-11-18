@@ -28,7 +28,6 @@ export const SETTINGS_SECTIONS: Record<string, SettingsSection[]> = {
     { id: "settings-memories", label: "Memories", keywords: "global memory facts preferences erinnerungen gedächtnis" },
   ],
   devices: [
-    { id: "settings-app", label: "App settings", keywords: "desktop app update startup autostart shortcut screen recording server replay onboarding" },
     { id: "settings-remote-clients", label: "Remote clients", keywords: "devices pairing desktop pc windows linux macos permissions geräte verbinden" },
   ],
   chats: [
@@ -57,15 +56,14 @@ export function visibleSettingsTabs(isHostAdmin: boolean) {
   return SETTINGS_TABS.filter(tab => isHostAdmin || tab.value !== "admin");
 }
 
-export function visibleSettingsSections(tab: string, isHostAdmin: boolean, desktop = false) {
+export function visibleSettingsSections(tab: string, isHostAdmin: boolean) {
   return (SETTINGS_SECTIONS[tab] || []).filter(item =>
-    (desktop || item.id !== "settings-app") &&
-    (isHostAdmin || (item.id !== "settings-users" && item.id !== "settings-maintenance")),
+    isHostAdmin || (item.id !== "settings-users" && item.id !== "settings-maintenance"),
   );
 }
 
-export function settingsOverviewSections(tab: string, isHostAdmin: boolean, desktop = false) {
-  return visibleSettingsSections(tab, isHostAdmin, desktop).filter(item => !item.parentSectionId);
+export function settingsOverviewSections(tab: string, isHostAdmin: boolean) {
+  return visibleSettingsSections(tab, isHostAdmin).filter(item => !item.parentSectionId);
 }
 
 export type SettingsSearchEntry = {
@@ -77,12 +75,12 @@ export type SettingsSearchEntry = {
   sectionId?: string;
 };
 
-export function settingsSearchEntries(isHostAdmin: boolean, desktop = false): SettingsSearchEntry[] {
+export function settingsSearchEntries(isHostAdmin: boolean): SettingsSearchEntry[] {
   return visibleSettingsTabs(isHostAdmin).flatMap(tab => {
     const category = tab.label;
     return [
       { id: tab.value, tab: tab.value, label: category, category: "Settings", keywords: "keywords" in tab ? tab.keywords : undefined },
-      ...visibleSettingsSections(tab.value, isHostAdmin, desktop).map(item => ({
+      ...visibleSettingsSections(tab.value, isHostAdmin).map(item => ({
         id: item.id, tab: tab.value, sectionId: item.id, label: item.label, category, keywords: item.keywords,
       })),
     ];
