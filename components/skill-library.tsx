@@ -11,12 +11,12 @@ import type { SkillSettingsView } from "@/lib/skills";
 import type { DirectorySkill } from "@/lib/skills-directory";
 import { SharedSkillImport } from "@/components/shared-skill-import";
 
-export function SkillLibrary({ onTry, isHostAdmin }: { onTry: (skill: SkillSettingsView) => void; isHostAdmin: boolean }) {
+export function SkillLibrary({ onTry, isHostAdmin, initialSkillId }: { initialSkillId?: string; onTry: (skill: SkillSettingsView) => void; isHostAdmin: boolean }) {
   const [skills, setSkills] = useState<SkillSettingsView[]>([]);
   const [catalog, setCatalog] = useState<DirectorySkill[]>([]);
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [directoryNotice, setDirectoryNotice] = useState("");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialSkillId ?? null);
   const [view, setView] = useState("installed");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");

@@ -12,8 +12,8 @@ const sections = [
   { id: "modes", label: "Modes", icon: SlidersHorizontal },
   { id: "rules", label: "Rules", icon: MessagesSquare },
 ];
-export function AgentHub({ isHostAdmin, onModesChanged, onTrySkill }: {
-  isHostAdmin: boolean; onModesChanged: () => void; onTrySkill: (skill: SkillSettingsView) => void;
+export function AgentHub({ isHostAdmin, onModesChanged, onTrySkill, initialSkillId }: {
+  initialSkillId?: string; isHostAdmin: boolean; onModesChanged: () => void; onTrySkill: (skill: SkillSettingsView) => void;
 }) {
   const [section, setSection] = useState("skills");
   return <section aria-label="Agent Hub" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -22,7 +22,7 @@ export function AgentHub({ isHostAdmin, onModesChanged, onTrySkill }: {
           {sections.map(item => <TabsTrigger key={item.id} value={item.id} className="min-h-11 shrink-0 gap-2 px-3 lg:h-auto lg:flex-none lg:justify-start"><item.icon className="hidden size-4 sm:block" /><span>{item.label}</span></TabsTrigger>)}
         </TabsList>
         <div role="tabpanel" aria-label={sections.find(item => item.id === section)?.label} className="flex min-h-0 min-w-0 flex-col overflow-y-auto">
-          {section === "skills" ? <SkillLibrary onTry={onTrySkill} isHostAdmin={isHostAdmin} />
+          {section === "skills" ? <SkillLibrary initialSkillId={initialSkillId} onTry={onTrySkill} isHostAdmin={isHostAdmin} />
             : section === "connections" ? <HubConnections isHostAdmin={isHostAdmin} />
             : section === "modes" ? <HubModes onModesChanged={onModesChanged} />
             : <section className="space-y-5 p-5 sm:p-7"><div><h3 className="text-xl font-semibold">Agent rules</h3><p className="mt-1 text-sm text-muted-foreground">Instructions for how your agent responds across chats.</p></div><AgentRulesSettings /></section>}

@@ -8,7 +8,7 @@ import { isProviderUsageLimit } from "@/lib/provider-rate-limit";
 import { initializeJobModelChain, requestModelChainFallback } from "@/lib/model-chain-runtime";
 import { deferProviderLimitedJob } from "@/lib/db-jobs";
 import { isolatedCursor } from "@/lib/providers/cursor-runtime";
-import { commitPendingModelSwitch } from "@/lib/model-switch";
+import { commitPendingModelSwitch, hasPendingModelSwitch } from "@/lib/model-switch";
 import { requestTaskContinuation } from "@/lib/task-continuation";
 import { researchContinuationForJob } from "@/lib/research-completion";
 import { requestProviderRetry, runWithProviderRetries } from "@/lib/provider-retry-runner";
@@ -907,6 +907,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
     updateChat(job.chatId, { agentId: agent.agentId }, job.userId);
     const project = !job.incognito && !chat.incognito && chat.projectId ? getProject(chat.projectId, job.userId) : null;
     const skillSettings = projectSkillSettings(globalModelSettings, project);
+    const turnReferences = (job.references || []).filter(reference => reference.kind !== "skill");
 
     // Build prompt: native resume gets ONLY current turn + context; fresh/recovery gets bootstrap recap once
     let prompt = [
@@ -915,6 +916,8 @@ async function runQueuedJobAttempt(job: AgentJob) {
     projectTeamContextBlock(chat.id, job.userId),
     buildSkillContext(job.message, skillSettings, {
       modeId: activeMode.id,
+      explicitSkillIds: !job.incognito && !chat.incognito && (!chat.projectId || project)
+        ? job.references?.filter(reference => reference.kind === "skill").map(reference => reference.id) : undefined,
       hasVisualReference: Boolean(job.attachments?.some((attachment) => attachment.kind === "image")),
     }),
       `Current agent mode: ${activeMode.name}\n${activeMode.instructions}`,
@@ -977,8 +980,8 @@ async function runQueuedJobAttempt(job: AgentJob) {
         ? `Resume the paused agent run. Do not repeat earlier tool calls or user-facing work. Continue only from the saved pause point using this answer/context:\n${compressContext(job.resumePrompt, Boolean(compressionSettings?.compressToolResults ?? true))}`
         : `User message:\n${job.message || "(see attachments)"}`,
       buildAttachmentPrompt(job.chatId, job.attachments, job.userId),
-      !job.incognito && !chat.incognito && job.references?.length
-        ? `Selected references:\n${job.references.map((reference) => [
+      !job.incognito && !chat.incognito && turnReferences.length
+        ? `Selected references:\n${turnReferences.map((reference) => [
             `- [${reference.kind}] ${reference.label}`,
             reference.detail ? `  Detail: ${reference.detail}` : "",
             reference.path ? `  Path/URL: ${reference.path}` : "",
@@ -1277,8 +1280,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
     };
     const cancellationWatcher = setInterval(() => {
       const currentJob = getJob(job.id);
-      const pendingModelId = currentJob?.pendingModelId?.trim();
-      if (pendingModelId && pendingModelId !== requestedModelId) {
+      if (hasPendingModelSwitch(currentJob, requestedModelId)) {
         void activeRun?.cancel().catch(() => undefined);
         return;
       }
@@ -1377,8 +1379,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
       for await (const event of run.stream()) {
         resetInactivityTimer();
         const currentJob = getJob(job.id);
-        const pendingModelId = currentJob?.pendingModelId?.trim();
-        if (pendingModelId && pendingModelId !== requestedModelId) {
+        if (hasPendingModelSwitch(currentJob, requestedModelId)) {
           await run.cancel().catch(() => undefined);
           break;
         }

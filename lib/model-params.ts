@@ -35,6 +35,29 @@ export type ModelParameterModel = {
   variants?: ReadonlyArray<ReadonlyArray<ModelParamSelection>>;
 };
 
+/** Missing selections remain unknown; do not invent a provider default. */
+export function selectedReasoning(params?: ReadonlyArray<ModelParamSelection>): string | null {
+  return params?.find(param => param.id === "effort")?.value
+    ?? params?.find(param => param.id === "reasoning")?.value
+    ?? null;
+}
+
+export function modelParamsEqual(
+  left?: ReadonlyArray<ModelParamSelection>,
+  right?: ReadonlyArray<ModelParamSelection>,
+): boolean {
+  const normalize = (items?: ReadonlyArray<ModelParamSelection>) =>
+    (items || [])
+      .map(item => ({ id: item.id.trim(), value: item.value }))
+      .filter(item => item.id)
+      .sort((a, b) => a.id.localeCompare(b.id) || a.value.localeCompare(b.value));
+  const a = normalize(left);
+  const b = normalize(right);
+  return a.length === b.length && a.every((item, index) =>
+    item.id === b[index]?.id && item.value === b[index]?.value,
+  );
+}
+
 const REASONING_IDS = new Set(["effort", "reasoning"]);
 const CONTEXT_IDS = new Set(["context", "contextWindow", "context_window"]);
 const REMOVED_PARAM_IDS = new Set(["uncensored"]);

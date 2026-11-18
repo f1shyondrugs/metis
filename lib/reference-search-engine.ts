@@ -17,11 +17,12 @@ import { getDatabase } from "./sqlite";
 import type { ReferenceResult } from "./reference-search";
 import { canAccessChat } from "@/lib/project-access";
 import { runSearch } from "@/lib/chat-search-engine";
+import { listSkillReferences } from "@/lib/skill-reference";
 
 /** Initialize through the same module graph used by collection; avoid duplicate TS module loads. */
 export function initializeReferenceSearch(){initializeReferenceIndex(getDatabase());}
 
-export async function collectReferences(input: {ownerId:string; query:string; kind?:ReferenceKind|null; kinds?:readonly ReferenceKind[]; currentChatId:string}, cancelled:()=>boolean, schedule:(chatId:string,title:string,part?:"metadata"|"files")=>void=()=>{}) {
+export async function collectReferences(input: {ownerId:string; query:string; kind?:ReferenceKind|null; kinds?:readonly ReferenceKind[]; currentChatId:string; projectId?:string}, cancelled:()=>boolean, schedule:(chatId:string,title:string,part?:"metadata"|"files")=>void=()=>{}) {
   const {ownerId,query,kind,currentChatId}=input;
   const includes=(value:ReferenceKind)=>(!kind || value===kind)&&(!input.kinds || input.kinds.includes(value));
   const perKindLimit=kind ? 80 : 8;
@@ -53,7 +54,6 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
   chatEntries.sort((a,b)=>Number(b.id===currentChatId)-Number(a.id===currentChatId));
   for (const entry of chatEntries) {
     check();
-    if(results.length>=80) break;
     await new Promise<void>(resolve=>setImmediate(resolve));
     if (kind === "chat") {
       push({ kind: "chat", id: entry.id, label: entry.title || "Untitled chat", detail: entry.keywords?.join(" · "), chatId: entry.id, isCurrentChat: entry.id === currentChatId });
@@ -186,6 +186,10 @@ export async function collectReferences(input: {ownerId:string; query:string; ki
     for(const automation of listAutomations(ownerId,false)){
       check();push(automationReference(automation,visibleProjects.get(automation.projectId||"")));
     }
+  }
+  if (includes("skill")) {
+    check();
+    for (const item of listSkillReferences(ownerId, currentChatId || undefined, input.projectId)) push(item, item.id);
   }
   if(includes("calendar-event")&&!getChatMetadata(currentChatId,ownerId)?.incognito){
     for(const item of searchCalendarReferences(ownerId,query,perKindLimit,check))push(item);

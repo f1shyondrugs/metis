@@ -5,6 +5,7 @@ import {
   listMemories,
 } from "@/lib/db-store";
 import { getProject } from "@/lib/projects";
+import { listSkillReferences } from "./skill-reference";
 import { getIssue } from "@/lib/issues";
 import { issueReference } from "@/lib/issue-types";
 import {
@@ -181,9 +182,16 @@ export function resolveScopeReferences(
   incognito = false,
 ): ScopedContextReference[] {
   const allowed = new Map(visibleNotes(ownerId, chatId, incognito).map((note) => [note.id, note]));
+  const skillIds = new Set(references.slice(0, 20).filter(reference => reference.kind === "skill").map(reference => reference.id));
+  const skillRefs = ownerId && !incognito && skillIds.size
+    ? new Map(listSkillReferences(ownerId, chatId, undefined, skillIds).map(item => [item.id, item])) : undefined;
   return references
     .slice(0, 20)
     .map((reference): ScopedContextReference | null => {
+      if (reference.kind === "skill") {
+        const skill = skillRefs?.get(reference.id);
+        return skill ? { ...skill, source: "explicit" } : null;
+      }
       if(reference.kind==="automation"){const resolved=incognito?null:resolveAutomationReference(ownerId,reference.id);return resolved?{...resolved,source:"explicit"}:null;}
       if(reference.kind==="calendar-event"){
         if(incognito)return null;const resolved=resolveCalendarReference(ownerId,reference.id);return resolved?{...resolved,source:"explicit"}:null;

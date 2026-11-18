@@ -10,8 +10,9 @@ import { WebsiteIcon } from "@/components/website-icon";
 import { extractMessageSources } from "@/lib/message-sources";
 import { ProjectMessageAuthor, useProjectMessageMembers } from "@/components/project-message-author";
 import { REFERENCE_KINDS } from "@/lib/reference-search";
-import { ResearchModeOption } from "@/components/research-mode-option";
-import { consumeModeMention, showDeepResearchAction } from "@/lib/composer-mode-actions";
+import { composerPickerSurfaceClass, pickerOptionId } from "@/components/picker-frame";
+import { COMMAND_LIST_ID, COMMAND_OPTION_PREFIX, ComposerCommandPicker, WORKSPACE_COMMAND_TABS, commandResults, commandScope, composerCommands,
+  type ComposerCommand, type WorkspaceCommandTab } from "@/components/composer-command-picker";
 import { DEEP_RESEARCH_MODE_ID } from "@/lib/deep-research";
 import { WorkspaceDesktopsPanel } from "@/components/workspace-desktops-panel";
 import { WorkspaceExportMenu } from "@/components/workspace-export-menu";
@@ -238,7 +239,7 @@ import { canvasFromToolPayload, classifyToolKind, isToolRunning, layoutAssistant
 import { reconcileChatMessageWindow } from "@/lib/chat-message-window";
 import { stripTranscriptDump } from "@/lib/agent-transcript";
 import { planLooksParallelizable } from "@/lib/modes";
-import { BUILT_IN_SLASH_COMMANDS, goalCommandAction, matchSlashCommand, slashCommandQuery } from "@/lib/slash-commands";
+import { consumeSlashTrigger, goalCommandAction, matchSlashCommand, slashTrigger, type SlashTrigger } from "@/lib/slash-commands";
 import {
   COMPOSER_STATE_COMMIT_MS,
   composerLiveText,
@@ -1929,12 +1930,14 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const referenceCategoriesVisible = Boolean(referenceMenu && !referenceSearchKind && !referenceSearchQuery.trim());
   const { results: referenceResults, loading: referenceLoading, indexing: referenceIndexing, notice: referenceNotice, error: referenceError, retry: retryReferenceSearch } = useReferenceSearch<ReferenceItem>({
     enabled: Boolean(referenceMenu && !referenceCategoriesVisible),
-    chatId: activeChatId, kind: referenceSearchKind, query: referenceSearchQuery,
+    chatId: activeChatId, projectId: draftProjectId, kind: referenceSearchKind, query: referenceSearchQuery,
   });
   const [referenceIndex, setReferenceIndex] = useState(0);
-  const [slashQuery, setSlashQuery] = useState<string | null>(null);
+  const [slashMenu, setSlashMenu] = useState<{ trigger: SlashTrigger | null; path: string[]; query: string } | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
-  const slashResults = slashQuery === null ? [] : BUILT_IN_SLASH_COMMANDS.filter((command) => command.id.startsWith(slashQuery));
+  const slashDismissedRef = useRef<string | null>(null);
+  const slashSearchInputRef = useRef<HTMLInputElement>(null);
+  const composerFormRef = useRef<HTMLFormElement>(null);
   const referenceAutocompleteDismissedRef = useRef<number | null>(null);
   const previousComposerInputRef = useRef("");
   const inputCommitTimerRef = useRef<number>(0);
@@ -2006,6 +2009,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [accountView, setAccountView] = useState<AccountView | null>(null);
+  const [linkedSkillId, setLinkedSkillId] = useState<string>();
   useEffect(() => setAccountView(null), [routeChatId, routeView]);
   const { profile: accountProfile, setProfile: setAccountProfile, error: accountProfileError, retry: retryAccountProfile } = useAccountProfile(Boolean(authed));
   const {unreadCount: unreadNotifications,refresh:refreshNotificationInbox}=useNotificationInbox(Boolean(authed));
@@ -2015,6 +2019,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     setAccountView(current => open ? "settings" : current === "settings" ? null : current);
   }, []);
   function openAccountPage(view: AccountView) {
+    setLinkedSkillId(undefined);
     setAccountView(view);
     setMobileNavOpen(false);
     setWorkspaceOpen(false);
@@ -2288,16 +2293,20 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }, [pendingFiles]);
 
   useEffect(() => {
-    if (!referenceMenu) return;
-    const menu = document.getElementById("composer-reference-popover");
-    const option = document.getElementById(`composer-reference-option-${referenceIndex}`);
-    if (!menu || !option) return;
-    const bounds = menu.getBoundingClientRect();
-    const item = option.getBoundingClientRect();
-    const top = bounds.top + (menu.firstElementChild?.getBoundingClientRect().height || 0);
-    if (item.bottom > bounds.bottom) menu.scrollTop += item.bottom - bounds.bottom;
-    else if (item.top < top) menu.scrollTop -= top - item.top;
-  }, [referenceMenu, referenceIndex, referenceResults.length]);
+    setSlashMenu(null);
+    slashDismissedRef.current = null;
+  }, [activeChatId, draftProjectId, routeChatId]);
+
+  useEffect(() => {
+    if (!slashMenu) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || composerFormRef.current?.contains(event.target)) return;
+      slashDismissedRef.current = slashMenu.trigger?.raw ?? null;
+      setSlashMenu(null);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [slashMenu]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
@@ -5256,6 +5265,13 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       const reference = (event as CustomEvent<ReferenceItem>).detail;
       if (!reference?.kind || !reference.id) return;
 
+      if (reference.kind === "skill") {
+        setLinkedSkillId(reference.id);
+        setMobileNavOpen(false);
+        setWorkspaceOpen(false);
+        setAccountView("agent-hub");
+        return;
+      }
       if(reference.kind==="automation"){window.dispatchEvent(new CustomEvent("ai-chat:open-automations",{detail:{id:reference.id}}));return;}
       if(reference.kind==="calendar-event"){window.dispatchEvent(new CustomEvent("ai-chat:open-calendar-event",{detail:{id:reference.id}}));return;}
       const targetChatId =
@@ -6952,7 +6968,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         setPendingFiles(message.files);
         setRestoredAttachments(message.storedAttachments ?? []);
         setReferenceMenu(null);
-        setSlashQuery(null);
+        setSlashMenu(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
         const chatId = activeChatIdRef.current;
         window.setTimeout(() => {
@@ -7033,6 +7049,37 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     } finally {
       buildPlanInFlightRef.current = false;
     }
+  }
+
+  function openCalendar() {
+    persistActiveSnapshot();
+    setNotesOpen(false);
+    setAutomationsOpen(false);
+    setWorkspaceOpen(false);
+    setAccountView(null);
+    setMobileNavOpen(false);
+    navigateChat("calendar");
+  }
+
+  function openWorkspaceTab(tab: WorkspaceCommandTab, toggle = false) {
+    if (toggle && workspaceTab === tab) {
+      setWorkspaceFullscreen(false);
+      setWorkspaceOpen(false);
+      return;
+    }
+    if (tab === "plan" || tab === "canvas") {
+      const selected = workspaces.find(item => item.id === activeWorkspaceId && item.type === tab)
+        || workspaces.find(item => item.type === tab);
+      setActiveWorkspaceId(selected?.id ?? null);
+    }
+    setWorkspaceTab(tab);
+    setWorkspaceMounted(true);
+    setWorkspaceOpen(true);
+  }
+
+  async function createWorkspaceFromComposer(type: "canvas" | "plan") {
+    try { await createWorkspace(type); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not create workspace."); }
   }
 
   function toggleWorkspace() {
@@ -7128,20 +7175,19 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }
     // Read the live task map: Enter/form submission can beat the next React render.
     if (hasUnfinishedComposerUploads(attachmentsOverride ?? pendingFilesRef.current, getUploadStatus)) return;
-    let text = (textOverride ?? composerLiveText(textareaRef.current ? composerPlainText(textareaRef.current, "Message Metis…") : "", input)).trim();
-    let goalMessage: string | null = null;
+    const live = textOverride ?? composerLiveText(textareaRef.current ? composerPlainText(textareaRef.current, "Message Metis…") : "", input);
+    let text = live.trim();
     const slashCommand = !isOverride ? matchSlashCommand(text) : null;
-    if (!isOverride && /^\/[a-z-]+(?:\s|$)/i.test(text) && !slashCommand) {
-      toast.error("Unknown slash command");
+    if (!isOverride && slashMenu?.trigger) {
+      selectSlashCommand(slashRows[selectedSlashIndex]);
       return;
     }
-    if (slashCommand?.id === "model") {
-      setInput("");
-      setComposerSyncNonce((current) => current + 1);
-      setSlashQuery(null);
-      openSlashModelPicker();
-      return;
+    if (!isOverride && slashCommand?.id !== "goal") {
+      const trigger = slashTrigger(live, live.length);
+      if (trigger) { openSlashMenu(trigger); return; }
+      if (/^\/[a-z-]+(?:\s|$)/i.test(text)) { toast.error("Unknown slash command"); return; }
     }
+    let goalMessage: string | null = null;
     if (slashCommand?.id === "goal") {
       const action = goalCommandAction(slashCommand.argument);
       const goal = action.kind === "set" ? action.goal : "";
@@ -7170,7 +7216,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         setChatGoalReferences(goalReferences);
       }
       setReferenceMenu(null);
-      setSlashQuery(null);
+      setSlashMenu(null);
       if (!goal) {
         setInputGuarded("", "submitted");
         setReferences([]);
@@ -8375,6 +8421,36 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const selectedAttrs = modelAttrSummary(selectedModel, modelParams);
   const selectedMode = modes.find((mode) => mode.id === modeId) || modes.find(mode => mode.id === "agent") || modes[0];
   const projectModelLock = projectModel ? projectModelLockMessage(modeProject?.name || "this project") : undefined;
+ const activeProjectId = projectHomeId || chats.find(chat => chat.id === activeChatId)?.projectId || draftProjectId || null;
+ // Chat membership identifies its context; only explicit navigation selects the sidebar filter.
+ const sidebarProjectId = sidebarAllProjects ? null : projectHomeId || draftProjectId;
+ const isAgentChat = !notesOpen && !automationsOpen && !projectHomeId && Boolean(activeChatId && sidebarProjects.find(project => project.id === activeProjectId)?.mode === "agents");
+
+  const workspaceCommandTabs = WORKSPACE_COMMAND_TABS.filter(tab => (tab.id !== "browser" || browserEnabled) && (tab.id !== "team" || isAgentChat));
+  const modelOptionLock = projectModelLock || (chatModelChain.chain ? "Model options are set in Settings → Models → Model Chains." : undefined);
+  const slashCommands = slashMenu ? composerCommands({
+    modes: modes.map(mode => ({ id: mode.id, label: mode.name, detail: mode.description, current: mode.id === selectedMode?.id,
+      icon: <ModeIcon mode={mode} className="size-4 shrink-0 text-muted-foreground" />, run: () => void selectMode(mode.id).catch(() => toast.error("Could not save agent mode")) })),
+    access: RUNTIME_MODE_OPTIONS.map(option => ({ id: option.value, label: option.label, current: runtimeMode === option.value,
+      icon: <RuntimeModeIcon mode={option.value} className="size-4 shrink-0 text-muted-foreground" />,
+      run: () => void selectRuntimeMode(option.value).catch(() => toast.error("Could not save runtime mode")) })),
+    accessIcon: <RuntimeModeIcon mode={runtimeMode} className="size-4 shrink-0 text-muted-foreground" />,
+    models, selectedModel, modelParams, chains: modelChains.chains, chainId: chatModelChain.chain?.id, favoriteModelIds: favoriteModelKeys,
+    modelIcon: model => <ProviderLogo providerId={model.providerId} />,
+    modelId, modelLabel: selectedModelLabel, modelLock: projectModelLock || (loadingChatId ? "Wait for this chat to load." : undefined),
+    optionLock: modelOptionLock || (loadingChatId ? "Wait for this chat to load." : undefined),
+    onModel: id => void selectModel(id).catch(() => toast.error("Could not save model selection")),
+    onChain: chain => void selectChain(chain),
+    onModelParams: applyModelParams,
+    workspaceTabs: workspaceCommandTabs, onWorkspace: tab => openWorkspaceTab(tab),
+    canCreate: !creatingWorkspace && !incognito && loadingChatId === null,
+    onCreate: type => void createWorkspaceFromComposer(type),
+    onSettings: () => openAccountPage("settings"), onAgentHub: () => openAccountPage("agent-hub"), onCalendar: openCalendar,
+    onChatSearch: () => setCommandPaletteOpen(true), onFiles: () => fileInputRef.current?.click(),
+  }) : [];
+  const slashScope = slashMenu ? commandScope(slashCommands, slashMenu.path) : undefined;
+  const slashRows = slashMenu ? commandResults(slashCommands, slashMenu.path, slashMenu.query) : [];
+  const selectedSlashIndex = Math.min(slashIndex, Math.max(0, slashRows.length - 1));
   const providerQueryMatch = normalizedModelSearch.match(/^([a-z0-9_-]+):(.*)$/);
   const providerQuery = providerQueryMatch &&
     availableProviders.some((provider) => provider.providerId === providerQueryMatch[1])
@@ -8543,13 +8619,16 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }
 
   function updateComposerReferenceMenu(value: string, cursorPosition: number, selectionEnd = cursorPosition) {
-    const nextSlashQuery = slashCommandQuery(value, cursorPosition);
-    if (nextSlashQuery !== slashQuery) {
-      setSlashQuery(nextSlashQuery);
-      setSlashIndex(0);
-    }
-    if (nextSlashQuery !== null) {
-      if (referenceMenu) setReferenceMenu(null);
+    const trigger = slashTrigger(value, cursorPosition, selectionEnd);
+    if (!trigger) {
+      slashDismissedRef.current = null;
+      setSlashMenu(current => current?.trigger ? null : current);
+    } else if (trigger.raw !== slashDismissedRef.current) {
+      setReferenceMenu(null);
+      if (slashMenu?.trigger?.raw !== trigger.raw) {
+        setSlashIndex(0);
+        setSlashMenu({ trigger, path: trigger.scope ? [trigger.scope] : [], query: trigger.query });
+      }
       return;
     }
     const mention = composerMentionQuery(value, cursorPosition, selectionEnd, references.map(reference => reference.label));
@@ -8558,6 +8637,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       setReferenceMenu(null);
       return;
     }
+    setSlashMenu(null);
     if (referenceAutocompleteDismissedRef.current === mention.start) {
       setReferenceMenu(null);
       return;
@@ -8570,27 +8650,82 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     if (referenceMenu?.query !== mention.query) setReferenceIndex(0);
   }
 
-  function openSlashModelPicker() {
-    if (projectModel) { toast.info(projectModelLockMessage(modeProject?.name || "this project")); return; }
-    if (window.matchMedia("(max-width: 767px)").matches) setMobileModelMenuOpen(true);
-    else setModelMenuOpen(true);
+  function focusComposerAfterPicker(cursor?: number) {
+    const chat = activeChatIdRef.current;
+    window.requestAnimationFrame(() => {
+      const element = textareaRef.current;
+      if (!element || chat !== activeChatIdRef.current) return;
+      element.focus();
+      if (cursor !== undefined) element.setSelectionRange(cursor, cursor);
+    });
   }
 
-  function selectSlashCommand(id: "model" | "goal") {
-    setSlashQuery(null);
-    if (id === "model") {
-      setInput("");
-      setComposerSyncNonce((current) => current + 1);
-      openSlashModelPicker();
+  function openSlashMenu(trigger: SlashTrigger | null, path = trigger?.scope ? [trigger.scope] : []) {
+    setReferenceMenu(null);
+    slashDismissedRef.current = null;
+    setSlashIndex(0);
+    setSlashMenu({ trigger, path, query: trigger?.query || "" });
+    window.requestAnimationFrame(() => slashSearchInputRef.current?.focus());
+  }
+
+  function dismissSlashMenu(restoreFocus = false) {
+    if (!slashMenu) return;
+    slashDismissedRef.current = slashMenu.trigger?.raw ?? null;
+    setSlashMenu(null);
+    if (restoreFocus) focusComposerAfterPicker(slashMenu.trigger?.raw.length);
+  }
+
+  function selectSlashCommand(item: ComposerCommand | undefined) {
+    if (!slashMenu || !item || item.disabled) return;
+    const live = textareaRef.current?.value ?? draftInputRef.current;
+    const rest = consumeSlashTrigger(live, slashMenu.trigger);
+    if (rest === null) { dismissSlashMenu(true); return; }
+    if ("children" in item) {
+      const path = item.parentId ? [item.parentId, item.id] : [...slashMenu.path, item.id];
+      setSlashMenu({ ...slashMenu, path, query: item.number?.value || "" });
+      setSlashIndex(0);
+      window.requestAnimationFrame(() => slashSearchInputRef.current?.focus());
       return;
     }
-    setInput("/goal ");
-    setComposerSyncNonce((current) => current + 1);
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
+    const next = "fill" in item ? "/goal " + rest.trimStart() : rest;
+    dismissSlashMenu();
+    if (live !== next) {
+      setInput(next);
+      setComposerSyncNonce(current => current + 1);
+    }
+    if ("fill" in item) { focusComposerAfterPicker(next.length); return; }
+    item.run();
+    if (item.restoreFocus !== false) focusComposerAfterPicker(slashMenu.trigger ? 0 : undefined);
   }
 
-  const researchActionVisible = showDeepResearchAction(referenceMenu ? { ...referenceMenu, kind: referenceSearchKind, query: referenceSearchQuery } : null) && modes.some(mode => mode.id === DEEP_RESEARCH_MODE_ID);
-  const referenceActionOffset = researchActionVisible ? 1 : 0;
+  function backSlashMenu() {
+    if (!slashMenu) return;
+    setSlashMenu({ ...slashMenu, path: slashMenu.path.slice(0, -1), query: "" });
+    setSlashIndex(0);
+    window.requestAnimationFrame(() => slashSearchInputRef.current?.focus());
+  }
+
+  function handleSlashKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (!slashMenu || composerIsComposing(event.nativeEvent)) return false;
+    const inSearch = event.target === slashSearchInputRef.current;
+    if (inSearch && !slashMenu.query && slashMenu.path.length && ["Backspace", "ArrowLeft"].includes(event.key)) {
+      event.preventDefault();
+      backSlashMenu();
+      return true;
+    }
+    const action = composerReferenceKeyAction({
+      key: event.key, shiftKey: event.shiftKey, repeat: event.repeat, count: slashRows.length, index: selectedSlashIndex,
+    });
+    if (action?.type === "dismiss") { event.preventDefault(); dismissSlashMenu(true); return true; }
+    if (action?.type === "move") { event.preventDefault(); setSlashIndex(action.index); return true; }
+    if (action?.type === "select" && !slashRows[action.index]?.disabled) {
+      event.preventDefault();
+      selectSlashCommand(slashRows[action.index]);
+      return true;
+    }
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); return true; }
+    return false;
+  }
 
   function selectReferenceCategory(kind: ReferenceKind | null) {
     setReferenceIndex(0);
@@ -8605,7 +8740,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }
     const action = composerReferenceKeyAction({
       key: event.key, shiftKey: event.shiftKey, repeat: event.repeat,
-      count: (referenceCategoriesVisible ? REFERENCE_KINDS.length : referenceResults.length) + referenceActionOffset,
+      count: referenceCategoriesVisible ? REFERENCE_KINDS.length : referenceResults.length,
       index: referenceIndex,
     });
     if (action) {
@@ -8615,31 +8750,13 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         referenceAutocompleteDismissedRef.current = referenceMenu.start;
         setReferenceMenu(null);
         window.requestAnimationFrame(() => textareaRef.current?.focus());
-      } else if (researchActionVisible && action.index === 0) selectResearchMode();
-      else if (referenceCategoriesVisible) selectReferenceCategory(REFERENCE_KINDS[action.index - referenceActionOffset]);
-      else if (!referenceLoading && !referenceError) void selectReference(referenceResults[action.index - referenceActionOffset]);
+      } else if (referenceCategoriesVisible) selectReferenceCategory(REFERENCE_KINDS[action.index]);
+      else if (!referenceLoading && !referenceError) void selectReference(referenceResults[action.index]);
       return true;
     }
     // A picker with no results must never turn Enter into a chat submission.
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); return true; }
     return false;
-  }
-
-  function selectResearchMode() {
-    if (!referenceMenu) return;
-    const replacement = consumeModeMention(textareaRef.current?.value ?? draftInputRef.current, referenceMenu);
-    if (!replacement) return;
-    const chatId = activeChatIdRef.current;
-    setInput(replacement.value);
-    setComposerSyncNonce(current => current + 1);
-    setReferenceMenu(null);
-    setReferenceIndex(0);
-    void selectMode(replacement.modeId).catch(() => toast.error("Could not save agent mode"));
-    window.requestAnimationFrame(() => {
-      if (activeChatIdRef.current !== chatId) return;
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(replacement.cursor, replacement.cursor);
-    });
   }
 
   async function selectReference(reference: ReferenceItem) {
@@ -9190,32 +9307,24 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       ) : null}
       <div className="flex flex-col gap-1">
       <form
+        ref={composerFormRef}
+        onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) dismissSlashMenu(); }}
         onSubmit={(e) => void send(e)}
         className={cn(
           "relative flex w-full flex-col justify-center gap-1.5 rounded-[1.25rem] bg-muted/20 p-1.5 ring-1 ring-inset ring-border/30 transition-[background-color,box-shadow] focus-within:bg-muted/25 focus-within:ring-border/45",
         )}
       >
-        {slashQuery !== null ? (
-          <div className="absolute bottom-full left-2 right-2 z-40 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-popover p-1.5 text-sm shadow-xl" role="listbox" aria-label="Slash commands">
-            {slashResults.length ? slashResults.map((command, index) => (
-              <button
-                key={command.id}
-                type="button"
-                role="option"
-                aria-selected={index === slashIndex}
-                className={cn("flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left", index === slashIndex ? "bg-muted" : "hover:bg-muted/60")}
-                onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => setSlashIndex(index)}
-                onClick={() => selectSlashCommand(command.id)}
-              >
-                <span className="min-w-16 font-medium">{command.label}</span>
-                <span className="text-xs text-muted-foreground">{command.description}</span>
-              </button>
-            )) : <p className="px-2.5 py-4 text-center text-xs text-muted-foreground">No commands found.</p>}
+        {slashMenu ? (
+          <div data-composer-picker="commands" className={composerPickerSurfaceClass}>
+            <ComposerCommandPicker inputRef={slashSearchInputRef} scope={slashScope} query={slashMenu.query} rows={slashRows} index={selectedSlashIndex}
+              onIndex={setSlashIndex} onSelect={selectSlashCommand}
+              onQuery={query => { setSlashIndex(0); setSlashMenu(current => current ? { ...current, query } : current); }}
+              onBack={slashMenu.path.length || slashMenu.query ? backSlashMenu : undefined}
+              onKeyDown={event => { if (handleSlashKeyDown(event)) event.stopPropagation(); else if (event.key === "Enter" && !composerIsComposing(event.nativeEvent)) event.preventDefault(); }} />
           </div>
         ) : null}
         {referenceMenu ? (
-          <div id="composer-reference-popover" className="absolute bottom-full left-2 right-2 z-40 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-popover p-1.5 text-sm shadow-xl animate-in fade-in-0 slide-in-from-bottom-2 duration-200">
+          <div id="composer-reference-popover" data-composer-picker="references" className={composerPickerSurfaceClass}>
             <ReferencePicker id="composer-reference-list" optionIdPrefix="composer-reference" inputRef={referenceSearchInputRef}
               kind={referenceSearchKind} query={referenceSearchQuery} results={referenceResults}
               loading={referenceLoading} indexing={referenceIndexing} notice={referenceNotice} error={referenceError} retry={retryReferenceSearch}
@@ -9223,8 +9332,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               onQuery={search=>{setReferenceIndex(0);setReferenceMenu(current=>current?{...current,kind:referenceSearchKind,search}:current);}}
               onSelect={reference=>void selectReference(reference)}
               onKeyDown={event=>{if(handleReferenceKeyDown(event))event.stopPropagation();else if(event.key==="Enter"&&!composerIsComposing(event.nativeEvent))event.preventDefault();}}
-              prefixCount={referenceActionOffset}
-              prefix={researchActionVisible?<ResearchModeOption index={0} selected={referenceIndex===0} onHighlight={()=>setReferenceIndex(0)} onSelect={selectResearchMode}/>:undefined}
             />
           </div>
         ) : null}
@@ -9303,12 +9410,13 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               <X className="size-4" />
             </Button>
           ) : (
-            <ComposerAddMenu onFiles={() => fileInputRef.current?.click()} onContext={() => {
+            <ComposerAddMenu onCommands={() => openSlashMenu(null)} onFiles={() => fileInputRef.current?.click()} onContext={() => {
                   const current = composerLiveText(textareaRef.current ? composerPlainText(textareaRef.current, "Message Metis…") : "", input);
                   const prefix = current && !/\s$/.test(current) ? `${current} ` : current;
                   const next = `${prefix}@`;
                   setInput(next);
                   setComposerSyncNonce((value) => value + 1);
+                  dismissSlashMenu();
                   setReferenceMenu({ query: "", kind: null, start: prefix.length, end: next.length });
                   referenceAutocompleteDismissedRef.current = null;
                   window.requestAnimationFrame(() => textareaRef.current?.focus());
@@ -9322,9 +9430,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             mentionLabels={references.map((reference) => reference.label)}
             onChange={handleComposerInputChange}
             onSelectionChange={(value, start, end) => { if (value === draftInputRef.current) updateComposerReferenceMenu(value, start, end); }}
-            aria-controls="composer-reference-list"
-            aria-expanded={Boolean(referenceMenu)}
-            aria-activedescendant={referenceMenu ? `composer-reference-option-${referenceIndex}` : undefined}
+            aria-controls={slashMenu ? COMMAND_LIST_ID : referenceMenu ? "composer-reference-list" : undefined}
+            aria-expanded={slashMenu || referenceMenu ? true : undefined}
+            aria-activedescendant={slashMenu && slashRows.length ? pickerOptionId(COMMAND_OPTION_PREFIX, selectedSlashIndex)
+              : referenceMenu && referenceIndex < (referenceCategoriesVisible ? REFERENCE_KINDS.length : referenceResults.length)
+                ? pickerOptionId("composer-reference", referenceIndex) : undefined}
             onPaste={onComposerPaste}
             onFocus={() => {
               const viewport = window.visualViewport;
@@ -9351,24 +9461,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               if (input !== live) commitComposerParentState(live);
             }}
             onKeyDown={(e) => {
-            if (slashQuery !== null && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-              e.preventDefault();
-              if (slashResults.length) setSlashIndex((current) => e.key === "ArrowDown"
-                ? (current + 1) % slashResults.length
-                : (current - 1 + slashResults.length) % slashResults.length);
-              return;
-            }
-            if (slashQuery !== null && e.key === "Enter" && slashResults[slashIndex]) {
-              e.preventDefault();
-              selectSlashCommand(slashResults[slashIndex].id);
-              return;
-            }
-            if (slashQuery !== null && e.key === "Escape") {
-              e.preventDefault();
-              setSlashQuery(null);
-              return;
-            }
             if (composerIsComposing(e.nativeEvent)) return;
+            if (handleSlashKeyDown(e)) return;
             if (handleReferenceKeyDown(e)) return;
             if (e.key === "Enter" && !e.shiftKey) {
               if (
@@ -9588,7 +9682,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                 model={selectedModel}
                 modelParams={modelParams}
                 onModelParamsChange={applyModelParams}
-                modelLockReason={projectModelLock || (chatModelChain.chain ? "Model options are set in Settings → Models → Model Chains." : undefined)}
+                modelLockReason={modelOptionLock}
                 mobileComposerControls={{
                   modes,
                   selectedModeId: selectedMode?.id,
@@ -9655,11 +9749,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   );
 
   
- const activeProjectId = projectHomeId || chats.find(chat => chat.id === activeChatId)?.projectId || draftProjectId || null;
- // Chat membership identifies its context; only explicit navigation selects the sidebar filter.
- const sidebarProjectId = sidebarAllProjects ? null : projectHomeId || draftProjectId;
- const isAgentChat = !notesOpen && !automationsOpen && !projectHomeId && Boolean(activeChatId && sidebarProjects.find(project => project.id === activeProjectId)?.mode === "agents");
-
  function queuedCountForChat(chatId: string) {
   return activeChatId === chatId && queuedState.chatId === chatId
     ? queuedState.messages.length
@@ -9785,7 +9874,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               ? "text-foreground"
               : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground",
           )}
-          onClick={()=>{persistActiveSnapshot();setNotesOpen(false);setAutomationsOpen(false);setWorkspaceOpen(false);setAccountView(null);setMobileNavOpen(false);navigateChat("calendar");}}
+          onClick={openCalendar}
         >
           <CalendarDays aria-hidden="true" className="size-3.5 shrink-0 opacity-60" />
           <span className="min-w-0 truncate">Calendar</span>
@@ -10372,7 +10461,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         onFiles={addPendingFiles}
         className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {accountView && (!settingsOpen || isMobileSettings) ? <AccountPanel view={accountView} onClose={() => setAccountView(null)} onOpenNav={() => setMobileNavOpen(true)} profile={accountProfile} onProfileChange={setAccountProfile} profileError={accountProfileError} onRetry={retryAccountProfile} onNotificationsChanged={() => void refreshNotificationInbox()} onOpenProject={(id) => {setAccountView(null);openProjectHome(id);}} onOpenChat={(id)=>{setAccountView(null);void loadChat(id);}}>
-          {accountView === "agent-hub" ? <AgentHub isHostAdmin={Boolean(status?.isHostAdmin)} onModesChanged={() => void loadModes()} onTrySkill={(skill) => {
+          {accountView === "agent-hub" ? <AgentHub key={linkedSkillId || "agent-hub"} initialSkillId={linkedSkillId} isHostAdmin={Boolean(status?.isHostAdmin)} onModesChanged={() => void loadModes()} onTrySkill={(skill) => {
         setAccountView(null); setNotesOpen(false); setAutomationsOpen(false); setProjectHomeId(null);
         if (skill.id === DEEP_RESEARCH_MODE_ID) { void selectMode(DEEP_RESEARCH_MODE_ID).catch(() => toast.error("Could not save agent mode")); return; }
         setInput(current => [current.trim(), skill.id === "skill-creator" ? "Use the skill-creator skill to help me create a new skill. " : "Use the " + skill.title + " skill. "].filter(Boolean).join("\n\n"));
@@ -11342,40 +11431,27 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           )}
           <div className="flex shrink-0 items-center gap-1 border-b border-border/30 px-2 py-1.5">
             <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-              {(["team", "canvas", "plan", "notes", "memory", "files", "terminal", "browser", "desktops", "monitor"] as const)
-                .filter((tab) => (tab !== "browser" || browserEnabled) && (tab !== "team" || isAgentChat))
-                .map((tab) => (
+              {workspaceCommandTabs.map(({ id: tab, label, icon: TabIcon }) => (
                 <Button
                   key={tab}
                   type="button"
                   size="sm"
                   variant={workspaceTab === tab ? "secondary" : "ghost"}
-                  onClick={() => {
-                    if (workspaceTab === tab) {
-                      setWorkspaceFullscreen(false);
-                      setWorkspaceOpen(false);
-                      return;
-                    }
-                    if (tab === "plan" || tab === "canvas") {
-                      const workspace = workspaces.find((item) => item.type === tab);
-                      setActiveWorkspaceId(workspace?.id ?? null);
-                    }
-                    setWorkspaceTab(tab);
-                  }}
+                  onClick={() => openWorkspaceTab(tab, true)}
                   className={cn(
                     "h-8 min-w-8 shrink-0 rounded-md transition-[max-width,background-color,padding] duration-200 ease-out",
                     workspaceTab === tab ? "max-w-40 gap-1.5 px-2" : "w-8 max-w-8 gap-0 overflow-visible px-0",
                   )}
-                  aria-label={tab === "team" ? "Agent overview" : tab === "plan" ? "Plans" : tab === "canvas" ? "Canvas" : tab === "memory" ? "Memory" : tab[0].toUpperCase() + tab.slice(1)}
+                  aria-label={label}
                 >
-                  {tab === "notes" ? <NotebookPen className="size-4 shrink-0" /> : tab === "team" ? <Users className="size-4 shrink-0" /> : tab === "memory" ? <Brain className="size-4 shrink-0" /> : tab === "canvas" ? <Palette className="size-4 shrink-0" /> : tab === "plan" ? <ClipboardList className="size-4 shrink-0" /> : tab === "files" ? <FileCode2 className="size-4 shrink-0" /> : tab === "terminal" ? <Terminal className="size-4 shrink-0" /> : tab === "browser" ? <Globe2 className="size-4 shrink-0" /> : tab === "desktops" ? <Monitor className="size-4 shrink-0" /> : tab === "monitor" ? <Activity className="size-4 shrink-0" /> : <CalendarClock className="size-4 shrink-0" />}
+                  <TabIcon className="size-4 shrink-0" aria-hidden="true" />
                   <span className={cn(
                     "overflow-hidden whitespace-nowrap text-xs transition-[max-width,opacity,transform] duration-300",
                     workspaceTab === tab
                       ? "max-w-[10rem] translate-x-0 opacity-100"
                       : "max-w-0 -translate-x-1 opacity-0",
                   )}>
-                    {tab === "team" ? "Overview" : tab === "canvas" ? (activeWorkspace?.type === "canvas" ? activeWorkspace.name : "Canvas") : tab === "plan" ? (activeWorkspace?.type === "plan" ? activeWorkspace.name : "Plans") : tab[0].toUpperCase() + tab.slice(1)}
+                    {tab === "team" ? "Overview" : tab === "canvas" ? (activeWorkspace?.type === "canvas" ? activeWorkspace.name : "Canvas") : tab === "plan" ? (activeWorkspace?.type === "plan" ? activeWorkspace.name : "Plans") : label}
                   </span>
                 </Button>
               ))}
@@ -11385,7 +11461,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               disabled={creatingWorkspace || incognito || loadingChatId !== null}
               aria-label={workspaceTab === "canvas" ? "Create canvas" : "Create plan"}
               title={workspaceTab === "canvas" ? "Create canvas" : "Create plan"}
-              onClick={() => void createWorkspace(workspaceTab as "canvas" | "plan").catch(error => toast.error(error instanceof Error ? error.message : "Could not create workspace."))}
+              onClick={() => void createWorkspaceFromComposer(workspaceTab as "canvas" | "plan")}
             >{creatingWorkspace ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}</Button>}
             <Button
               type="button"

@@ -9,12 +9,30 @@ export const BUILT_IN_SLASH_COMMANDS: ReadonlyArray<{
   { id: "goal", label: "/goal", description: "Send and keep a chat goal; /goal reset clears it" },
 ];
 
-/** Slash commands are recognized only at the start of the composer. */
+export const SLASH_SCOPES = ["model", "model-options", "mode", "access", "workspace", "chat"] as const;
+export type SlashTrigger = { raw: string; query: string; scope?: typeof SLASH_SCOPES[number] };
+
+/** The slash owns only the prefix before the caret, never a path, URL, selection, or suffix. */
+export function slashTrigger(input: string, cursor: number, selectionEnd = cursor): SlashTrigger | null {
+  if (!Number.isInteger(cursor) || cursor < 1 || cursor > input.length || cursor !== selectionEnd || input[0] !== "/") return null;
+  if (cursor < input.length && !/\s/u.test(input[cursor])) return null;
+  const raw = input.slice(0, cursor);
+  const plain = raw.match(/^\/([a-z-]*)$/i);
+  if (plain) return { raw, query: plain[1].toLowerCase() };
+  const scoped = raw.match(/^\/([a-z-]+)(?:[ \t]+|:[ \t]*)([^\/\r\n]{0,160})$/i);
+  const scope = SLASH_SCOPES.find(name => name === scoped?.[1].toLowerCase());
+  return scoped && scope ? { raw, scope, query: scoped[2] } : null;
+}
+
 export function slashCommandQuery(input: string, cursorPosition: number): string | null {
-  if (cursorPosition < 1 || input[0] !== "/") return null;
-  const beforeCursor = input.slice(0, cursorPosition);
-  const match = beforeCursor.match(/^\/([a-z-]*)$/i);
-  return match ? match[1].toLowerCase() : null;
+  return slashTrigger(input, cursorPosition)?.query ?? null;
+}
+
+/** Refuse stale DOM edits; a command consumes only its own token. */
+export function consumeSlashTrigger(input: string, trigger: SlashTrigger | null): string | null {
+  if (!trigger) return input;
+  if (!input.startsWith(trigger.raw) || (input.length > trigger.raw.length && !/\s/u.test(input[trigger.raw.length]))) return null;
+  return input.slice(trigger.raw.length).trimStart();
 }
 
 export function goalCommandAction(argument: string): { kind: "reset" } | { kind: "set"; goal: string } {

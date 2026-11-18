@@ -142,8 +142,8 @@ function readInstalledSkillMarkdown(skill?: SkillRecord) {
  }
 }
 
-export function listSkillSettings(settings?: GlobalModelSettings): SkillSettingsView[] {
- return listInstalledSkills(settings).map((skill) => {
+export function listSkillSettings(settings?: GlobalModelSettings, installed = listInstalledSkills(settings)): SkillSettingsView[] {
+ return installed.map((skill) => {
  const meta = parseSkillFrontmatter(readInstalledSkillMarkdown(skill) || "");
  return {
  ...skill,

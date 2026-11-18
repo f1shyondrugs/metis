@@ -5,8 +5,6 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { showDeepResearchAction, consumeModeMention } from "../lib/composer-mode-actions";
-import { composerMentionQuery, composerReferenceKeyAction } from "../lib/composer-references";
 
 test("Deep Research is a distinct read-only mode; Agent stays the default", () => {
   const mode = modeById("deep-research");
@@ -18,22 +16,6 @@ test("Deep Research is a distinct read-only mode; Agent stays the default", () =
   assert.equal(allModes([{ ...mode, name: "duplicate" }]).filter(m => m.id === mode.id).length, 1);
 });
 
-test("mode actions match @ search without hijacking reference categories", () => {
-  for (const query of ["", "deep", "Deep Research", "research", "recherche"]) {
-    assert.equal(showDeepResearchAction({ kind: null, query }), true);
-  }
-  assert.equal(showDeepResearchAction({ kind: "file", query: "deep" }), false);
-  assert.equal(showDeepResearchAction({ kind: null, query: "invoice" }), false);
-  const text = "Bitte @deep diese Frage prüfen";
-  const menu = composerMentionQuery(text, 11)!;
-  const result = consumeModeMention(text, menu)!;
-  assert.equal(result.modeId, "deep-research");
-  assert.equal(result.value, "Bitte  diese Frage prüfen");
-  assert.equal(result.cursor, 6);
-  assert.equal(consumeModeMention("Bitte neuer Text", menu), null);
-  assert.deepEqual(composerReferenceKeyAction({ key: "Enter", count: 9, index: 0 }), { type: "select", index: 0 });
-  assert.deepEqual(composerReferenceKeyAction({ key: "ArrowDown", count: 9, index: 0 }), { type: "move", index: 1 });
-});
 
 test("research skill activates for mode or explicit request and respects disabling", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "metis-research-skill-"));

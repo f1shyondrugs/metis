@@ -155,6 +155,7 @@ export function buildProviderPromptParts(input: ProviderPromptContext): { instru
     `Current agent mode: ${activeMode.name}\n${activeMode.instructions}`,
     buildSkillContext(job.message, skillSettings, {
       modeId: activeMode.id,
+      explicitSkillIds: resolvedReferences.filter(reference => reference.kind === "skill").map(reference => reference.id),
       hasVisualReference: Boolean(job.attachments?.some((attachment) => attachment.kind === "image")),
     }),
     "Working style: precise, technically fluent, proactive. Act with tools instead of narrating steps. Reply in the user's language. On clear orders decide and act; ask only when genuinely ambiguous or destructive.",

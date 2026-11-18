@@ -14,8 +14,9 @@ export async function GET(req:Request){
  const kinds=rawKinds ? rawKinds.split(",") as ReferenceKind[] : undefined;
  if(kinds && (kinds.length>REFERENCE_KINDS.length || kinds.some(value=>!(REFERENCE_KINDS as readonly string[]).includes(value)) || (kind && !kinds.includes(kind))))return Response.json({error:"Unknown reference category"},{status:400});
  const currentChatId=url.searchParams.get("chatId")||"";
+ const projectId=currentChatId ? undefined : url.searchParams.get("projectId")?.slice(0,200);
  try{
-  const payload=await searchReferences({ownerId,kind,kinds,currentChatId,query:(url.searchParams.get("q")||"").trim().toLowerCase().slice(0,200)},req.signal);
+  const payload=await searchReferences({ownerId,kind,kinds,currentChatId,projectId,query:(url.searchParams.get("q")||"").trim().toLowerCase().slice(0,200)},req.signal);
   return Response.json({...payload,currentChatId},{headers:{"Cache-Control":"private, no-store"}});
  }catch(error){
   if(error instanceof Error && error.name==="AbortError")return new Response(null,{status:499});

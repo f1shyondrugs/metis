@@ -1,4 +1,5 @@
 import { chatModelChain, snapshotModelChain, resolveChainStep } from "@/lib/model-chains";
+import { modelParamsEqual } from "@/lib/model-params";
 import { providerRetryDetail } from "@/lib/provider-retry";
 import type { ModelSwitchPart, ProviderWaitPart } from "@/lib/run-control-event";
 import { MEMORY_WAIT_MESSAGE, MEMORY_OVERRIDE_MESSAGE, WORKER_QUEUE_MESSAGE } from "@/lib/memory-queue";
@@ -1219,22 +1220,6 @@ export function requeueSwitchingJob(id: string) {
   return result.changes ? getJob(id) : null;
 }
 
-
-function modelParamsEqual(
-  left: Array<{ id: string; value: string }> | undefined,
-  right: Array<{ id: string; value: string }> | undefined,
-) {
-  const normalize = (items: Array<{ id: string; value: string }> | undefined) =>
-    (items || [])
-      .map((item) => ({ id: item.id.trim(), value: item.value }))
-      .filter((item) => item.id)
-      .sort((a, b) => a.id.localeCompare(b.id) || a.value.localeCompare(b.value));
-  const a = normalize(left);
-  const b = normalize(right);
-  return a.length === b.length && a.every((item, index) =>
-    item.id === b[index]?.id && item.value === b[index]?.value,
-  );
-}
 
 export function requestJobModelSwitch(
   chatId: string,

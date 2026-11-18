@@ -1,4 +1,4 @@
-export const REFERENCE_KINDS = ["file", "canvas", "plan", "note", "issue", "browser", "terminal", "memory", "chat", "calendar-event", "automation"] as const;
+export const REFERENCE_KINDS = ["file", "canvas", "plan", "note", "issue", "browser", "terminal", "memory", "chat", "calendar-event", "automation", "skill"] as const;
 export type ReferenceKind = typeof REFERENCE_KINDS[number];
 export type ReferenceResult = {
   icon?:string|null;
@@ -46,7 +46,7 @@ export function createReferenceLookup<T>(fetcher: typeof fetch = fetch, options:
   const cancel = () => { revision++; controller?.abort(); };
   return {
     cancel,
-    async load(input: { chatId?: string | null; kind?: ReferenceKind | null; kinds?: readonly ReferenceKind[]; query: string; key: string },
+    async load(input: { chatId?: string | null; projectId?: string | null; kind?: ReferenceKind | null; kinds?: readonly ReferenceKind[]; query: string; key: string },
       publish: (state: ReferenceSearchState<T>) => void) {
       cancel();
       const request = revision, current = controller = new AbortController();
@@ -54,6 +54,7 @@ export function createReferenceLookup<T>(fetcher: typeof fetch = fetch, options:
       let results: T[] = [];
       publish({ key: input.key, status: "loading", results });
       const params = new URLSearchParams({ q: input.query, chatId: input.chatId || "" });
+      if (input.projectId && !input.chatId) params.set("projectId", input.projectId);
       if (input.kind) params.set("kind", input.kind);
       if (input.kinds?.length) params.set("kinds", input.kinds.join(","));
       const deadline = Date.now() + 10_000;

@@ -5,7 +5,7 @@ The Composer and the shared Notebooks editor accept category shortcuts:
 - `@chats` opens Chats; `@chats Mathe` searches only conversations.
   The existing `@chats:Mathe` syntax is also supported.
 - Other shortcuts: `@files`, `@canvases`, `@plans`, `@notes`, `@issues`,
-  `@browser`, `@terminals`, `@memories`, `@events`, `@automations`. Each accepts ` search terms` or `:search terms`.
+  `@browser`, `@terminals`, `@memories`, `@events`, `@automations`, `@skills`. Each accepts ` search terms` or `:search terms`.
 - Names are case-insensitive; singular names and German aliases (Dateien,
   Notizen, Pläne, Erinnerungen) are also recognized. Unknown prefixes stay
   ordinary search text. These are reserved category words, not a new query language.
@@ -13,6 +13,21 @@ The Composer and the shared Notebooks editor accept category shortcuts:
   Existing keyboard selection, composition guards and dismissal remain.
 - Keep the raw mention text/range separate from the parsed search scope:
   replacing a selection removes the whole `@category query` or `@category:query`, not only the query.
+
+Use `@skills` to attach an installed, enabled skill to this turn. Search returns
+the display name and a short description, not package paths or instructions.
+The server checks current account/project settings again on submit and run;
+both runners use the registered skill's instructions and do not trust a client
+path. In Notebooks, the same picker inserts a link to the skill in Agent Hub.
+Deep Research is a mode, so choose it from `/deep-research`, not `@`.
+
+Type `/` at the start of the Composer or use **Add → Commands**. Both pickers
+share the list, search field and highlighted-row behavior. Use Up/Down to
+navigate, Enter or Tab to select, Backspace on an empty scoped search to go
+back, and Escape to dismiss. Search by name or enter a scoped command directly,
+e.g. `/model`, `/model-options`, `/access` or `/workspace terminal`. The command
+uses the same app controls for agent mode, permissions, model, supported model
+options and workspace tabs. It does not send or replace an unrelated draft.
 
 Picker rows use native note/automation glyphs and colors. Project context carries
 only its authorized id/name/icon/color/logo revision and renders the shared

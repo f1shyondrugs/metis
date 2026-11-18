@@ -37,6 +37,7 @@ test("AppShell's real send entry rejects Enter, form submit and queue/force befo
   const context = vm.createContext({
     reverting: false, loadingChatId: null, activeChatId: "chat",
     activeChatIdRef: { current: "chat" }, pendingFilesRef: { current: files },
+    chainSelectionBusyRef: { current: false }, sendInFlightKeysRef: { current: new Set() },
     shouldIgnoreComposerEnter: () => false, hasUnfinishedComposerUploads,
     getUploadStatus: () => "uploading",
   });

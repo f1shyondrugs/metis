@@ -11,7 +11,7 @@ import { InternalLinkPreviewContent } from "@/components/internal-link-preview";
 import { usePublicMarkdownShare } from "@/components/public-markdown-context";
 import { cn } from "@/lib/utils";
 
-const labels = {automation:"Automation","calendar-event":"Calendar event",file:"File",canvas:"Canvas",plan:"Plan",note:"Note",issue:"Issue",browser:"Browser",terminal:"Terminal",memory:"Memory",chat:"Chat"};
+const labels = {skill:"Skill",automation:"Automation","calendar-event":"Calendar event",file:"File",canvas:"Canvas",plan:"Plan",note:"Note",issue:"Issue",browser:"Browser",terminal:"Terminal",memory:"Memory",chat:"Chat"};
 
 /** Non-document previews use the already selected metadata, never arbitrary URL fetching. */
 export function ReferencePreviewContent({reference}:{reference:ReferenceResult}) {
