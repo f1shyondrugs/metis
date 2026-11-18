@@ -11,7 +11,7 @@ export type SkillFile = { path: string; kind: "text" | "image"; size: number };
 export function skillPackageRoot(id: string, settings?: GlobalModelSettings) {
   const skill = listInstalledSkills(settings).find(item => item.id === id);
   if (!skill) throw new Error("Skill not found");
-  const root = realpathSync(config.root);
+  const root = realpathSync(config.skillRoot);
   const entry = path.resolve(root, skill.skillPath);
   if (!existsSync(entry)) throw new Error("Skill package is unavailable");
   const directory = realpathSync(path.dirname(entry));

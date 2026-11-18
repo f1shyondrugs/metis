@@ -37,7 +37,7 @@ type SkillsLock = {
 export const DEFAULT_ALWAYS_ON_SKILL_IDS = ["i-have-adhd", "skill-creator"] as const;
 
 function lockPath() {
- return path.join(config.root, "skills-lock.json");
+ return path.join(config.skillRoot, "skills-lock.json");
 }
 
 function resolvedSkillPath(id: string, configuredPath: string) {
@@ -48,7 +48,7 @@ function resolvedSkillPath(id: string, configuredPath: string) {
  path.join(".cursor", "skills", id, "SKILL.md"),
  path.join(".claude", "skills", id, "SKILL.md"),
  ].filter(Boolean);
- const root = path.resolve(config.root);
+ const root = path.resolve(config.skillRoot);
  for (const candidate of candidates) {
  const absolute = path.resolve(root, candidate);
  if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) continue;
@@ -136,7 +136,7 @@ export function readSkillMarkdown(id: string, settings?: GlobalModelSettings) {
 function readInstalledSkillMarkdown(skill?: SkillRecord) {
  if (!skill?.skillPath) return null;
  try {
- return readFileSync(path.resolve(config.root, skill.skillPath), "utf8").slice(0, 20_000);
+ return readFileSync(path.resolve(config.skillRoot, skill.skillPath), "utf8").slice(0, 20_000);
  } catch {
  return null;
  }
@@ -165,7 +165,7 @@ export function addManualSkill(id: string, content: string): SkillRecord {
  }
  if (!content.trim()) throw new Error("SKILL.md content is required.");
  const relativePath = path.join("skills", "manual", normalizedId, "SKILL.md");
- const absolutePath = path.join(config.root, relativePath);
+ const absolutePath = path.join(config.skillRoot, relativePath);
  mkdirSync(path.dirname(absolutePath), { recursive: true });
  writeFileSync(absolutePath, content, "utf8");
 

@@ -42,6 +42,8 @@ export const config = {
   agentCwd,
   root,
   installDir: env("AI_CHAT_INSTALL_DIR") || root,
+  // Keep installed packages consistent across independently deployed source slots.
+  skillRoot: env("AI_CHAT_SKILL_ROOT") || root,
   dataDir,
   databasePath: env("CHAT_DB_PATH") || path.join(dataDir, "chat.sqlite"),
   host,

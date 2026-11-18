@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   installing = true;
   try {
     await promisify(execFile)("npx", ["--yes", "skills", "add", entry.source, "--skill", entry.id, "--agent", "universal", "--yes"], {
-      cwd: config.root, timeout: 120_000, maxBuffer: 2_000_000,
+      cwd: config.skillRoot, timeout: 120_000, maxBuffer: 2_000_000,
       env: { ...process.env, DISABLE_TELEMETRY: "1" },
     });
     if (!listInstalledSkills().some(item => item.id === entry.id)) throw new Error("The installer did not register this skill.");

@@ -13,7 +13,7 @@ export function validSkillId(id: unknown): id is string {
 }
 function accountDirectory(ownerId: string) {
   if (!ownerId) throw new Error("An account is required.");
-  return path.join(config.root, "skills", "personal", createHash("sha256").update(ownerId).digest("hex"));
+  return path.join(config.skillRoot, "skills", "personal", createHash("sha256").update(ownerId).digest("hex"));
 }
 function readLock(ownerId: string): Record<string, { hash: string }> {
   try { return JSON.parse(readFileSync(path.join(accountDirectory(ownerId), "skills.json"), "utf8")); }
@@ -57,7 +57,7 @@ export function addPersonalSkill(ownerId: string, id: string, files: SkillPackag
   if (lock[id] || existsSync(directory)) throw new Error("A skill with this id already exists. Choose another id.");
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const realRoot = realpathSync(root);
-  if (realRoot !== path.join(realpathSync(config.root), "skills", "personal", path.basename(root))) throw new Error("Invalid skill storage.");
+  if (realRoot !== path.join(realpathSync(config.skillRoot), "skills", "personal", path.basename(root))) throw new Error("Invalid skill storage.");
   mkdirSync(directory, { mode: 0o700 });
   const temporary = path.join(root, "skills-" + randomUUID() + ".tmp");
   try {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ReferenceResult } from "../lib/reference-search";
@@ -8,7 +8,7 @@ import type { ReferenceResult } from "../lib/reference-search";
 const root = mkdtempSync(path.join(os.tmpdir(), "metis-skill-reference-"));
 Object.assign(process.env, {
   AI_CHAT_ROOT: root, AI_CHAT_INSTALL_DIR: process.cwd(), CHAT_DATA_DIR: root, CHAT_DB_PATH: path.join(root, "chat.sqlite"),
-  AGENT_CWD: root, CHAT_LEGACY_HEADER_AUTH: "false",
+  AGENT_CWD: root, CHAT_LEGACY_HEADER_AUTH: "false", AI_CHAT_SKILL_ROOT: path.join(root, "installed"),
 });
 after(() => rmSync(root, { recursive: true, force: true }));
 
@@ -29,7 +29,12 @@ test("authenticated search and both resolution paths use the owner and current p
     path: "SKILL.md", encoding: "utf8",
     content: "---\nname: " + name + "\ndescription: Synthetic palette fixture\n---\n\nOWNER_INSTRUCTIONS_NOT_SEARCH_METADATA",
   }]);
-  skill(owner.id, "picker-skill", "Picker Skill");
+  const installed = skill(owner.id, "picker-skill", "Picker Skill");
+  assert.ok(installed.skillPath.startsWith(path.join(root, "installed", "skills", "personal") + path.sep));
+  assert.equal(existsSync(path.join(root, "skills")), false);
+  const { listSkillFiles } = await import("../lib/skill-files");
+  assert.deepEqual(listSkillFiles("picker-skill", { skillOwnerId: owner.id }).map(file => file.path), ["SKILL.md"]);
+  assert.throws(() => listSkillFiles("picker-skill", { skillOwnerId: outsider.id }), /Skill not found/);
   skill(owner.id, "deep-research", "Deep Research");
   skill(outsider.id, "foreign-skill", "Foreign Skill");
   const project = projects.createProject({ name: "Scoped fixture", ownerId: owner.id });
