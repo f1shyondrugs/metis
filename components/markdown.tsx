@@ -22,6 +22,8 @@ import hljs from "highlight.js/lib/common";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/github-dark.css";
 import { parseWorkspaceFileLink } from "@/lib/workspace-file-link";
+import {CalendarEventCard} from "@/components/calendar/calendar-event-card";
+import {calendarEventEmbedId} from "@/lib/calendar-event-link";
 import { internalLinkNavigation, parseInternalLink } from "@/lib/internal-link";
 import { parseReferenceLink } from "@/lib/reference-link";
 import { MarkdownSpan } from "@/components/markdown-span";
@@ -103,6 +105,7 @@ function MarkdownLink({
       )}
       title={props.title}
       onClick={(event) => {
+        if(internalTarget?.kind==="calendar-event"&&(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey))return;
         if(notebook&&(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey))return;
         if(notebook?.type==="share")return;
         if(href?.startsWith("#")){const id=decodeNotesSection(href);if(!id){event.preventDefault();return;}const target=findNotesSection(event.currentTarget.closest(".markdown-body") || event.currentTarget.closest("article") || document,id);if(target){event.preventDefault();scrollNotesSection(target);return;}}
@@ -233,6 +236,7 @@ function CodeBlock({
     );
   }
   const declaredLanguage = className?.match(/language-([\w-]+)/)?.[1];
+  if(declaredLanguage==="calendar-event"&&!streaming){const id=calendarEventEmbedId(code);if(id)return <CalendarEventCard id={id}/>;}
   if (isHtmlEmbedLanguage(declaredLanguage)) return <HtmlEmbed source={code} streaming={streaming} />;
   if (declaredLanguage === "metis-block") return <NotesRichBlockPreview source={code} headings={notesHeadings} sourceOffset={node?.position?.start?.offset} publicShare={publicShare} />;
   const file = declaredLanguage === "file" ? parseFileEmbed(code) : null;

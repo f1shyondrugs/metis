@@ -3,6 +3,8 @@
 import { Brain, Check, Circle, LoaderCircle } from "lucide-react";
 import { PlanWorkspaceCard } from "@/components/plan-workspace-card";
 import { CanvasWorkspaceCard } from "@/components/canvas-workspace-card";
+import {CalendarEventCard,DeferredCalendarEventCard} from "@/components/calendar/calendar-event-card";
+import {calendarEventToolId,calendarEventMutation} from "@/lib/calendar-event-link";
 import { AutomationCard } from "@/components/automation-card";
 import { planLooksParallelizable } from "@/lib/modes";
 import { parseAutomationCard } from "@/lib/tool-kind";
@@ -11,7 +13,7 @@ import type { ToolCallData } from "@/components/tool-call-chip";
 
 type Plan = { title: string; content: string; workspaceLink?: string };
 type Props = {
-  tool: Pick<ToolCallData, "name" | "kind" | "input" | "result" | "detail" | "status" | "todos">;
+  tool: Pick<ToolCallData, "name" | "kind" | "input" | "result" | "detail" | "status" | "todos" | "resultUrl">;
   workspaces?: Array<{ id: string; type?: string; name?: string; content?: string }>;
   onOpenWorkspace?: () => void;
   onBuildPlan?: (plan: Plan, options?: { multiAgent?: boolean }) => void;
@@ -23,10 +25,12 @@ type Props = {
 /** Reuse the saved artifact cards in chat and in the tool details popover. */
 export function ToolCallPreview({ tool, workspaces, onOpenWorkspace, onBuildPlan, buildDisabled, onNavigate, inline = false }: Props) {
   const { name, kind, input, result, detail, status, todos } = tool;
+  const calendarId=calendarEventToolId(name,input,result,status);
   const mutation = /(?:^|__|[.:/-])(?:(?:create|edit)_(?:plan|canvas)|(?:add|create|edit)_memory)$/i.test(name);
   const terminal = /^(completed|success|succeeded|done)$/i.test(status);
+  const deferredCalendar=terminal&&Boolean(tool.resultUrl)&&calendarEventMutation(name,input);
   const artifactKind = kind === "plan" || kind === "canvas" || kind === "memory";
-  if (inline && (!artifactKind || !mutation || !terminal)) return null;
+  if (inline && !calendarId && !deferredCalendar && (!artifactKind || !mutation || !terminal)) return null;
   const running = isToolRunning(status) && result === undefined;
   const payload = unwrapToolRecord(result);
   const structured = unwrapToolRecord(payload?.structuredContent ?? payload?.structured_content);
@@ -35,6 +39,8 @@ export function ToolCallPreview({ tool, workspaces, onOpenWorkspace, onBuildPlan
       || outcome?.success === false || outcome?.ok === false
       || /^(error|failed|declined|canceled|cancelled)$/i.test(String(outcome?.status || "")));
   if (inline && failed) return null;
+  if(calendarId&&!failed)return <CalendarEventCard id={calendarId}/>;
+  if(deferredCalendar&&!failed)return <DeferredCalendarEventCard name={name} input={input} resultUrl={tool.resultUrl!} status={status}/>;
   const resultText = result?.trim() || "";
   const hasResult = Boolean(resultText) && (payload
     ? Object.keys(payload).length > 0

@@ -24,11 +24,24 @@ test("ICS preserves recurrence, exceptions and alarm data; mirrors do not send i
  assert.ok(ical.mirrorPayload(copy,raw).includes("ATTENDEE"));
 });
 test("all-day dates, end-exclusive ranges and recurrence validation",()=>{
+ assert.throws(()=>store.saveCalendarEvent(owner,{...input,allDay:true,start:"2026-03-29",end:"2026-03-29"}),/after start/);
  const e=store.saveCalendarEvent(owner,{...input,title:"All day",allDay:true,start:"2026-03-29",end:"2026-03-30",recurrence:"FREQ=YEARLY"});
  assert.equal(e.start,"2026-03-29");assert.ok(e.ics.includes("VALUE=DATE"));assert.equal(store.listCalendarEvents(owner,"2026-03-29T00:00:00Z","2026-03-30T00:00:00Z").filter(x=>x.eventId===e.id).length,1);
  assert.throws(()=>store.saveCalendarEvent(owner,{...input,start:"2026-11-13T10:00:00",end:"2026-11-13T11:00:00"}),/offset/);
  assert.throws(()=>store.saveCalendarEvent(owner,{...input,end:input.start}),/after/);
  assert.throws(()=>store.listCalendarEvents(owner,"invalid","invalid"),/range/);
+});
+test("updated timezone definitions and IANA aliases round-trip without removing export safeguards",()=>{
+ const {DateTime}=require("luxon") as typeof import("luxon");
+ for(const zone of ["Asia/Almaty","America/Sao_Paulo","Africa/Juba","Asia/Calcutta","US/Eastern","America/Vancouver"]){
+  for(const month of [1,7,11]){
+   const start=DateTime.fromObject({year:2026,month,day:17,hour:16,minute:30},{zone});
+   const saved=store.saveCalendarEvent(owner,{...input,timeZone:zone,start:start.toISO()!,end:start.plus({hours:1}).toISO()!});
+   assert.equal(Date.parse(saved.start),start.toMillis(),zone);assert.equal(saved.timeZone,zone);
+   assert.ok(saved.ics.includes("TZID:"+zone));
+  }
+ }
+ assert.throws(()=>ical.writeEvent({...input,start:"2026-11-13T10:00:00.123+01:00"}, "precision@test"),/safely|needs an update/);
 });
 test("credential envelopes bind owner and target; refresh cannot re-enable disconnect",()=>{
  const c=conn.saveCalendarCredentials(owner,"icloud",{username:"synthetic@example.test",password:"SYNTHETIC-NOT-A-REAL-PASSWORD"});

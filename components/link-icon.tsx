@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ClipboardList, LayoutDashboard, FileText, Workflow, CircleDot, Globe, Terminal, Brain, MessageSquare, File, Link2, Mail, Users } from "lucide-react";
+import { CalendarDays, ClipboardList, PanelsTopLeft, FileText, Workflow, CircleDot, Globe, Terminal, Brain, MessageSquare, File, Link2, Mail, Users } from "lucide-react";
 import { parseInternalLink } from "@/lib/internal-link";
 import { parseReferenceLink } from "@/lib/reference-link";
 import { parseWorkspaceFileLink } from "@/lib/workspace-file-link";
@@ -12,11 +12,11 @@ import { sourceFaviconUrl } from "@/lib/message-sources";
 import { usePublicMarkdownShare } from "@/components/public-markdown-context";
 import { cn } from "@/lib/utils";
 
-const icons = { plan: ClipboardList, canvas: LayoutDashboard, note: FileText, automation: Workflow, issue: CircleDot,
+const icons = { "calendar-event":CalendarDays, plan: ClipboardList, canvas: PanelsTopLeft, note: FileText, automation: Workflow, issue: CircleDot,
   browser: Globe, terminal: Terminal, memory: Brain, chat: MessageSquare, file: File, subagent: Users };
 const pending = new Map<string, Promise<string | null>>();
-function loadNoteIcon(id: string) {
-  const url = "/api/internal-link-preview?" + new URLSearchParams({ kind: "note", id, view: "icon" });
+function loadNoteIcon(id: string,kind:string) {
+  const url = "/api/internal-link-preview?" + new URLSearchParams({ kind, id, view: "icon" });
   let request = pending.get(url);
   if (!request) {
     request = fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8_000) }).then(async response => {
@@ -37,24 +37,25 @@ export function LinkIcon({ href = "", kind, id, icon, className, fallback }: {
   const target = parseInternalLink(href) || parseReferenceLink(href);
   const resolvedKind = kind || target?.kind || (parseWorkspaceFileLink(href) || isFileUrl(href) ? "file"
     : /^https?:\/\//i.test(href) ? "browser" : /^mailto:/i.test(href) ? "mail" : /^subagent:\/\//i.test(href) ? "subagent" : "link");
-  const noteId = resolvedKind === "note" ? id || target?.id : undefined;
+  const noteId = (resolvedKind === "note"||resolvedKind==="automation") ? id || target?.id : undefined;
   const host = useRef<HTMLSpanElement>(null);
   const [loaded, setLoaded] = useState<{ id: string; icon: string | null } | null>(null);
   useEffect(() => {
     if (!noteId || share || icon !== undefined) return;
     let current = true;
-    const load = () => { void loadNoteIcon(noteId).then(value => { if (current) setLoaded({ id: noteId, icon: value }); }); };
+    const load = () => { void loadNoteIcon(noteId,resolvedKind).then(value => { if (current) setLoaded({ id: resolvedKind+":"+noteId, icon: value }); }); };
     if (typeof IntersectionObserver === "undefined" || !host.current) { load(); return () => { current = false; }; }
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) { observer.disconnect(); load(); }
     });
     observer.observe(host.current);
     return () => { current = false; observer.disconnect(); };
-  }, [noteId, share, icon]);
+  }, [noteId, resolvedKind,share, icon]);
   const Icon = resolvedKind === "mail" ? Mail : icons[resolvedKind as keyof typeof icons] || Link2;
   const favicon = resolvedKind === "browser" && !target ? sourceFaviconUrl(href) : undefined;
+  const effectiveIcon=icon!==undefined?icon:share&&noteId?share.noteIcons?.[noteId]??null:loaded&&loaded.id===resolvedKind+":"+noteId?loaded.icon:null;
   return <span ref={host} aria-hidden="true" data-link-icon-kind={resolvedKind}
     className={cn("mr-1 inline-flex size-[1em] shrink-0 items-center justify-center align-[-0.15em] leading-none", className)}>
-    {resolvedKind === "note" ? <NoteIcon value={icon !== undefined ? icon : share && noteId ? share.noteIcons?.[noteId] ?? null : loaded && loaded.id === noteId ? loaded.icon : null} className="size-full" /> : favicon ? <WebsiteIcon src={favicon} className="size-full" fallback={fallback ?? <Icon className="size-full" />} /> : fallback ?? <Icon className="size-full" />}
+    {resolvedKind === "note" || resolvedKind==="automation"&&effectiveIcon ? <NoteIcon value={effectiveIcon} className="size-full" /> : favicon ? <WebsiteIcon src={favicon} className="size-full" fallback={fallback ?? <Icon className="size-full" />} /> : fallback ?? <Icon className="size-full" />}
   </span>;
 }

@@ -56,6 +56,9 @@ importers:
       '@fullcalendar/interaction':
         specifier: 6.1.20
         version: 6.1.20(@fullcalendar/core@6.1.22)
+      '@fullcalendar/luxon3':
+        specifier: 6.1.20
+        version: 6.1.20(@fullcalendar/core@6.1.22)(luxon@3.7.2)
       '@fullcalendar/react':
         specifier: 6.1.20
         version: 6.1.20(@fullcalendar/core@6.1.22)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -266,6 +269,9 @@ importers:
       tar:
         specifier: 7.5.23
         version: 7.5.23
+      timezones-ical-library:
+        specifier: 3.0.0
+        version: 3.0.0
       tsdav:
         specifier: 2.2.0
         version: 2.2.0
@@ -1168,6 +1174,12 @@ packages:
     resolution: {integrity: sha512-p6txmc5txL0bMiPaJxe2ip6o0T384TyoD2KGdsU6UjZ5yoBlaY+dg7kxfnYKpYMzEJLG58n+URrHr2PgNL2fyA==}
     peerDependencies:
       '@fullcalendar/core': ~6.1.20
+
+  '@fullcalendar/luxon3@6.1.20':
+    resolution: {integrity: sha512-lHebDK1lLQ25ilDO68KoLSVZaS9/mSjDGjWedPrpbgJNwSSIME7NCD3kRoskWOqayk4j0mFylEGO8TNrW3gzOQ==}
+    peerDependencies:
+      '@fullcalendar/core': ~6.1.20
+      luxon: ^3.0.0
 
   '@fullcalendar/react@6.1.20':
     resolution: {integrity: sha512-1w0pZtceaUdfAnxMSCGHCQalhi+mR1jOe76sXzyAXpcPz/Lf0zHSdcGK/U2XpZlnQgQtBZW+d+QBnnzVQKCxAA==}
@@ -6624,6 +6636,9 @@ packages:
     resolution: {integrity: sha512-B71/4oyj61iNH0KeCamLuE2rmKuTO5byTOSVwECM5FA7TiAiAW+UqTKZ9ERueC4qvgSttUhdmq1mXC3kJqGX7A==}
     engines: {node: '>=12.22'}
 
+  timezones-ical-library@3.0.0:
+    resolution: {integrity: sha512-z4pz4GqxS2lFuJadGwGSOhraBtQ277sjvjNpajaIfJb7dkQ3RnO/Ps5M8eLFhyklSMzX7gOVmI9YUs+GPSFPIw==}
+
   tiny-invariant@1.3.3:
     resolution: {integrity: sha512-+FbBPE1o9QAYvviau/qC5SE3caw21q3xkvWKBtja5vgqOWIHHJ3ioaq1VPfn/Szqctz2bU/oYeKd9/z5BL+PVg==}
 
@@ -7975,6 +7990,11 @@ snapshots:
   '@fullcalendar/interaction@6.1.20(@fullcalendar/core@6.1.22)':
     dependencies:
       '@fullcalendar/core': 6.1.22
+
+  '@fullcalendar/luxon3@6.1.20(@fullcalendar/core@6.1.22)(luxon@3.7.2)':
+    dependencies:
+      '@fullcalendar/core': 6.1.22
+      luxon: 3.7.2
 
   '@fullcalendar/react@6.1.20(@fullcalendar/core@6.1.22)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
@@ -14431,6 +14451,8 @@ snapshots:
       yallist: 5.0.0
 
   throttle-debounce@5.0.2: {}
+
+  timezones-ical-library@3.0.0: {}
 
   tiny-invariant@1.3.3: {}
 

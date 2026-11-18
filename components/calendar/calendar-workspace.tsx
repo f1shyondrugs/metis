@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { CalendarPanel } from "@/components/calendar/calendar-panel";
 
 /** A primary URL-backed workspace, independent of account pages and chat controls. */
-export function CalendarWorkspace({ onOpenSidebar, onToggleSidebar, sidebarOpen }: {
+export function CalendarWorkspace({ onOpenSidebar, onToggleSidebar, sidebarOpen, userId }: {
+  userId?: string;
   onOpenSidebar: () => void;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
@@ -22,7 +23,7 @@ export function CalendarWorkspace({ onOpenSidebar, onToggleSidebar, sidebarOpen 
       <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title="Calendar">Calendar</h1>
     </header>
     <main aria-label="Calendar" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <CalendarPanel />
+      <CalendarPanel key={userId || "pending"} userId={userId} />
     </main>
   </div>;
 }

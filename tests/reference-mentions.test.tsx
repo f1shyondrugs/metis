@@ -12,26 +12,34 @@ import type {PublicMarkdownShare} from "../lib/public-markdown";
 import {parseRichUserText} from "../lib/user-text-links";
 Object.assign(globalThis,{React});
 
-test("all category shortcuts resolve with and without a colon, case insensitive",()=>{
+test("all category shortcuts accept space or colon queries, case insensitive",()=>{
   for(const kind of REFERENCE_KINDS){
     const shortcut=REFERENCE_SHORTCUTS[kind];
     assert.deepEqual(resolveReferenceQuery(shortcut),{kind,query:""});
     assert.deepEqual(resolveReferenceQuery("@"+shortcut.toUpperCase()+": Straße notes:next"),{kind,query:"Straße notes:next"});
     assert.deepEqual(resolveReferenceQuery(shortcut+":"),{kind,query:""});
+    assert.deepEqual(resolveReferenceQuery("@"+shortcut+" Straße notes:next"),{kind,query:"Straße notes:next"});
+    assert.deepEqual(resolveReferenceQuery(shortcut.toUpperCase()+"   two words  "),{kind,query:"two words  "});
+    assert.deepEqual(resolveReferenceQuery(shortcut+"\tquery"),{kind,query:"query"});
+    assert.deepEqual(resolveReferenceQuery(shortcut+" "),{kind,query:""});
   }
   assert.deepEqual(resolveReferenceQuery("notizen:Prüfung"),{kind:"note",query:"Prüfung"});
-  for(const query of ["cha","chatsheet","chats extra","unknown:term","https://example.test","constructor","toString","__proto__"])
+  assert.deepEqual(resolveReferenceQuery("@Notizen Prüfung morgen"),{kind:"note",query:"Prüfung morgen"});
+  assert.deepEqual(resolveReferenceQuery("plain multi-word query","note"),{kind:"note",query:"plain multi-word query"});
+  for(const query of ["cha","chatsheet","chatsheet extra","unknown:term","unknown term","https://example.test","constructor","constructor term","toString","__proto__"])
     assert.deepEqual(resolveReferenceQuery(query),{kind:null,query});
   assert.deepEqual(resolveReferenceQuery("term","chat"),{kind:"chat",query:"term"});
 });
 
 test("scoped searches preserve the raw mention range and replace the whole prefix once",()=>{
-  const text="😀 use @chats:Mathe later",end=text.indexOf(" later");
-  const mention=composerMentionQuery(text,end)!;
-  assert.equal(mention.query,"chats:Mathe");
-  assert.deepEqual(resolveReferenceQuery(mention.query),{kind:"chat",query:"Mathe"});
-  assert.equal(replaceComposerMention(text,mention,"Mathe course")?.value,"😀 use @Mathe course later");
-  assert.equal(replaceComposerMention("new draft",mention,"Mathe course"),null);
+  for(const raw of ["chats:Mathe","chats Mathe","chats   Mathe"]){
+    const text="😀 use @"+raw+" later",end=text.indexOf(" later");
+    const mention=composerMentionQuery(text,end)!;
+    assert.equal(mention.query,raw);
+    assert.deepEqual(resolveReferenceQuery(mention.query),{kind:"chat",query:"Mathe"});
+    assert.equal(replaceComposerMention(text,mention,"Mathe course")?.value,"😀 use @Mathe course later");
+    assert.equal(replaceComposerMention("new draft",mention,"Mathe course"),null);
+  }
 });
 
 test("selected mentions are real icon links, dotted-underlined, and preserve device routing",()=>{

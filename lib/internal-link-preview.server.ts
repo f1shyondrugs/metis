@@ -1,3 +1,5 @@
+import {getCalendarReference} from "@/lib/calendar/reference";
+import {DateTime} from "luxon";
 import {boundedPreviewText as bounded,documentPreviewSummary as documentSummary} from "@/lib/document-preview";
 import { getAutomation, type Automation } from "@/lib/automations";
 import { getChat } from "@/lib/db-store";
@@ -39,9 +41,24 @@ function preview(target: InternalLinkTarget, title: string, description: string,
   };
 }
 
-export function getInternalLinkPreview(target: InternalLinkTarget, ownerId: string, chatId?: string): InternalLinkPreview | null {
+export function getInternalLinkPreview(target: InternalLinkTarget, ownerId: string, chatId?: string, timeZone="UTC"): InternalLinkPreview | null {
   // Never let an absent account widen the canonical stores' optional owner filters.
   if (!ownerId) return null;
+  if(target.kind==="calendar-event"){
+    try{
+      const {event,calendar,occurrence,recurring}=getCalendarReference(ownerId,target.id,timeZone),value=occurrence||event;
+      const zone=event.timeZone==="floating"?timeZone:event.timeZone;
+      const format=(value:string)=>event.allDay?DateTime.fromISO(value,{zone:"UTC"}).setLocale("en").toFormat("dd LLL yyyy"):dateLabel(value,zone);
+      return{...preview(target,event.title,event.description,[
+       {label:"Calendar",value:calendar.name},
+       {label:recurring?"Next occurrence":"Start",value:occurrence?format(value.start):"No occurrence in the next 10 years"},
+       {label:event.allDay?"End (exclusive)":"End",value:occurrence?format(value.end):""},
+       {label:"Time zone",value:event.allDay?"All day":zone},
+       {label:"Location",value:event.location},
+      ]),color:/^#[a-f0-9]{6}$/i.test(calendar.color)?calendar.color:undefined,
+      ...(recurring?{description:("Recurring event · "+event.recurrence+"\n"+event.description).slice(0,600)}:{})};
+    }catch{return null;}
+  }
   if (target.kind === "issue") {
     const issue = getIssue(target.id, ownerId);
     if (!issue) return null;
@@ -64,12 +81,12 @@ export function getInternalLinkPreview(target: InternalLinkTarget, ownerId: stri
   if (target.kind === "automation") {
     const automation = getAutomation(target.id, ownerId, false);
     if (!automation) return null;
-    return preview(target, automation.name, automation.prompt, [
+    return {...preview(target, automation.name, automation.prompt, [
       { label: "Status", value: automation.status[0].toUpperCase() + automation.status.slice(1) },
       { label: "Schedule", value: scheduleLabel(automation) },
       { label: "Timezone", value: automation.timezone },
       { label: "Next run", value: dateLabel(automation.nextRunAt, automation.timezone) },
-    ]);
+    ]),icon:automation.icon??null};
   }
   const resolved = getInternalWorkspace({ kind: target.kind, id: target.id }, ownerId, chatId);
   if (!resolved) return null;

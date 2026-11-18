@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import ts from "typescript";
 const file=ts.createSourceFile("app-shell.tsx",fs.readFileSync(new URL("../components/app-shell.tsx",import.meta.url),"utf8"),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-const handlers={};let effect="",reset="",navigate="",href="",calendar="";
+const handlers={};let effect="",reset="",navigate="",href="",calendar="",eventCallback="";
 function visit(n){
+ if(ts.isVariableDeclaration(n)&&n.name.getText(file)==="openLinkedCalendarEvent")eventCallback=n.initializer.getText(file);
  if(ts.isFunctionDeclaration(n)&&n.name?.text==="chatHref")href=n.getText(file);
  if(ts.isVariableDeclaration(n)&&n.name.getText(file)==="calendarOpen")calendar=n.initializer.getText(file);
  if(ts.isVariableDeclaration(n)&&n.name.getText(file)==="navigateChat")navigate=n.initializer.arguments[0].getText(file);
@@ -34,7 +35,7 @@ export function calendarNavigationHarnessSource(){
  'const setAccountView=v=>state.accountView=v,setNotesOpen=v=>{state.notesOpen=v;notesOpen=v;},setAutomationsOpen=v=>{state.automationsOpen=v;automationsOpen=v;},setWorkspaceOpen=v=>state.workspaceOpen=v,setWorkspaceFullscreen=v=>state.workspaceFullscreen=v,setMobileNavOpen=v=>state.mobileNavOpen=v,setProjectHomeId=v=>state.projectHomeId=v,setFocusedAutomationId=v=>state.focusedAutomationId=v,setActiveChatId=v=>activeChatIdRef.current=v;',
  'const setSidebarAllProjects=()=>{},setDraftProjectId=()=>{};',
  'const parseProjectRouteId=id=>id?.startsWith("project:")?id.slice(8):null;',
- 'const persistActiveSnapshot=()=>state.snapshots++;',
+ 'const workspaceLinkRequestRef={current:0};const persistActiveSnapshot=()=>state.snapshots++;',
  'const loadChat=id=>{state.loads.push(id);activeChatIdRef.current=id;state.projectHomeId=null;state.accountView=null;};',
  'const openDraft=()=>{activeChatIdRef.current=null;state.notesOpen=false;state.automationsOpen=false;state.projectHomeId=null;};',
  "const navigateChat="+navigate+",resetAccount="+reset+",apply="+effect+";",
@@ -44,9 +45,10 @@ export function calendarNavigationHarnessSource(){
  'const query=new URLSearchParams(window.location.search);routeChatId=query.get("c");routeView=query.get("view");calendarOpen='+calendar+";",
  "resetAccount();apply();",
  "}",
+ "const openEventCallback="+eventCallback+";",
  "const callbacks={"+Object.entries(handlers).map(([k,v])=>k+":"+v).join(",")+"};",
  "return {state,get calendarOpen(){return calendarOpen;},get chatId(){return activeChatIdRef.current;},reconcile,",
- "openCalendar(){callbacks.openCalendar();reconcile();},openNotes(){callbacks.openNotes();reconcile();},openAutomations(){callbacks.openAutomations();reconcile();},",
+ "openEvent(id){openEventCallback({detail:{id}});reconcile();},openCalendar(){callbacks.openCalendar();reconcile();},openNotes(){callbacks.openNotes();reconcile();},openAutomations(){callbacks.openAutomations();reconcile();},",
  "openChat(id){navigateChat(id);reconcile();},openDraft(){navigateChat(null);reconcile();}};",
  "}"].join("\n");
  return ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;

@@ -6,7 +6,9 @@ const nextConfig: NextConfig = {
   experimental: { webpackBuildWorker: true, webpackMemoryOptimizations: true },
   transpilePackages: ["jsxgraph"],
   // API seeding and the custom WebSocket server must share Yjs constructors.
-  serverExternalPackages: ["@cursor/sdk", "yjs"],
+  // This package reads VTIMEZONE assets relative to its own __dirname.
+  // Bundling it changes that directory and silently makes every zone unavailable.
+  serverExternalPackages: ["@cursor/sdk", "yjs", "@touch4it/ical-timezones", "timezones-ical-library"],
   distDir: process.env.NEXT_DIST_DIR || ".next",
   webpack: (config, { isServer }) => {
     if (isServer) {

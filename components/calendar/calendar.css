@@ -11,5 +11,6 @@
 .metis-calendar .fc .fc-daygrid-more-link{padding:4px}
 .metis-calendar .fc .fc-timegrid-slot{height:30px}
 .metis-calendar .fc .fc-popover{background:var(--popover);color:var(--popover-foreground);border-color:var(--border)}
+.metis-calendar .fc .metis-calendar-selected-event{outline:3px solid var(--foreground);outline-offset:2px;font-weight:700;box-shadow:0 0 0 5px var(--background)}
 .metis-calendar .fc a:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
 @media(max-width:639px){.metis-calendar .fc .fc-daygrid-day-number{margin:1px;min-width:24px;min-height:24px}.metis-calendar .fc .fc-event{padding:2px;min-height:22px}.metis-calendar .fc .fc-event-time{display:none}}

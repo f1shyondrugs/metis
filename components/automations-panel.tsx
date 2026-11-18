@@ -1,4 +1,6 @@
 "use client";
+import {AutomationIcon} from "@/components/automation-icon";
+import {NoteIconPicker} from "@/components/notes/note-icon-picker";
 
 import { AutomationSplitView } from "@/components/automation-editor-surface";
 import { RunStatus } from "@/components/run-status";
@@ -51,6 +53,7 @@ type AutomationRun = {
 
 type Automation = {
   id: string;
+  icon?:string|null;
   chatId: string;
   chatTitle?: string;
   projectId?: string;
@@ -95,6 +98,7 @@ type ScheduleKind = Automation["schedule"]["kind"];
 
 type EditDraft = {
   name: string;
+  icon:string|null;
   prompt: string;
   scheduleKind: ScheduleKind;
   onceAt: string;
@@ -249,6 +253,7 @@ function draftFromAutomation(automation: Automation, fallbackModeId: string, mod
   const selectedExtendedModel = modelForSelection(models, automation.extendedModelId);
   return {
     name: automation.name,
+    icon:automation.icon??null,
     prompt: automation.prompt,
     scheduleKind,
     onceAt: scheduleKind === "once" ? toDatetimeLocal(automation.schedule.at) : "",
@@ -277,6 +282,7 @@ function scheduleFromDraft(draft: EditDraft): Automation["schedule"] {
 function newAutomationDraft(fallbackModeId: string): EditDraft {
   return {
     name: "",
+    icon:null,
     prompt: "",
     scheduleKind: "interval",
     onceAt: toDatetimeLocal(new Date(Date.now() + 60 * 60 * 1_000).toISOString()),
@@ -321,7 +327,7 @@ const AutomationListRow = memo(function AutomationListRow({
         aria-pressed={selected}
         onClick={() => onSelect(automation.id)}
       >
-        <span className="automation-list-icon"><Icon aria-hidden="true" /></span>
+        <span className="automation-list-icon">{automation.icon?<AutomationIcon value={automation.icon}/>:<Icon aria-hidden="true" />}</span>
         <span className="automation-list-copy">
           <span className="automation-list-title-line">
             <span className="automation-list-title">{automation.name}</span>
@@ -379,6 +385,7 @@ export function AutomationsPanel({
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<EditDraft | null>(null);
+  const originalDraftRef=useRef<EditDraft|null>(null);
   const [editorStep, setEditorStep] = useState(0);
   const [targetChats, setTargetChats] = useState<ContextChat[]>([]);
   const [targetAgents, setTargetAgents] = useState<TargetAgent[]>([]);
@@ -618,7 +625,9 @@ export function AutomationsPanel({
   const beginEdit = useCallback((automation: Automation) => {
     setCreating(false);
     setSelectedId(automation.id);
-    setDraft(draftFromAutomation(automation, fallbackModeId, modelOptions));
+    const initialDraft=draftFromAutomation(automation,fallbackModeId,modelOptions);
+    originalDraftRef.current=initialDraft;
+    setDraft(initialDraft);
     setEditorError("");
     setEditing(true);
     if (!modelOptions.length) {
@@ -669,13 +678,15 @@ export function AutomationsPanel({
     setPendingAction("save");
     try {
       const automationId = creating ? null : currentDetail!.id;
+      const iconOnly=!creating&&originalDraftRef.current&&JSON.stringify({...draft,icon:undefined})===JSON.stringify({...originalDraftRef.current,icon:undefined});
       const response = await fetch(
         creating ? "/api/automations" : `/api/automations/${encodeURIComponent(automationId!)}`,
         {
           method: creating ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          body: JSON.stringify(iconOnly?{icon:draft.icon}:{
             name: draft.name.trim(),
+            icon:draft.icon,
             prompt: draft.prompt.trim(),
             modeId: draft.modeId,
             modelId: draft.modelId,
@@ -832,7 +843,7 @@ export function AutomationsPanel({
           <div key={currentDetail.id} className={`automation-detail-content${creating ? " automation-editor-creating" : ""}`}>
             <header className="automation-detail-header">
               <span className="automation-detail-icon">
-                {creating ? <Plus aria-hidden="true" /> : currentDetail.creator === "agent" ? <Bot aria-hidden="true" /> : <CalendarClock aria-hidden="true" />}
+                {currentDetail.icon?<AutomationIcon value={currentDetail.icon}/>:creating ? <Plus aria-hidden="true" /> : currentDetail.creator === "agent" ? <Bot aria-hidden="true" /> : <CalendarClock aria-hidden="true" />}
               </span>
               <span className="automation-detail-heading">
                 <span className="automation-detail-title-line">
@@ -867,6 +878,7 @@ export function AutomationsPanel({
                 </nav> : null}
                 <fieldset data-step="0" hidden={creating && editorStep !== 0} disabled={creating && editorStep !== 0}>
                 <legend tabIndex={-1}>What should happen?</legend>
+                <div className="flex items-center gap-2 text-sm"><span>Icon</span><NoteIconPicker label="Automation" value={draft.icon} disabled={pendingAction==="save"} fallback={<CalendarClock className="size-6" aria-hidden="true"/>} onChange={icon=>setDraft({...draft,icon})}/></div>
                 <label>
                   Name
                   <input name="name" maxLength={200} autoComplete="off" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required />

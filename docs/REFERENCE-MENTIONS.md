@@ -2,16 +2,39 @@
 
 The Composer and the shared Notebooks editor accept category shortcuts:
 
-- `@chats` opens Chats; `@chats:Mathe` searches only conversations.
+- `@chats` opens Chats; `@chats Mathe` searches only conversations.
+  The existing `@chats:Mathe` syntax is also supported.
 - Other shortcuts: `@files`, `@canvases`, `@plans`, `@notes`, `@issues`,
-  `@browser`, `@terminals`, `@memories`. Each accepts `:search terms`.
+  `@browser`, `@terminals`, `@memories`, `@events`, `@automations`. Each accepts ` search terms` or `:search terms`.
 - Names are case-insensitive; singular names and German aliases (Dateien,
   Notizen, Pläne, Erinnerungen) are also recognized. Unknown prefixes stay
   ordinary search text. These are reserved category words, not a new query language.
 - Typing into the picker retains the resolved category. Back clears it.
   Existing keyboard selection, composition guards and dismissal remain.
 - Keep the raw mention text/range separate from the parsed search scope:
-  replacing a selection removes the whole `@category:query`, not only the query.
+  replacing a selection removes the whole `@category query` or `@category:query`, not only the query.
+
+Picker rows use native note/automation glyphs and colors. Project context carries
+only its authorized id/name/icon/color/logo revision and renders the shared
+NotebookProjectIcon, including uploaded logos. Chat, workspace and issue rows
+inherit accessible project context; notes use their own project. Calendar
+events show their calendar's name and color, not just a generic event icon.
+Missing custom icons keep the existing type fallback. Recheck project access
+before returning results, and never expose project instructions/memberships.
+
+Automations are a first-class reference category, with the existing
+`automation://ID` link, account-checked preview and normal destination handler.
+The editor shares the native page icon picker for glyphs, colors and Unicode
+icons. Icons persist as nullable automation metadata; omitted fields preserve
+the old choice and null removes it. An icon-only update cannot resume a task,
+change a schedule or clear a run claim/error. Legacy rows and old workers
+remain compatible with the additive nullable column. See
+`tests/reference-appearance.test.ts` for ownership, persistence and upgrade checks.
+
+Long model/account names in composer controls shrink and truncate before
+Context/Usage controls. Full identities remain in accessible text and the
+operable selection menu; the stored model ID and parameters are unchanged.
+The shared ModelPicker also bounds its label and preserves the chevron/pin.
 
 Saved user references render through `ReferenceLink` in both the message text
 and its reference chips. They are real anchors with a kind icon, dotted

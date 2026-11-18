@@ -1,3 +1,4 @@
+import {normalizeAutomationIcon} from "@/lib/automation-icon";
 import { randomUUID } from "node:crypto";
 import { getDatabase, transaction } from "@/lib/sqlite";
 import { appendMessage, createChat, deleteChat, getChat, getGlobalModelSettings, saveChat } from "@/lib/db-store";
@@ -41,6 +42,7 @@ export type AutomationGraph = {
 
 export type Automation = {
   id: string;
+  icon?: string | null;
   ownerId: string;
   /** Context/source chat. Ordinary runs are isolated; project agents run in their durable chat. */
   chatId: string;
@@ -84,6 +86,7 @@ export type AutomationRun = {
 
 type AutomationRow = {
   id: string;
+  icon?: string | null;
   owner_id: string;
   chat_id: string;
   chat_title?: string;
@@ -270,6 +273,7 @@ function rowToAutomation(row: AutomationRow): Automation {
   try { parsedGraph = row.graph_json ? JSON.parse(row.graph_json) : undefined; } catch { parsedGraph = undefined; }
   return {
     id: row.id,
+    icon: row.icon ?? null,
     ownerId: row.owner_id,
     chatId: row.chat_id,
     ...(row.chat_title ? { chatTitle: row.chat_title } : {}),
@@ -396,6 +400,7 @@ export function createAutomation(input: {
   ownerId: string;
   chatId?: string;
   name: string;
+  icon?: string | null;
   prompt: string;
   creator?: AutomationCreator;
   modeId?: string;
@@ -409,6 +414,7 @@ export function createAutomation(input: {
   timezone?: string;
   projectId?: string | null;
 }) {
+  const icon=normalizeAutomationIcon(input.icon);
   const name = input.name.trim().slice(0, 200);
   const prompt = input.prompt.trim().slice(0, 100_000);
   if (!name || !prompt) throw new Error("Automation name and prompt are required.");
@@ -442,15 +448,16 @@ export function createAutomation(input: {
   const chat = target.chat || createChat(`Automation · ${name}`, undefined, input.ownerId, undefined, { projectId: target.projectId });
   getDatabase().prepare(
     `INSERT INTO automations
-      (id, owner_id, chat_id, project_id, name, prompt, creator, mode_id, model_id, extended_model_id,
+      (id, owner_id, chat_id, project_id, name, icon, prompt, creator, mode_id, model_id, extended_model_id,
        max_run_minutes, graph_json, model_params_json, extended_model_params_json, schedule_kind, schedule_value, timezone, status, next_run_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
   ).run(
     id,
     input.ownerId,
     chat.id,
     target.projectId || null,
     name,
+    icon,
     prompt,
     input.creator === "agent" ? "agent" : "user",
     modeId,
@@ -482,7 +489,7 @@ export function getAutomation(id: string, ownerId: string, includeRuns = true): 
   return includeRuns ? { ...automation, runs: listAutomationRuns(id, ownerId, 100) } : automation;
 }
 
-export function listAutomations(ownerId: string) {
+export function listAutomations(ownerId: string,includeRuns=true) {
   const rows = getDatabase().prepare(
     `SELECT a.*, c.data ->> '$.title' as chat_title
      FROM automations a
@@ -493,17 +500,22 @@ export function listAutomations(ownerId: string) {
   ).all(ownerId) as AutomationRow[];
   return rows.map((row) => {
     const automation = rowToAutomation(row);
-    return { ...automation, runs: listAutomationRuns(automation.id, ownerId, 6) };
+    return includeRuns ? { ...automation, runs: listAutomationRuns(automation.id, ownerId, 6) } : automation;
   });
 }
 
 export function updateAutomation(
   id: string,
   ownerId: string,
-  patch: Partial<Pick<Automation, "name" | "prompt" | "schedule" | "timezone" | "chatId" | "modeId" | "modelId" | "extendedModelId" | "modelParams" | "extendedModelParams" | "maxRunMinutes" | "graph" | "projectId">>,
+  patch: Partial<Pick<Automation, "name" | "icon" | "prompt" | "schedule" | "timezone" | "chatId" | "modeId" | "modelId" | "extendedModelId" | "modelParams" | "extendedModelParams" | "maxRunMinutes" | "graph" | "projectId">>,
 ) {
   const current = getAutomation(id, ownerId, false);
   if (!current) return null;
+  const icon=patch.icon!==undefined?normalizeAutomationIcon(patch.icon):current.icon??null;
+  if(Object.keys(patch).length===1&&Object.hasOwn(patch,"icon")){
+    getDatabase().prepare("UPDATE automations SET icon=?,updated_at=? WHERE id=? AND owner_id=?").run(icon,iso(),id,ownerId);
+    return getAutomation(id,ownerId);
+  }
   const schedule = patch.schedule ? validateSchedule(patch.schedule) : current.schedule;
   const target = resolveAutomationTarget(ownerId, patch.chatId !== undefined ? patch.chatId : current.chatId, patch.projectId !== undefined ? patch.projectId : current.projectId);
   const now = iso();
@@ -537,7 +549,7 @@ export function updateAutomation(
   const projectId = target.projectId || null;
   const chat = target.chat || createChat(`Automation · ${name}`, undefined, ownerId, undefined, { projectId: target.projectId });
   getDatabase().prepare(
-    `UPDATE automations SET chat_id = ?, project_id = ?, name = ?, prompt = ?, mode_id = ?, model_id = ?, extended_model_id = ?,
+    `UPDATE automations SET chat_id = ?, project_id = ?, name = ?, icon = ?, prompt = ?, mode_id = ?, model_id = ?, extended_model_id = ?,
        max_run_minutes = ?, graph_json = ?, model_params_json = ?, extended_model_params_json = ?, schedule_kind = ?, schedule_value = ?, timezone = ?, next_run_at = ?,
        status = CASE WHEN status IN ('completed', 'error') THEN 'active' ELSE status END,
        last_error = NULL, updated_at = ? WHERE id = ? AND owner_id = ?`,
@@ -545,6 +557,7 @@ export function updateAutomation(
     chat.id,
     projectId,
     name,
+    icon,
     prompt,
     modeId,
     modelId,

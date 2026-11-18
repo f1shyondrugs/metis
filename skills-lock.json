@@ -41,7 +41,7 @@
       "source": "custom",
       "sourceType": "local",
       "skillPath": "skills/manual/metis-development/SKILL.md",
-      "computedHash": "25f4c7c9c4d1941ea9df1dfeeceafe8e820fd9f762952671e2546767b56df11f"
+      "computedHash": "09c6c6e659f046842c15da16dfab5da975b559d13f4a3b81af65c0fd6f662537"
     },
     "pdf": {
       "source": "anthropics/skills",

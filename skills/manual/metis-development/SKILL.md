@@ -24,6 +24,12 @@ Keep browser helpers separate from server code, and preserve the ESM boundary fo
 
 Test the observable contract before and after the refactor: authentication and account scope, malformed payloads, text ordering, cleanup on unmount, persisted settings, and fresh-install defaults as relevant. Reuse existing test suites; add focused boundary tests for behavior that could drift. Source-string checks alone cannot establish correctness.
 
+## Settings navigation
+
+Settings categories are compact overviews, not mixed overviews and full forms. Give each independent feature a peer `SettingsTile` opening a `SettingsFeaturePane`; for example, Security → Passkeys and Security → Credential vault use the same detail-navigation pattern. Reuse the existing primitives instead of inventing another tab style. Keep built-in labels and accessibility text English.
+
+Update `lib/settings-navigation.ts` and the pane type, section-to-pane mapping, overview tile and detail branch in `components/settings-panel.tsx` together. Preserve search/deep-link destinations, mobile category → detail → back navigation, focus return to the originating tile, and role-based visibility. Mount data-loading managers only inside their detail pane, so overview visits do not fetch or expose their data. Cover overview composition, search and desktop/mobile navigation in the existing settings regression suites.
+
 ## Skills and settings
 
 `skills-lock.json` registers complete skill packages; keep scripts, references, and assets beside `SKILL.md`. Default activation is owned by `lib/skills.ts`. Both Cursor and alternative providers use `buildSkillContext` for per-turn skill injection. Explicit user disable and Always-on overrides must remain effective; do not rewrite users' saved preferences to apply a new default.
@@ -33,6 +39,10 @@ Register a new package with the bundled Skill Creator's `scripts/register_skill.
 ## Verify and ship within the requested scope
 
 Run focused tests while iterating, then the required type check and production build after changes settle. Use isolated data roots, ports, and named test services for runtime checks. Do not stop live Metis services or the remote client as test cleanup.
+
+On systemd Linux deployments, `lib/mcp-core/resource-scope.mjs` automatically puts shared-spawn tool commands in per-invocation bounded scopes, preserving UID/groups, sanitized environment, cwd, stdin and the existing mount namespace. Manager failure must not fall back to an unbounded command. Old gateway processes retain the pre-update behavior until drained: their children can share the gateway cgroup, where a compiler or FFmpeg OOM plus `OOMPolicy=stop` disconnects every session. A Node heap flag or detached shell does not isolate that workload. Confirm the actual process version and cgroup, not only source files.
+
+Run memory-heavy builds, type checks and media jobs in an authorized, separately bounded transient systemd unit, with explicit working directory, resource limits and isolated test data. Preserve the caller's permitted identity and environment boundaries; do not copy production/provider secrets into test units or weaken protections. Verify `/proc/self/cgroup` inside the job differs from the gateway and that gateway PID/restart count remain unchanged. Keep normal authenticated network operations in the approved tool environment. If separate execution is unavailable, report the limit rather than stress-testing the live gateway.
 
 For an authorized deployment, read `docs/DEPLOY.md` and the current deployment configuration. Build the inactive production slot with `scripts/build-production-slot.sh`; never overwrite the active slot. Switch only after the build succeeds. Restart only the service required by the approved deployment, preserving the worker/MCP runtime when instructed. Verify the artifact's BUILD_ID, active service, and actual HTTP response through `verify_work` before reporting deployment success.
 

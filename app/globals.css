@@ -219,6 +219,25 @@
   @apply text-sm leading-relaxed text-foreground;
 }
 
+/* Card chrome is UI, not document prose—even when embedded in chat Markdown.
+   Keep these resets confined to chrome; canvas/plan preview headings stay intact. */
+.chat-artifact-card [data-chat-card-title],
+.markdown-body .chat-artifact-card [data-chat-card-title] {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.375;
+}
+.chat-artifact-card [data-chat-card-description],
+.markdown-body .chat-artifact-card [data-chat-card-description] {
+  margin: 0;
+}
+.chat-artifact-card footer a[data-slot="button"],
+.markdown-body .chat-artifact-card footer a[data-slot="button"] {
+  color: inherit;
+  text-decoration: none;
+}
+
 [data-editor-control="mermaid"] .mermaid-diagram svg,
 [data-editor-control="mermaid"] svg {
   display: block;

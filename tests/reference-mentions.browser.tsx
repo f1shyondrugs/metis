@@ -20,7 +20,7 @@ function Fixture(){
  const refs=useReferenceSearch({enabled:Boolean(mention&&(kind||query)),kind,query});
  useEffect(()=>{const listener=(event:Event)=>eventLog.current.push((event as CustomEvent).detail);window.addEventListener("ai-chat:open-reference",listener);return()=>window.removeEventListener("ai-chat:open-reference",listener);},[]);
  const choose=(item:ReferenceResult)=>{if(!mention)return;const result=replaceComposerMention(text,mention,item.label);if(!result)return;draft.current=result.value;setText(result.value);setNonce(n=>n+1);setSelected(items=>[...items.filter(old=>old.id!==item.id),item]);setMention(null);requestAnimationFrame(()=>{input.current?.focus();input.current?.setSelectionRange(result.cursor,result.cursor);});};
- const key=(event:React.KeyboardEvent)=>{if(!mention)return;const categories=!kind&&!query;const action=composerReferenceKeyAction({key:event.key,count:categories?9:refs.results.length,index});if(!action)return;event.preventDefault();if(action.type==="move")setIndex(action.index);else if(action.type==="dismiss")setMention(null);else if(categories){setManual(REFERENCE_KINDS[action.index]);setSearch("");}else choose(refs.results[action.index]);};
+ const key=(event:React.KeyboardEvent)=>{if(!mention)return;const categories=!kind&&!query;const action=composerReferenceKeyAction({key:event.key,count:categories?REFERENCE_KINDS.length:refs.results.length,index});if(!action)return;event.preventDefault();if(action.type==="move")setIndex(action.index);else if(action.type==="dismiss")setMention(null);else if(categories){setManual(REFERENCE_KINDS[action.index]);setSearch("");}else choose(refs.results[action.index]);};
  const change=(value:string,cursor:number)=>{draft.current=value;setText(value);setMention(composerMentionQuery(value,cursor,cursor,selected.map(item=>item.label)));setSearch(undefined);setManual(null);setIndex(0);};
  async function run(){
  const results:string[]=[];const check=(label:string,ok:boolean)=>{if(!ok)throw Error(label);results.push("PASS "+label);setReport([...results]);};
@@ -34,8 +34,13 @@ function Fixture(){
  await wait(()=>document.querySelector("[data-picker]")?.getAttribute("data-kind")==="chat"&&document.querySelector("[data-picker]")?.getAttribute("data-query")==="Mathe","Scoped popup search");
  check("Typing into popup retains shortcut category",true);
  (document.querySelector("[data-picker] [aria-label='All categories']") as HTMLButtonElement).click();
- await wait(()=>document.querySelectorAll("[data-picker] [role=option]").length===9,"Back categories");
+ await wait(()=>document.querySelectorAll("[data-picker] [role=option]").length===REFERENCE_KINDS.length,"Back categories");
  check("Back clears shortcut scope",true);
+ type("@chats   Mathe course");await wait(()=>document.querySelector("[data-picker]")?.getAttribute("data-kind")==="chat"&&document.querySelector("[data-picker]")?.getAttribute("data-query")==="Mathe course"&&Boolean(document.querySelector("[data-picker] [role=option]")),"Space-filtered chat");
+ check("Space query reaches chat search without the category in its query",requests.current.some(req=>req.kind==="chat"&&req.q==="Mathe course"));
+ input.current!.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));
+ await wait(()=>input.current?.value==="@Mathe course "&&!document.querySelector("[data-picker]"),"Space selection replacement");
+ check("Space prefix is fully replaced once without leftovers",true);
  type("@chats:Mathe");await wait(()=>document.querySelector("[data-picker]")?.getAttribute("data-query")==="Mathe"&&Boolean(document.querySelector("[data-picker] [role=option]")),"Filtered chat");
  check("Colon query only reaches chat search",requests.current.some(req=>req.kind==="chat"&&req.q==="Mathe"));
  input.current!.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));
@@ -58,12 +63,12 @@ function Fixture(){
  noteLink.focus();await wait(()=>document.querySelector("[data-hover-preview]")?.textContent?.includes("Exam preparation content")===true,"Live document preview");
  check("Note tooltip loads authenticated document preview",true);noteLink.click();
  check("Note click routes selected identity",eventLog.current.at(-1)?.kind==="note");
- const editor=document.querySelector<HTMLElement>(".notes-prosemirror")!;editor.focus();document.execCommand("insertText",false,"@chats:Mathe");
+ const editor=document.querySelector<HTMLElement>(".notes-prosemirror")!;editor.focus();document.execCommand("insertText",false,"@chats Mathe");
  await wait(()=>Boolean(document.querySelector(".notes-reference-popover [aria-label='Search chats']"))&&Boolean(document.querySelector(".notes-reference-popover [role=option]")),"Notes category shortcut");
- check("Real Notes editor scopes @chats: query",true);
+ check("Real Notes editor scopes @chats space query",true);
  (document.querySelector(".notes-reference-popover [role=option]") as HTMLButtonElement).click();
  await wait(()=>Boolean(editor.querySelector("a[href^='metis://reference/chat/']")),"Notes link inserted");
- check("Notes replaces entire scoped mention with saved link",!editor.textContent?.includes("@chats:")&&editor.textContent?.includes("Mathe course")===true);
+ check("Notes replaces entire scoped mention with saved link",!editor.textContent?.includes("@chats")&&editor.textContent?.includes("Mathe course")===true);
  setReport([...results,"COMPLETE"]);await fetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,passed:true,results})});
  }catch(error){const failed=[...results,"FAIL "+String(error)];setReport(failed);await fetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,passed:false,results:failed})});}
  }

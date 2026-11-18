@@ -87,6 +87,34 @@ stopped as a side effect of a test or docs change. Restart only on explicit
 operator request. P1-5 cgroup limits are live since 11 Sep 2026 16:33 CEST:
 app 2G/512, worker 6G/1024, mcp 1G/256.
 
+## Local tool resource isolation
+
+On systemd Linux hosts the gateway launches local child commands in unique
+`metis-tool-<uuid>.scope` units. This includes `execute_command`, `verify_work`
+and helper processes using the shared spawn path. A child OOM therefore affects
+its invocation, not the gateway service and its other transports. Remote-device
+execution policy and non-systemd platforms retain their existing behavior.
+
+Scopes preserve the existing mount namespace, cwd, environment and stdio; they
+are not a replacement for account/OS sandboxing. Root gateways pass a mapped
+UID/GID to the trusted scope launcher, which drops supplementary groups before
+executing the command. Non-root gateways use their user manager and require a
+working user bus. Scope-manager failure is reported; no unbounded retry follows.
+
+Startup configuration: `METIS_TOOL_MEMORY_MAX_MB` (default one quarter of host
+RAM, bounded to 128–8192 MiB), `METIS_TOOL_CPU_QUOTA_PERCENT` (default 200),
+and `METIS_TOOL_TASKS_MAX` (default 512). Each scope is also bounded by the
+invocation timeout; timeout/completion cleanup targets only that invocation's
+unit and descendants. Set host-appropriate limits for concurrent work; these are
+per-invocation limits, not an aggregate host scheduler.
+
+Verify with `METIS_TEST_SYSTEMD_SCOPES=1 node --test tests/resource-scope*.test.mjs`
+in a separate bounded test unit. The opt-in real tests deliberately exhaust a
+96 MiB child scope and check that the gateway can handle its next command.
+Do not run an unbounded OOM test in the production gateway's cgroup.
+Deploy a new gateway for new sessions and retain existing gateways/transports
+until their running jobs finish; restarting an old gateway is not a safe rollout.
+
 ## Secure first-run and upgrades
 
 Read `CHAT_DATA_DIR/setup-token` locally for the first account. No token is

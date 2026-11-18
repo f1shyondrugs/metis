@@ -19,7 +19,7 @@ export function searchReferences(input:Input,signal?:AbortSignal):Promise<Refere
  getDatabase();
  if(pool.idle)clearTimeout(pool.idle);
  if(!pool.worker){
-  const worker=pool.worker=new Worker(path.join(process.env.AI_CHAT_INSTALL_DIR||process.cwd(),"lib/reference-search-worker.mjs"),{
+  const worker=pool.worker=new Worker(path.join(process.env.AI_CHAT_SERVER_SOURCE_DIR||process.env.AI_CHAT_INSTALL_DIR||process.cwd(),"lib/reference-search-worker.mjs"),{
    workerData:{databasePath,referencePayload:true},resourceLimits:{maxOldGenerationSizeMb:256,maxYoungGenerationSizeMb:16},
   });
   const failed=(error:Error)=>{

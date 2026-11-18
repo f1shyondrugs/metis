@@ -30,6 +30,11 @@ await build({stdin:{contents:workspaceHeadersSource()+'\nimport {runSingleTitleF
 const css=await postcss([tailwind()]).process(fs.readFileSync("app/globals.css","utf8"),{from:"app/globals.css"});fs.writeFileSync(output+"/theme.css",css.css);
 const server=http.createServer(async(req,res)=>{
  const url=new URL(req.url,"http://127.0.0.1:3282");
+ if(url.pathname==="/viewport"){
+  const width=Number(url.searchParams.get("width"));if(![390,768,1440].includes(width)){res.writeHead(400).end();return;}
+  const height=width===390?844:950;res.setHeader("Content-Type","text/html");
+  res.end('<html><style>body{margin:0;background:#111}iframe{display:block;margin:auto;border:0;width:'+width+'px;height:'+height+'px}</style><iframe src="/?wait"></iframe></html>');return;
+ }
  if(url.pathname==="/api/calendar"){
   const headers={"content-type":"application/json",origin:"http://127.0.0.1:3282",cookie:"ai_chat_auth="+token};let body="";for await(const part of req)body+=part;
   const request=new Request(url,{method:req.method,headers,...(req.method==="POST"?{body}:{})});

@@ -102,9 +102,20 @@ export const NotesTableOfContents = Node.create({
   parseHTML() { return [{ tag: "nav[data-notes-toc]" }]; },
   renderHTML() { return ["nav", { "data-notes-toc": "", class: "notes-table-of-contents" }, "Table of contents"]; },
 });
+// CommonMark permits emphasis, strike and links around inline code. Keep the
+// StarterKit code commands/input rules, but do not let its default excludes:"_"
+// invalidate those combinations when opening, editing or collaborating.
+const NotesStarterKit = StarterKit.extend({
+  addExtensions() {
+    return (this.parent?.() || []).map(extension =>
+      extension.name === "code" ? extension.extend({ excludes: "code" }) : extension,
+    );
+  },
+});
+
 export function notesEditorExtensions(collaborative = false) {
   return [
-    StarterKit.configure({ ...(collaborative ? {undoRedo:false as const} : {}), trailingNode: false, link: { openOnClick: false, autolink: true, protocols: ["metis", "note", "issue", "workspace"] }, heading: { levels: [1,2,3,4,5,6] } }),
+    NotesStarterKit.configure({ ...(collaborative ? {undoRedo:false as const} : {}), trailingNode: false, link: { openOnClick: false, autolink: true, protocols: ["metis", "note", "issue", "workspace", "calendar-event", "automation"] }, heading: { levels: [1,2,3,4,5,6] } }),
     TaskList, TaskItem.configure({ nested: true }), TableKit.configure({ table: { resizable: true } }),
     Image.configure({ inline: true, allowBase64: false }), TextStyle, Color, Highlight.configure({ multicolor: true }),
     Placeholder.configure({ placeholder: "Write something, or type / for blocks…", includeChildren: true }),

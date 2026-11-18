@@ -10,6 +10,9 @@ let PlanWorkspaceCard:typeof import("../components/plan-workspace-card").PlanWor
 before(async()=>{({CanvasWorkspaceCard}=await import("../components/canvas-workspace-card"));({PlanWorkspaceCard}=await import("../components/plan-workspace-card"));});
 import {OverlayCloseButton} from "../components/ui/overlay-close-button";
 import {LoadError} from "../components/load-error";
+import {AutomationCard} from "../components/automation-card";
+import {CalendarEventCard} from "../components/calendar/calendar-event-card";
+import {PublicMarkdownContext} from "../components/public-markdown-context";
 import {visibleSettingsTabs,settingsSearchEntries} from "../lib/settings-navigation";
 
 test("workspace cards keep complete titles, have one open action and do not expose technical links",()=>{
@@ -33,6 +36,24 @@ test("plan-specific progress, build and parallel actions survive consolidation",
   assert.ok(html.includes('aria-valuenow="33"'));assert.ok(html.includes("1/3 tasks"));
   assert.equal((html.match(/disabled=""/g)||[]).length,5); // Three read-only task boxes, two run actions.
   assert.equal((html.match(/Open plan/g)||[]).length,1);
+});
+test("automation cards keep content and custom icons with one permission-scoped footer action",()=>{
+  const props={actionLabel:"Paused",title:"A long automation title",icon:"lucide:rocket:#ef4444",prompt:"Original prompt",scheduleLabel:"Daily at 09:00",automationLink:"automation://private"};
+  const html=renderToStaticMarkup(<AutomationCard {...props} onOpen={()=>{}}/>);
+  for(const text of [props.title,props.prompt,props.scheduleLabel,"lucide-rocket","#ef4444"])assert.ok(html.includes(text));
+  assert.equal((html.match(/Open automation/g)||[]).length,1);
+  assert.ok(html.includes('data-variant="outline"'));
+  assert.ok(!html.includes("automation://"));
+  const readonly=renderToStaticMarkup(<AutomationCard {...props}/>);
+  assert.ok(!readonly.includes("<button")&&!readonly.includes("<a"));
+});
+test("calendar card loading and public-share states do not expose opening permissions",()=>{
+  const loading=renderToStaticMarkup(<CalendarEventCard id="private"/>);
+  assert.ok(loading.includes('role="status"')&&loading.includes("Loading calendar event"));
+  assert.ok(!loading.includes("<a")&&!loading.includes("Open event"));
+  const shared=renderToStaticMarkup(<PublicMarkdownContext.Provider value={{noteIds:[],assets:{}}}><CalendarEventCard id="private"/></PublicMarkdownContext.Provider>);
+  assert.ok(shared.includes("Calendar event (private)"));
+  assert.ok(!shared.includes("data-calendar-event-card")&&!shared.includes("<a"));
 });
 test("dismiss controls remain named, non-submitting and disableable; failed reads offer a named retry",()=>{
   const close=renderToStaticMarkup(<OverlayCloseButton aria-label="Close preview" disabled/>);

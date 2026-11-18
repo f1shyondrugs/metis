@@ -217,7 +217,7 @@ test("mobile navigation preserves root, category, detail and focus-return levels
 
 test("Security keeps the credential manager reachable from its overview and search", () => {
   const overview = tabElement("security");
-  assert.equal(elements(overview, "SettingsTile").length, 1);
+  assert.equal(elements(overview, "SettingsTile").length, 2);
   assert.equal(elements(paneNode("credential-vault"), "SavedWebsiteLogins").length, 1);
   for (const mobile of [true, false]) {
     const nav = navigationHarness(mobile);
@@ -232,6 +232,32 @@ test("Security keeps the credential manager reachable from its overview and sear
     assert.equal(nav.state.tab, "security");
     assert.equal(nav.state.pane, "credential-vault");
     assert.equal(nav.state.menu, false);
+  }
+});
+
+test("Passkeys use a peer Security detail with search and focus-return navigation", () => {
+  const overview = tabElement("security");
+  assert.equal(elements(overview, "PasskeySettings").length, 0, "manager does not mount in overview");
+  assert.equal(elements(overview, "SavedWebsiteLogins").length, 0);
+  assert.deepEqual(tabIds("security"), ["settings-passkeys", "settings-credential-vault"]);
+  assert.equal(elements(paneNode("passkeys"), "PasskeySettings").length, 1);
+  assert.equal(elements(source, "PasskeySettings").length, 1, "one manager instance");
+  const pane = elements(paneNode("passkeys"), "SettingsFeaturePane")[0];
+  assert.equal(literalAttribute(pane, "title"), "Passkeys");
+  assert.equal(literalAttribute(pane, "backLabel"), "Security");
+  for (const mobile of [true, false]) {
+    const nav = navigationHarness(mobile);
+    nav.openSettingsCategory("security");
+    nav.openSettingsPane("passkeys");
+    assert.deepEqual({tab: nav.state.tab, menu: nav.state.menu, pane: nav.state.pane, target: nav.state.target},
+      {tab: "security", menu: false, pane: "passkeys", target: "pane"});
+    nav.backToSettings("settings-passkeys");
+    assert.equal(nav.state.pane, "tab");
+    assert.equal(nav.state.target, "settings-passkeys");
+    nav.openSettingsCategory("general");
+    nav.openSettingsSearchResult({id: "settings-passkeys", sectionId: "settings-passkeys", tab: "security", label: "Passkeys", category: "Security"});
+    assert.deepEqual({tab: nav.state.tab, menu: nav.state.menu, pane: nav.state.pane, target: nav.state.target},
+      {tab: "security", menu: false, pane: "passkeys", target: "pane"});
   }
 });
 

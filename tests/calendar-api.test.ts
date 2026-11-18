@@ -51,8 +51,8 @@ test("native calendar agent tools enforce active leases, account binding and Inc
  const call=(name:string,args:Record<string,unknown>,override={})=>gateway.dispatchGatewayTool(name,args,{auditCall:false,context:{...context,...override}});
  const parse=(r:{isError?:boolean;content?:Array<{type:string;text?:string}>})=>{assert.equal(r.isError===true,false,JSON.stringify(r));return JSON.parse(r.content?.find(x=>x.type==="text")?.text||"{}");};
  for(const name of ["calendar_list_calendars","calendar_list_events","calendar_get_event","calendar_create_event","calendar_update_event","calendar_delete_event"])assert.ok(gateway.tools.some((t:{name:string})=>t.name===name));
- const payload={calendarId:group.id,title:"Agent event",start:"2026-11-13T14:00:00Z",end:"2026-11-13T15:00:00Z",idempotencyKey:"agent-event"};
- const e=parse(await call("calendar_create_event",payload)).event;assert.ok(!("ics" in e));
+ const payload={calendarId:group.id,title:"Agent event",start:"2026-11-13T14:00:00Z",end:"2026-11-13T15:00:00Z",idempotencyKey:"agent-event",timeZone:"Europe/Berlin",reminderMinutes:[0]};
+ const e=parse(await call("calendar_create_event",payload)).event;assert.ok(!("ics" in e));assert.deepEqual(e.reminderMinutes,[0]);
  assert.equal(parse(await call("calendar_create_event",payload)).event.id,e.id);
  assert.equal(parse(await call("calendar_get_event",{id:e.id})).event.title,"Agent event");
  assert.equal((await call("calendar_get_event",{id:e.id},{incognito:true})).isError,true);
