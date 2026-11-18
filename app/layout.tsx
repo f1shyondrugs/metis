@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { AppearanceProvider } from "@/components/appearance-provider";
+import { PublicBaseUrlProvider } from "@/components/public-base-url";
 import { createAppearanceBootstrapScript } from "@/lib/appearance-bootstrap";
 import { config } from "@/lib/config";
 import { getAuthenticatedUserId } from "@/lib/auth";
@@ -52,12 +53,14 @@ export default async function RootLayout({
     >
       <head><script dangerouslySetInnerHTML={{ __html: createAppearanceBootstrapScript({ state: appearance?.state ?? createDefaultAppearanceState(), allowLocalStorage: false }) }} /></head>
       <body className="min-h-dvh bg-background text-foreground">
+        <PublicBaseUrlProvider base={config.publicBaseUrl}>
         <AppearanceProvider mode="account" initialAccount={appearance}>
         <TooltipProvider delayDuration={200}>
           {children}
           <Toaster richColors />
         </TooltipProvider>
         </AppearanceProvider>
+        </PublicBaseUrlProvider>
       </body>
     </html>
   );

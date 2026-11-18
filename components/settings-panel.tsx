@@ -1,5 +1,7 @@
 "use client";
 import { LoadError } from "@/components/load-error";
+import { PublicShareUrlHint, usePublicBaseUrl } from "@/components/public-base-url";
+import { chatShareUrl } from "@/lib/public-base-url";
 import { DesktopDeviceSettings, RemoteClientInstallActions } from "@/components/desktop-device-settings";
 import { RecentlyDeletedChats } from "@/components/recently-deleted-chats";
 import { SavedWebsiteLogins } from "@/components/saved-website-logins";
@@ -770,6 +772,7 @@ export function SettingsPanel({
   isHostAdmin = false,
 }: Props) {
   const appearance = useAppearance();
+  const publicBaseUrl = usePublicBaseUrl();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [deletingMemoryIds, setDeletingMemoryIds] = useState<Set<string>>(
@@ -2681,6 +2684,7 @@ export function SettingsPanel({
                     <p className="mt-1 text-xs text-muted-foreground">
                       Manage active read-only links for your chats.
                     </p>
+                    {publicBaseUrl.state !== "configured" ? <div className="mt-2"><PublicShareUrlHint /></div> : null}
                   </div>
                   {!archivedChatsLoaded ? <p role="status" className="py-6 text-sm text-muted-foreground">Loading shared chats…</p> : archivedChatsError ? (
                     <LoadError message={archivedChatsError} onRetry={() => void loadArchivedChats()} />
@@ -2698,9 +2702,9 @@ export function SettingsPanel({
                               {chat.share?.passwordProtected ? "Password protected" : "Public link"}
                             </p>
                           </div>
-                          {chat.share ? (
+                          {chat.share && publicBaseUrl.state === "configured" ? (
                             <a
-                              href={`/share?id=${encodeURIComponent(chat.share.id)}`}
+                              href={chatShareUrl(publicBaseUrl, chat.share.id) ?? undefined}
                               target="_blank"
                               rel="noreferrer"
                               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input px-2.5 text-xs font-medium hover:bg-accent"

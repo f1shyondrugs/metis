@@ -14,6 +14,12 @@ Only one admin is created during setup. More users, provider connections and OS 
 
 Safe inferred OS mappings remain as before. If the inferred identity is root and root execution is explicitly disabled, account setup may finish with no execution mapping; agent execution remains blocked until explicitly configured. An explicit disallowed root mapping still fails. Authorized root defaults are preserved, and the root policy is never toggled.
 
+## Public app URL
+
+Set the deployment's canonical app address with the installer’s `--public-url` option or `AI_CHAT_PUBLIC_URL` in the server environment. **Public app URL → Check URL** in first-run setup checks the configured address without creating an account. The server makes a short request without credentials or redirects and validates a fresh, installation-specific proof. A matching proof verifies that the address returns to the same Metis database, not merely that a Metis page responds. The result describes reachability **from the Metis server**; public DNS, TLS and access from a recipient's network still depend on the deployment. The check is optional so local-only installs and incomplete proxy setups can still create an admin.
+
+Newly displayed public chat, note, profile and skill links use this one address. If it is missing, invalid or loopback-only, the sharing UI explains the configuration instead of copying a local link. Existing paths, share IDs and access rules do not change. Keep the old hostname routed if you need previously copied links to work after a domain change.
+
 ## Web and desktop paths
 
 Web: welcome and optional app install offer, then directly into the existing workspace. Navigation is linear: Continue and Back, with Finish on the app/device page; Escape pauses without losing progress. The offer suggests the detected OS without guessing CPU architecture; Windows, macOS and Linux remain selectable in one compact platform dropdown rather than a row of action buttons. iPad desktop-mode is recognised as iOS. iOS and Android are explicitly **In development**, with no download or store link. The authenticated downloads endpoint reuses the existing official Metis-Apps release resolver and only lists its available architectures. Failed lookups show retry or an unconfirmed-availability state, never a fabricated release.

@@ -6,6 +6,8 @@ import {AppearanceProvider} from "../components/appearance-provider";
 import {applyAppearanceTheme,getSelectedTheme,createDefaultAppearanceState,APPEARANCE_STORAGE_KEY} from "../lib/appearance-storage";
 import {ClientOnboarding} from "../components/client-onboarding";
 import {SetupWizard} from "../components/setup-wizard";
+import {PublicBaseUrlProvider} from "../components/public-base-url";
+import {resolvePublicBaseUrl, type PublicBaseCheck} from "../lib/public-base-url";
 import {ProviderSetupDialog} from "../components/provider-setup-dialog";
 import {ProviderSetupPrompt} from "../components/provider-setup-prompt";
 import {getThemePreset} from "../lib/appearance-theme";
@@ -18,6 +20,8 @@ window.matchMedia=query=>query==="(prefers-reduced-motion: reduce)"?motionMedia 
 async function reduceMotion(value:boolean){reducedMotion=value;motionMedia.dispatchEvent(new Event("change"));await pause(40);}
 let failures=0,permissionCalls=0,deviceCalls=0,serverCalls=0,providerCalls=0,pairingNavigationCalls=0,setupFinished=0,setupCompleteRequests=0;
 let nativeId="",downloadFail=false,bootstrapCalls=0,providerRequests=0,adminRequests=0,osRequests=0,bootstrapFailureStatus=0,setupCompleteFailures=0;
+let urlCheck: PublicBaseCheck = { state: "other_instance" };
+let urlCheckRequests = 0;
 const nav:TourTarget[]=[]; // No navigation callback is passed by onboarding.
 const pause=(ms=80)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(test:()=>boolean,label:string){for(let i=0;i<150;i++){if(test())return;await pause(20);}throw Error("Timed out: "+label);}
@@ -36,7 +40,10 @@ window.fetch=async(input,init)=>{
   if(downloadFail){downloadFail=false;return Response.json({error:"Synthetic download error"},{status:503});}
   return Response.json({downloads:[{label:platform==="macos"?"macOS · Apple Silicon":platform==="linux"?"Linux · Intel / AMD":"Windows installer",url:"https://github.com/f1shyondrugs/Metis-Apps/releases/download/v-fixture/"+platform+".bin"}]});
  }
- if(url==="/api/setup"){const body=init?.body?JSON.parse(String(init.body)):{};if(body.action==="bootstrap"){bootstrapCalls++;await pause(60);if(bootstrapFailureStatus){const status=bootstrapFailureStatus;bootstrapFailureStatus=0;return Response.json({error:"Synthetic bootstrap error"},{status});}return Response.json({user:{id:"fixture-admin",username:"Demo",isAdmin:true}});}if(body.action==="complete"){setupCompleteRequests++;if(setupCompleteFailures>0){setupCompleteFailures--;return Response.json({error:"Synthetic completion error"},{status:503});}return Response.json({ok:true});}if(body.action==="os-users")osRequests++;return Response.json({platform:"linux",osUsers:[],osUsersAvailable:false});}
+ if(url==="/api/setup"){const body=init?.body?JSON.parse(String(init.body)):{};if(body.action==="check-public-url"){
+   if (body.setupToken !== "fixture-only-token" || "url" in body) return Response.json({error:"Invalid fixture request"},{status:403});
+   urlCheckRequests++;await pause(300);return Response.json({check:urlCheck});
+  }if(body.action==="bootstrap"){bootstrapCalls++;await pause(60);if(bootstrapFailureStatus){const status=bootstrapFailureStatus;bootstrapFailureStatus=0;return Response.json({error:"Synthetic bootstrap error"},{status});}return Response.json({user:{id:"fixture-admin",username:"Demo",isAdmin:true}});}if(body.action==="complete"){setupCompleteRequests++;if(setupCompleteFailures>0){setupCompleteFailures--;return Response.json({error:"Synthetic completion error"},{status:503});}return Response.json({ok:true});}if(body.action==="os-users")osRequests++;return Response.json({platform:"linux",osUsers:[],osUsersAvailable:false});}
  if(url==="/api/providers"){providerRequests++;return Response.json({providers:[{key:"synthetic-provider",name:"Fixture provider",description:"Isolated UI test only",authTypes:["api_key"],capabilities:[]}]});}
  if(url==="/api/admin/users"){adminRequests++;return Response.json({users:[{id:"fixture-admin",username:"Demo",isAdmin:true}]});}
  return originalFetch(input,init);
@@ -66,7 +73,32 @@ async function fill(label:string,value:string){
  if(!el)throw Error("Missing input "+label);
  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(el,value);el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));await pause(30);
 }
+async function reportResults() {
+ document.body.dataset.complete="true";report.textContent=failures?results.filter(x=>x.startsWith("FAIL")).join("\n"):"PASS "+results.length+" onboarding assertions · "+innerWidth+"px";
+ await originalFetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,height:innerHeight,view,results,nativeId,permissionCalls,deviceCalls,serverCalls})});
+}
+async function runPublicUrlCheck() {
+ await reduceMotion(true);
+ const mountUrl = (value: string | undefined) => root.render(<AppearanceProvider><PublicBaseUrlProvider base={resolvePublicBaseUrl(value)}><SetupWizard key={value || "unset"} open hasUsers={false} onFinished={()=>{setupFinished++;}}/></PublicBaseUrlProvider></AppearanceProvider>);
+ const openDetails = () => Array.from(document.querySelectorAll("summary")).find(item=>item.textContent==="Public app URL")!.click();
+ const detailsText = () => Array.from(document.querySelectorAll("details")).find(item=>item.open)?.textContent;
+ mountUrl(undefined);await until(()=>!!document.querySelector("summary"),"unconfigured setup");
+ openDetails();check(detailsText()?.includes("No public address is configured") && !button("Check URL"),"unset URL shows configuration instructions instead of a probe");
+ mountUrl("https://metis.example/");await until(()=>!!document.querySelector("summary")&&!document.querySelector("details[open]"),"configured setup");
+ openDetails();check(button("Check URL")?.disabled&&detailsText()?.includes("https://metis.example"),"canonical URL displayed and probe requires token");
+ await fill("Operator setup token","fixture-only-token");
+ button("Check URL")!.click();await until(()=>detailsText()?.includes("Checking from the Metis server")===true,"loading state");
+ check(button("Checking…")?.disabled,"loading prevents a duplicate probe");
+ await until(()=>detailsText()?.includes("A different Metis instance answered")===true,"mismatch message");
+ check(bootstrapCalls===0&&setupCompleteRequests===0&&urlCheckRequests===1,"mismatch shown without attempting account setup");
+ urlCheck={state:"verified"};
+ await click("Check URL");await until(()=>detailsText()?.includes("Verified: this URL reaches this Metis instance")===true,"verified message");
+ check(urlCheckRequests===2&&!button("Continue")?.disabled,"retry verifies the instance without blocking the admin form");
+ check(document.documentElement.scrollWidth<=innerWidth+1,"expanded URL check fits viewport");
+ await reportResults();
+}
 async function run(){
+ if (view === "url-check") return runPublicUrlCheck();
  for(const key of Object.keys(localStorage))if(key.startsWith("metis:onboarding:"))localStorage.removeItem(key);
  localStorage.removeItem(APPEARANCE_STORAGE_KEY);browser();await mount();
  check(document.documentElement.dataset.surface==="midnight"&&getComputedStyle(document.documentElement).getPropertyValue("--background").trim()===getThemePreset("midnight")!.variables["--background"],"fresh theme is Midnight");
@@ -224,7 +256,6 @@ async function run(){
  else if(view==="native"){native("visual");await mount("Demo");await click("Continue");}
  else if(view==="tour"||view==="finish"||view==="tour-empty"){if(view==="tour-empty")await mount("Demo-empty",false);await click("Continue");await click("Finish");}
  check(noOverflow(),"layout has no horizontal page overflow at "+innerWidth);
- document.body.dataset.complete="true";report.textContent=failures?results.filter(x=>x.startsWith("FAIL")).join("\n"):"PASS "+results.length+" onboarding assertions · "+innerWidth+"px";
- await originalFetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,height:innerHeight,view,results,nativeId,permissionCalls,deviceCalls,serverCalls})});
+ await reportResults();
 }
 void run().catch(error=>{check(false,String(error));document.body.dataset.complete="error";void originalFetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,height:innerHeight,view,results,error:String(error)})});});

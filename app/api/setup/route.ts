@@ -5,6 +5,7 @@ import { bootstrapSetupAccount, SetupBootstrapError, getSetupStatus, markSetupCo
 import { isHostAdmin, inferOsUsernameForWorkspace, listHostOsUsers } from "@/lib/user-access";
 import { hostPlatform } from "@/lib/user-isolation";
 import { config } from "@/lib/config";
+import { checkPublicBaseUrl } from "@/lib/public-base-check";
 import { requestIsSecure } from "@/lib/request-network";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { setupTokenConsumed, validSetupToken } from "@/lib/setup-token";
@@ -60,6 +61,19 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid setup request" }, { status: 400 });
   }
   const action = body.action || "";
+
+  if (action === "check-public-url") {
+    const userId = await getAuthenticatedUserId(req);
+    const allowed = userId
+      ? isHostAdmin(userId)
+      : !getSetupStatus().hasUsers && validSetupToken(body.setupToken);
+    if (!allowed) return Response.json({ error: "A valid operator setup token or host admin session is required." }, { status: 403 });
+    const limit = consumeRateLimit("setup:check-public-url", 10, 60_000);
+    if (!limit.allowed) return Response.json({ error: "Too many URL checks. Wait a minute and try again." }, {
+      status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) },
+    });
+    return Response.json({ check: await checkPublicBaseUrl(config.publicBaseUrl) }, { headers: { "Cache-Control": "no-store" } });
+  }
 
   if (action === "os-users") {
     const limit = consumeRateLimit("setup:os-users", 20, 60_000);

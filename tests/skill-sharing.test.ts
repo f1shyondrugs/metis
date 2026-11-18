@@ -46,6 +46,8 @@ await t.test("sharing snapshots a whole package without exposing owner ids or lo
   token=createSkillShare("alice","my-checklist");
   assert.match(token,/^[a-f0-9]{48}$/);
   assert.equal(createSkillShare("alice","my-checklist"),token);
+  const alias = await shareRoute.GET(new Request("http://lan-metis:3100/", {headers:{cookie:"ai_chat_auth=alice-session"}}), {params:Promise.resolve({id:"my-checklist"})});
+  assert.deepEqual(await alias.json(), {token, url:"https://metis.example/skills/share/"+token});
   assert.throws(()=>createSkillShare("bob","my-checklist"),/own manual/);
   assert.throws(()=>createSkillShare("alice","builtin"),/own manual/);
   const response=await publicRoute.GET(request("/"),{params:Promise.resolve({token})});

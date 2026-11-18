@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import { Loader2, Share2 } from "lucide-react";
 import { LoadError } from "@/components/load-error";
 import { ShareLinkControls } from "@/components/share-link-controls";
+import { PublicShareUrlHint, usePublicBaseUrl } from "@/components/public-base-url";
+import { publicShareUrl } from "@/lib/public-base-url";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { noteDisplayTitle } from "@/lib/notes-tree";
@@ -12,6 +14,7 @@ import type { NoteShareLink } from "@/lib/note-share-types";
 type SharePatch = { active?: boolean; password?: string | null };
 
 export function NoteShareDialog({ note, onClose }: { note: { id: string; title: string; projectId?: string }; onClose: () => void }) {
+  const publicBaseUrl = usePublicBaseUrl();
   const [share, setShare] = useState<NoteShareLink | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -47,7 +50,7 @@ export function NoteShareDialog({ note, onClose }: { note: { id: string; title: 
       return false;
     } finally { setWorking(false); }
   }
-  const url = share ? new URL(share.url, typeof window !== "undefined" ? window.location.origin : "http://localhost").href : "";
+  const url = share ? publicShareUrl(publicBaseUrl, share.url) : null;
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="sm:max-w-lg">
       <DialogHeader>
@@ -56,7 +59,10 @@ export function NoteShareDialog({ note, onClose }: { note: { id: string; title: 
       </DialogHeader>
       {loading ? <div role="status" className="flex items-center gap-2 py-5 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading sharing settings…</div> : share ?
         <ShareLinkControls url={url} active={share.active} passwordProtected={share.passwordProtected} busy={working} onUpdate={patch => change("PATCH", patch)} /> :
-        <Button disabled={working || Boolean(error)} onClick={() => void change("POST")}>{working ? <Loader2 className="size-4 animate-spin" /> : <Share2 className="size-4" />}Create share link</Button>}
+        <div className="space-y-3">
+          {publicBaseUrl.state !== "configured" ? <PublicShareUrlHint /> : null}
+          <Button disabled={working || Boolean(error)} onClick={() => void change("POST")}>{working ? <Loader2 className="size-4 animate-spin" /> : <Share2 className="size-4" />}Create share link</Button>
+        </div>}
       {error ? <LoadError message={error} busy={working} onRetry={() => setRetry(value => value + 1)} /> : null}
     </DialogContent>
   </Dialog>;

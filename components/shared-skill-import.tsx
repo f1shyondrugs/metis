@@ -7,7 +7,10 @@ import { FileText, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SharedSkill } from "@/lib/skill-sharing";
+import { usePublicBaseUrl } from "@/components/public-base-url";
+import { skillShareToken } from "@/lib/public-base-url";
 export function SharedSkillImport({ initialToken, onImported }: { initialToken?: string; onImported?: (id: string)=>void }) {
+  const base = usePublicBaseUrl();
   const [link,setLink] = useState(""); const [token,setToken] = useState("");
   const [skill,setSkill] = useState<SharedSkill|null>(null); const [signedIn,setSignedIn] = useState(false);
   const [id,setId] = useState(""); const [selected,setSelected] = useState("SKILL.md");
@@ -15,19 +18,14 @@ export function SharedSkillImport({ initialToken, onImported }: { initialToken?:
   const preview = useCallback(async (value:string) => {
     setBusy(true); setError("");setSkill(null);setImported(false);
     try {
-      let shareToken = value;
-      if (!/^[a-f0-9]{48}$/.test(value)) {
-        const url = new URL(value,window.location.origin);
-        if (url.origin !== window.location.origin) throw new Error("Use a skill share link from this Metis workspace.");
-        shareToken = url.pathname.match(/^\/skills\/share\/([a-f0-9]{48})\/?$/)?.[1] || "";
-      }
+      const shareToken = skillShareToken(value, window.location.origin, base);
       if (!shareToken) throw new Error("Enter a valid Metis skill share link.");
       const response = await fetch("/api/skills/shares/"+shareToken,{cache:"no-store"});
       const body = await response.json();if (!response.ok) throw new Error(body.error);
       setToken(shareToken);setSkill(body.skill);setSignedIn(body.signedIn);setId(body.skill.id);setSelected("SKILL.md");
     } catch(e) {setError(e instanceof Error ? e.message : "Could not open share link.");}
     finally {setBusy(false);}
-  },[]);
+  },[base]);
   useEffect(()=>{if(initialToken)void preview(initialToken);},[initialToken,preview]);
   async function importSkill() {
     setBusy(true);setError("");

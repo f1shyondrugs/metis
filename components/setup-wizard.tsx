@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OnboardingStage, OnboardingProgress } from "@/components/onboarding-stage";
 import { resolveSetupStep } from "@/lib/setup-step";
+import { SetupPublicUrlCheck } from "@/components/setup-public-url-check";
 
 export function SetupWizard({ open, hasUsers, onFinished }: {
   open: boolean; hasUsers: boolean; onFinished: () => void;
@@ -91,6 +92,7 @@ export function SetupWizard({ open, hasUsers, onFinished }: {
         <summary className="cursor-pointer">Where to find the setup token</summary>
         <p className="mt-2">Ask your server operator for the one-time token from data/setup-token (or setup-token in CHAT_DATA_DIR), or AI_CHAT_SETUP_TOKEN.</p>
       </details>
+      <SetupPublicUrlCheck setupToken={setupToken} disabled={busy} />
     </form> : null}
   </OnboardingStage>;
 }
