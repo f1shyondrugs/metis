@@ -10002,7 +10002,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                     {c.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
                     {c.pinned ? "Unpin" : "Pin"}
                   </DropdownMenuItem>
-                  {c.incognito ? null : (
+                  {c.id === activeChatId && activeChatIncognito ? null : (
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
                         <FolderInput className="size-3.5" />
