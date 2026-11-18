@@ -13,6 +13,7 @@ export const SETTINGS_SECTIONS: Record<string, SettingsSection[]> = {
     { id: "settings-browser", label: "Browser", keywords: "realtime preview stream fps viewport width height echtzeit breite hohe höhe" },
     { id: "settings-browser-storage", label: "Browser storage", parentSectionId: "settings-browser", keywords: "cookies persistent website sessions localstorage sessionstorage speicher sitzungen" },
     { id: "settings-links", label: "Website & GitHub", keywords: "links website github source code webseite quellcode" },
+    { id: "settings-replay-onboarding", label: "Replay onboarding", keywords: "welcome introduction tutorial wiederholen einführung" },
   ],
   models: [
     { id: "settings-usage", label: "Usage", keywords: "quota cost limits tokens plan verbrauch kosten kontingent" },

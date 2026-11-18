@@ -5,6 +5,7 @@ import {AppearanceSettings} from "../components/appearance-settings";
 import {AppearanceProvider} from "../components/appearance-provider";
 import {applyAppearanceTheme,getSelectedTheme,createDefaultAppearanceState,APPEARANCE_STORAGE_KEY} from "../lib/appearance-storage";
 import {ClientOnboarding} from "../components/client-onboarding";
+import {DesktopAppSettingsDialog} from "../components/desktop-app-settings-dialog";
 import {SetupWizard} from "../components/setup-wizard";
 import {ProviderSetupDialog} from "../components/provider-setup-dialog";
 import {ProviderSetupPrompt} from "../components/provider-setup-prompt";
@@ -47,9 +48,13 @@ document.documentElement.classList.add("dark");
 const results:string[]=[];const check=(ok:unknown,label:string)=>{results.push((ok?"PASS ":"FAIL ")+label);if(!ok)failures++;report.textContent=results.join("\n");};
 function Harness({owner,hasProvider=true}:{owner:string;hasProvider?:boolean}){
  const [providerOpen,setProviderOpen]=useState(false);
+ const [replay,setReplay]=useState(false);
+ const [appSettingsOpen,setAppSettingsOpen]=useState(false);
  return <AppearanceProvider><main style={{padding:30}}><h1>Synthetic Metis workspace</h1><div style={{position:"fixed",bottom:24,left:30,width:Math.min(600,innerWidth-60)}}>{hasProvider?<input data-onboarding-target="chat" aria-label="Existing draft" defaultValue="Keep this draft" style={{width:"100%",height:44}}/>:<ProviderSetupPrompt onClick={()=>{providerCalls++;setProviderOpen(true);}}/>}</div>
+ {nativeId?<button onClick={()=>setAppSettingsOpen(true)}>App settings</button>:<button onClick={()=>setReplay(true)}>Replay onboarding</button>}
  {PRODUCT_TOUR.map(item=><button key={item.id} data-onboarding-target={item.id==="chat"?undefined:item.id} style={{margin:8,padding:16}}>{item.action}</button>)}
- </main><ClientOnboarding userId={owner} username={owner} hasProvider={hasProvider} onPairDevice={()=>{pairingNavigationCalls++;}}/>
+ </main>{nativeId?<DesktopAppSettingsDialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen} onReplayOnboarding={()=>setReplay(true)}/>:null}
+ <ClientOnboarding userId={owner} username={owner} hasProvider={hasProvider} onPairDevice={()=>{pairingNavigationCalls++;}} replay={replay} onReplayClose={()=>setReplay(false)}/>
  <ProviderSetupDialog open={providerOpen} onOpenChange={setProviderOpen} onConnected={()=>setProviderOpen(false)} onSkip={()=>setProviderOpen(false)}/></AppearanceProvider>;
 }
 let nonce=0;
@@ -124,6 +129,18 @@ async function run(){
  check(!document.querySelector(".onboarding-tour,.onboarding-tour-highlight")&&read("alice")?.phase==="done","Finish enters workspace directly without cards or target rings");
  check(nav.length===0,"completion never navigates away from the current workspace");
  await mount();check(!document.querySelector(".onboarding-stage"),"completed introduction stays closed after remount");
+ const savedWeb=localStorage.getItem(onboardingStorageKey("alice"));
+ const savedAppearance=localStorage.getItem(APPEARANCE_STORAGE_KEY);
+ await fill("Existing draft","Unsent draft from before replay");
+ await click("Replay onboarding");check(!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Welcome, alice"),"Replay onboarding opens at Welcome despite completed progress");
+ await click("Continue");
+ check(!!document.querySelector('[aria-label="Get the Metis app"]')&&localStorage.getItem(onboardingStorageKey("alice"))===savedWeb,"Replay can show the app step without writing progress");
+ await click("Close");check(!document.querySelector(".onboarding-stage"),"the Close button dismisses replay without finishing");
+ await click("Replay onboarding");check(!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Welcome, alice"),"replay starts fresh after dismissal");
+ await click("Continue");await click("Back");
+ check(!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Welcome, alice"),"Back works within the replay");
+ await click("Continue");await click("Finish");
+ check(!document.querySelector(".onboarding-stage")&&localStorage.getItem(onboardingStorageKey("alice"))===savedWeb&&localStorage.getItem(APPEARANCE_STORAGE_KEY)===savedAppearance&&document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')?.value==="Unsent draft from before replay","finishing replay preserves completion, appearance and the existing draft");
  await mount("bob");check(document.body.textContent?.includes("Welcome, bob"),"another account on same browser receives its own onboarding");
  await click("Continue");await click("Finish");
  check(read("bob")?.phase==="done"&&document.querySelector<HTMLInputElement>('[aria-label="Existing draft"]')?.value==="Keep this draft","completion preserves the existing workspace draft");
@@ -143,6 +160,15 @@ async function run(){
  document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();await pause();await click("Finish");check(pairingNavigationCalls===1&&!document.querySelector(".onboarding-stage")&&read("alice","desktop:one")?.phase==="device","opt-in Continue opens real pairing settings without completing or losing the device step");dispatchEvent(new Event("metis:onboarding-open"));await pause();
  await click("Finish");check(!document.querySelector(".onboarding-stage,.onboarding-tour,.onboarding-tour-highlight"),"desktop webview finishes directly without tour cards");check(read("alice","desktop:one")?.phase==="done","native completion is stored for this user/installation");
  check(permissionCalls===0&&deviceCalls===0&&serverCalls===0,"Continue never prompts or changes system access");
+ const savedDesktop=localStorage.getItem(onboardingStorageKey("alice","desktop:one"));
+ await click("App settings");
+ check(document.querySelector('[role="dialog"]')?.textContent?.includes("App settings")&&!!button("Replay onboarding"),"desktop App settings exposes the replay action");
+ await click("Replay onboarding");
+ check(document.querySelectorAll('[role="dialog"]').length===1&&!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Welcome, alice"),"App settings closes before the replay opens at Welcome");
+ await click("Continue");
+ check(!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Set up this desktop")&&!document.querySelector('.onboarding-stage input[type="checkbox"]'),"desktop webview replay explains device setup without offering a pairing action");
+ await click("Finish");
+ check(!document.querySelector(".onboarding-stage")&&localStorage.getItem(onboardingStorageKey("alice","desktop:one"))===savedDesktop&&pairingNavigationCalls===1&&permissionCalls===0&&deviceCalls===0&&serverCalls===0,"desktop webview replay leaves install progress, pairing and permissions unchanged");
  native("two");await mount("alice");check(!!document.querySelector(".onboarding-stage"),"another desktop gets an independent guide");
  await mount("bob");check(document.body.textContent?.includes("Welcome, bob"),"another user on this desktop gets their own guide");
  native("late",300);root.render(<Harness key={++nonce} owner="late-owner"/>);await pause(20);browser();await mount("other-owner");await pause(400);
@@ -219,6 +245,8 @@ async function run(){
  const noOverflow=()=>document.documentElement.scrollWidth<=innerWidth+1;
  browser();await mount("Demo");
  if(view==="appearance"){root.render(<AppearanceProvider><AppearanceSettings/></AppearanceProvider>);await pause(200);}
+ else if(view==="app-settings"){native("visual");localStorage.setItem(onboardingStorageKey("Demo","desktop:visual"),JSON.stringify({version:1,phase:"done",tourIndex:0}));await mount("Demo");await click("App settings");}
+ else if(view==="replay"){localStorage.setItem(onboardingStorageKey("Demo"),JSON.stringify({version:1,phase:"done",tourIndex:0}));await mount("Demo");await click("Replay onboarding");}
  else if(view==="install")await click("Continue");
  else if(view==="server"){sessionStorage.removeItem("metis-setup-step");root.render(<SetupWizard open hasUsers={false} onFinished={()=>{}}/>);await pause(200);}
  else if(view==="native"){native("visual");await mount("Demo");await click("Continue");}

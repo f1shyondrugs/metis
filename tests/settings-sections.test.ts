@@ -45,12 +45,12 @@ function settingsLinksGroup() {
 }
 function tabIds(tab: string) {
   const overview = tabElement(tab);
-  const ids = nodes(overview, (node): node is Element =>
+  return nodes(overview, (node): node is Element =>
     ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node))
-    .map(item => literalAttribute(item, "id"))
+    .map(item => opening(item).tagName.getText(source) === "SettingsExternalLinks"
+      ? literalAttribute(settingsLinksGroup(), "id")
+      : literalAttribute(item, "id"))
     .filter(id => id?.startsWith("settings-"));
-  if (elements(overview, "SettingsExternalLinks").length) ids.push(literalAttribute(settingsLinksGroup(), "id"));
-  return ids;
 }
 function paneNode(pane: string) {
   const branch = nodes(source, ts.isConditionalExpression).find(item =>
@@ -89,14 +89,17 @@ test("overview sections preserve navigation order and each visible section has a
       } else {
         const directGroups = elements(overview, "div");
         if (elements(overview, "SettingsExternalLinks").length) directGroups.push(settingsLinksGroup());
+        const actions = elements(overview, "SettingsTile");
         assert.ok(directGroups.some(item =>
-          literalAttribute(item, "id") === section.id && literalAttribute(item, "role") === "group"),
+          literalAttribute(item, "id") === section.id && literalAttribute(item, "role") === "group") ||
+          actions.some(item => literalAttribute(item, "id") === section.id && attribute(item, "onOpen")),
         `${section.id} has a direct search/sidebar destination`);
       }
     }
     for (const row of elements(overview, "SettingsTile")) {
       const onOpen = attribute(row, "onOpen");
       assert.ok(onOpen && ts.isJsxExpression(onOpen) && onOpen.expression);
+      if (literalAttribute(row, "id") === "settings-replay-onboarding") continue;
       assert.ok(nodes(onOpen.expression, ts.isCallExpression).some(call =>
         ts.isIdentifier(call.expression) && call.expression.text === "openSettingsPane"), literalAttribute(row, "id"));
     }
@@ -130,7 +133,7 @@ test("Devices install step can show macOS and Linux desktop downloads", () => {
 });
 
 test("the shared Website and GitHub footer keeps safe direct destinations and stays outside mobile General", () => {
-  assert.equal(tabIds("general").at(-1), "settings-links");
+  assert.deepEqual(tabIds("general").slice(-2), ["settings-links", "settings-replay-onboarding"]);
   const group = settingsLinksGroup();
   const generalFooter = elements(tabElement("general"), "SettingsExternalLinks");
   assert.equal(generalFooter.length, 1);
@@ -151,6 +154,16 @@ test("the shared Website and GitHub footer keeps safe direct destinations and st
     assert.equal(literalAttribute(link, "target"), "_blank");
     assert.equal(literalAttribute(link, "rel"), "noopener noreferrer");
   }
+});
+
+test("Replay onboarding is a direct action at the bottom of General", () => {
+  const tile = elements(tabElement("general"), "SettingsTile").find(item => literalAttribute(item, "id") === "settings-replay-onboarding");
+  assert.ok(tile);
+  assert.equal(literalAttribute(tile, "title"), "Replay onboarding");
+  assert.equal(attribute(tile, "onOpen")?.getText(source), "{onReplayOnboarding}");
+  const guard = tile.parent;
+  assert.ok(ts.isConditionalExpression(guard));
+  assert.equal(guard.condition.getText(source), "onReplayOnboarding");
 });
 
 function functionDeclaration(name: string) {

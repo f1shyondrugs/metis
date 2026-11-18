@@ -298,6 +298,7 @@ export type FinishSound = {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onReplayOnboarding?: () => void;
   mobile?: boolean;
   settingsTab: string;
   onSettingsTabChange: (tab: string) => void;
@@ -371,7 +372,7 @@ function scrollSettingsSection(id: string) {
   const target = document.getElementById(id);
   if (!target) return;
   target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
-  target.tabIndex = -1;
+  if (target.tabIndex < 0) target.tabIndex = -1;
   target.focus({preventScroll: true});
 }
 
@@ -720,6 +721,7 @@ function RemotePermissionsEditor({
 export function SettingsPanel({
   open,
   onOpenChange,
+  onReplayOnboarding,
   mobile = false,
   settingsTab,
   onSettingsTabChange,
@@ -2770,6 +2772,7 @@ export function SettingsPanel({
   <SettingsTile id="settings-voice-input" title="Voice & dictionary" meta={voiceInputEnabled ? `On · ${voiceModelId || "Transcription settings"}` : "Voice input off"} icon={Mic} onOpen={() => openSettingsPane("voice")} />
   <SettingsTile id="settings-browser" title="Browser" meta={browserEnabled ? `On · ${browserViewportWidth} × ${browserViewportHeight}` : "Browser workspace off"} icon={Globe2} onOpen={() => openSettingsPane("browser")} />
   {!mobile ? <SettingsExternalLinks /> : null}
+  {onReplayOnboarding ? <SettingsTile id="settings-replay-onboarding" title="Replay onboarding" meta="See the introduction again without changing your settings" icon={RotateCcw} onOpen={onReplayOnboarding} /> : null}
  </SettingsOverview>
 </TabsContent>
 <TabsContent value="models" className="mt-0">

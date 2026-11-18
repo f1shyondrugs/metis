@@ -2020,6 +2020,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [accountView, setAccountView] = useState<AccountView | null>(null);
+  const [onboardingReplayOwner, setOnboardingReplayOwner] = useState<string | null>(null);
+  const authenticatedOwner = authed ? status?.userId : undefined;
+  useEffect(() => {
+    setOnboardingReplayOwner(owner => owner === authenticatedOwner ? owner : null);
+  }, [authenticatedOwner]);
   const [linkedSkillId, setLinkedSkillId] = useState<string>();
   useEffect(() => setAccountView(null), [routeChatId, routeView]);
   const { profile: accountProfile, setProfile: setAccountProfile, error: accountProfileError, retry: retryAccountProfile } = useAccountProfile(Boolean(authed));
@@ -2029,6 +2034,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const setSettingsOpen = useCallback((open: boolean) => {
     setAccountView(current => open ? "settings" : current === "settings" ? null : current);
   }, []);
+  const replayOnboarding = authenticatedOwner ? () => {
+    setOnboardingReplayOwner(authenticatedOwner);
+    setSettingsOpen(false);
+  } : undefined;
   function openAccountPage(view: AccountView) {
     setLinkedSkillId(undefined);
     setAccountView(view);
@@ -10116,6 +10125,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       <div className="shrink-0 p-2" data-onboarding-target="settings">
         <AccountMenu profile={accountProfile} username={username} updateAvailable={settingsUpdateAvailable} unreadCount={unreadNotifications} onNotifications={() => openAccountPage("notifications")}
           onSettings={() => openAccountPage("settings")}
+          onReplayOnboarding={replayOnboarding}
           onAgentHub={() => openAccountPage("agent-hub")}
           onProfile={() => openAccountPage("profile")}
           onUsage={() => openAccountPage("usage")}
@@ -10227,6 +10237,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         mobile={isMobileSettings}
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
+        onReplayOnboarding={replayOnboarding}
         settingsTab={settingsTab}
         onSettingsTabChange={setSettingsTab}
         sectionRequest={settingsSectionRequest}
@@ -10309,6 +10320,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         }}/> : null}
       {status?.userId ? <ClientOnboarding key={status.userId} userId={status.userId} username={status.username || username}
         hasProvider={Boolean(status.providers?.some(provider=>provider.enabled&&provider.hasSecret))}
+        replay={onboardingReplayOwner===authenticatedOwner}
+        onReplayClose={()=>setOnboardingReplayOwner(null)}
         onPairDevice={()=>{setSettingsTab("devices");setSettingsSectionRequest("settings-remote-clients");openAccountPage("settings");}}
         /> : null}
       <UploadTray />

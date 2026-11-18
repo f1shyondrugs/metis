@@ -28,9 +28,9 @@ export function ProfileAvatar({profile,name,className}: {profile:AccountIdentity
     <AvatarFallback className="bg-muted text-foreground">{(profile?.displayName || name).slice(0,2).toUpperCase()}</AvatarFallback>
   </Avatar>;
 }
-export function AccountMenu({profile,username,updateAvailable,onSettings,onProfile,onUsage,onAgentHub,unreadCount=0,onNotifications,onLogout}: {
+export function AccountMenu({profile,username,updateAvailable,onSettings,onProfile,onUsage,onAgentHub,unreadCount=0,onNotifications,onLogout,onReplayOnboarding}: {
   profile:AccountProfile|null;username:string;updateAvailable:boolean;
-  onSettings:()=>void;onProfile:()=>void;onUsage:()=>void;onLogout:()=>void;onAgentHub?:()=>void;unreadCount?:number;onNotifications?:()=>void;
+  onSettings:()=>void;onProfile:()=>void;onUsage:()=>void;onLogout:()=>void;onAgentHub?:()=>void;unreadCount?:number;onNotifications?:()=>void;onReplayOnboarding?:()=>void;
 }) {
   const desktop=useDesktopAvailable();
   const {state}=useDesktopState();
@@ -62,5 +62,5 @@ export function AccountMenu({profile,username,updateAvailable,onSettings,onProfi
       <DropdownMenuSeparator />
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onLogout}><LogOut /> Logout</DropdownMenuItem>
     </DropdownMenuContent>
-  </DropdownMenu>{desktop?<DesktopAppSettingsDialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen}/>:null}</>;
+  </DropdownMenu>{desktop?<DesktopAppSettingsDialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen} onReplayOnboarding={onReplayOnboarding}/>:null}</>;
 }
