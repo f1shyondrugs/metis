@@ -3,6 +3,8 @@ import { requestJobCancel } from "@/lib/db-jobs";
 import { getAgentCwd } from "@/lib/mcp";
 import { revertMessages } from "@/lib/revert";
 import { getChat, saveChat } from "@/lib/db-store";
+import { retainDraftAttachmentPreviews } from "@/lib/chat-attachment-preview-store";
+import { transaction } from "@/lib/sqlite";
 import { revertChatNotes } from "@/lib/shared-context";
 import { hydrateToolsForRevert } from "@/lib/tool-persistence";
 import { withoutProviderSessionBindings } from "@/lib/providers/session-bindings";
@@ -36,6 +38,7 @@ export async function POST(req: Request, { params }: Params) {
   const index = chat.messages.findIndex((message) => message.id === body.messageId);
   if (index < 0) return Response.json({ error: "Message not found" }, { status: 404 });
 
+  const target = chat.messages[index];
   const rollbackStart = body.keepMessage === true ? index + 1 : index;
   const messagesForRevert = chat.messages.map((message) => ({
     ...message,
@@ -68,7 +71,13 @@ export async function POST(req: Request, { params }: Params) {
   }
   chat.runStatus = "cancelled";
   chat.runUpdatedAt = new Date().toISOString();
-  const saved = saveChat(chat);
+  const saved = transaction(() => {
+    const savedChat = saveChat(chat);
+    if (ownerId && target.role === "user" && body.keepMessage !== true) {
+      retainDraftAttachmentPreviews(id, ownerId, target.attachments);
+    }
+    return savedChat;
+  });
 
   return Response.json({
     chat: saved,

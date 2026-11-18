@@ -64,14 +64,26 @@ test("rendered HTML stays inside an opaque offline frame, never the parent DOM",
   assert.match(htmlPreviewDocument(source), /img-src data: blob: https:/);
 });
 
+test("View HTML is a collapsed button controlling an inline source panel", () => {
+  const html = renderToStaticMarkup(<HtmlEmbed source="<p>Example</p>" />);
+  const button = html.match(/<button[^>]*aria-expanded="false"[^>]*aria-controls="([^"]+)"[^>]*>[\s\S]*?<\/button>/);
+  assert.ok(button);
+  assert.match(button[0], /View HTML/);
+  assert.ok(html.includes(`id="${button[1]}" hidden=""`));
+  assert.doesNotMatch(html, /<details|<summary|<pre/);
+});
+
 test("unfinished, empty and oversized content does not execute", () => {
   const source = "<button onclick='alert(1)'>Press</button>";
   const streaming = renderToStaticMarkup(<HtmlEmbed source={source} streaming />);
   assert.match(streaming, /role="status"/);
   assert.doesNotMatch(streaming, /<iframe|onclick|View HTML/);
-  assert.match(renderToStaticMarkup(<HtmlEmbed source="  " />), /No HTML to preview/);
+  const empty = renderToStaticMarkup(<HtmlEmbed source="  " />);
+  assert.match(empty, /No HTML to preview/);
+  assert.doesNotMatch(empty, /View HTML/);
   const large = renderToStaticMarkup(<HtmlEmbed source={"x".repeat(HTML_EMBED_MAX_LENGTH + 1)} />);
   assert.match(large, /role="alert"/);
+  assert.match(large, /View HTML/);
   assert.doesNotMatch(large, /<iframe/);
 });
 

@@ -13,7 +13,8 @@ export async function DELETE(req: Request, { params }: Params) {
   if (!messageId || messageId.length > 200) {
     return Response.json({ error: "Invalid queued message ID" }, { status: 400 });
   }
-  if (!removeQueuedMessage(id, messageId, user.id)) {
+  const retainDraftPreviews = new URL(req.url).searchParams.get("edit") === "1";
+  if (!removeQueuedMessage(id, messageId, user.id, { retainDraftPreviews })) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
   return Response.json({ ok: true });

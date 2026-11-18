@@ -5,6 +5,7 @@ export async function removeQueuedFollowUp(options: {
   removedIds: Set<string>;
   removeLocally: () => void;
   restoreLocally: () => void;
+  retainDraftPreviews?: boolean;
   request?: typeof fetch;
 }) {
   const { chatId, messageId, removedIds, removeLocally, restoreLocally } = options;
@@ -14,7 +15,7 @@ export async function removeQueuedFollowUp(options: {
   if (!chatId) return true;
   try {
     const response = await (options.request ?? fetch)(
-      `/api/chats/${encodeURIComponent(chatId)}/queue/${encodeURIComponent(messageId)}`,
+      `/api/chats/${encodeURIComponent(chatId)}/queue/${encodeURIComponent(messageId)}${options.retainDraftPreviews ? "?edit=1" : ""}`,
       { method: "DELETE", keepalive: true },
     );
     if (!response.ok) throw new Error("Could not remove queued message. Please try again.");

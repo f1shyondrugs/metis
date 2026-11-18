@@ -29,6 +29,7 @@ import type {
   WorkspaceItem,
 } from "@/lib/store";
 import { chatUploadDir, resolveUploadPath } from "@/lib/uploads";
+import { retainDraftAttachmentPreviews } from "@/lib/chat-attachment-preview-store";
 import { rememberAssistantOrigin } from "@/lib/assistant-origin-store";
 import { assistantOriginId } from "@/lib/desktop-assistant";
 import { BoundedSnapshotCache } from "@/lib/snapshot-cache";
@@ -1090,7 +1091,7 @@ export function cloneChatByShareId(shareId: string, password: string | undefined
 }
 
 
-export function removeQueuedMessage(chatId: string, messageId: string, ownerId?: string) {
+export function removeQueuedMessage(chatId: string, messageId: string, ownerId?: string, options?: { retainDraftPreviews?: boolean }) {
   return transaction(() => {
     const chat = getChat(chatId, ownerId);
     if (!chat) return null;
@@ -1098,7 +1099,10 @@ export function removeQueuedMessage(chatId: string, messageId: string, ownerId?:
     getDatabase().prepare(
       "INSERT OR IGNORE INTO queue_message_removals (chat_id, message_id) VALUES (?, ?)",
     ).run(chatId, messageId);
-    const nextQueue = (chat.queuedMessages ?? []).filter((message) => message.id !== messageId);
+    const queue = chat.queuedMessages ?? [];
+    const edited = options?.retainDraftPreviews && queue.find((message) => message.id === messageId);
+    if (ownerId && edited) retainDraftAttachmentPreviews(chatId, ownerId, edited.attachments);
+    const nextQueue = queue.filter((message) => message.id !== messageId);
     const next = { ...chat };
     if (nextQueue.length) next.queuedMessages = nextQueue;
     else delete next.queuedMessages;

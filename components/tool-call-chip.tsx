@@ -8,6 +8,7 @@ import { toolMotionKey } from "@/lib/live-message-motion";
 import { ToolInputStatus, ToolPreparationDetails } from "@/components/tool-input-status";
 import { latestPreparingTool } from "@/lib/tool-preparation";
 import { AnimatedNumber } from "@/components/animated-number";
+import { ActivityDisclosureTrigger } from "@/components/activity-disclosure-trigger";
 
 import {
   BookOpen,
@@ -16,7 +17,6 @@ import {
   Cable,
   CalendarClock,
   Check,
-  ChevronRight,
   Code2,
   FilePenLine,
   FolderOpen,
@@ -548,20 +548,16 @@ export const ToolCallGroup = memo(function ToolCallGroup({
   return (
   <div className="w-full min-w-0" style={{ overflowAnchor: "none" }}>
  <div className="my-0.5 flex w-full flex-col" data-tool-call-group>
- <button
- type="button"
- className={activityRowClass}
- aria-expanded={groupOpen}
- aria-controls={entriesId}
- onClick={() => setUserOpen((open) => open === null ? !groupOpen : !open)}
+ <ActivityDisclosureTrigger
+   expanded={groupOpen}
+   controls={entriesId}
+   onClick={() => setUserOpen((open) => open === null ? !groupOpen : !open)}
+   leading={activityRunning || combinedThinking?.done === false
+     ? <RunStatus status="running" iconOnly decorative className="shrink-0 text-xs" />
+     : undefined}
  >
- {activityRunning || combinedThinking?.done === false ? (
- <RunStatus status="running" iconOnly decorative className="shrink-0 text-xs" />
- ) : (
- <ChevronRight aria-hidden="true" className={cn("size-3 shrink-0 transition-transform", groupOpen && "rotate-90")} />
- )}
- {preparingTool ? <ToolPreparationDetails name={preparingTool.name} kind={preparingTool.kind} source={preparingTool.source} characters={!groupOpen ? preparingTool.inputChars : undefined}/> : <span className="truncate">{groupTitle}</span>}
- </button>
+   {preparingTool ? <ToolPreparationDetails name={preparingTool.name} kind={preparingTool.kind} source={preparingTool.source} characters={!groupOpen ? preparingTool.inputChars : undefined}/> : <span className="truncate">{groupTitle}</span>}
+ </ActivityDisclosureTrigger>
  <div key="entries" id={entriesId} className="flex flex-col">
  {groupOpen && (combinedThinking?.text || combinedThinking?.done === false) ? (
  <div className="mt-1 pl-4">

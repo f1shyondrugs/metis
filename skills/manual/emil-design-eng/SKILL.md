@@ -558,6 +558,8 @@ These principles come from building Sonner and apply to any component:
 
 ### Cohesion matters
 
+In Metis, use the [Metis Development inline disclosure pattern](../metis-development/SKILL.md#compact-controls-and-reference-appearance) for collapsible detail rows. Match the tool-group chevron and trigger instead of introducing a native summary triangle or treating the panel as an action menu.
+
 Sonner's animation feels satisfying partly because the whole experience is cohesive. The easing and duration fit the vibe of the library. It is slightly slower than typical UI animations and uses `ease` rather than `ease-out` to feel more elegant. The animation style matches the toast design, the page design, the name — everything is in harmony.
 
 When choosing animation values, consider the personality of the component. A playful component can be bouncier. A professional dashboard should be crisp and fast. Match the motion to the mood.

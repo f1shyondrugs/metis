@@ -30,6 +30,8 @@ For Electron multi-window ownership, passive click feedback and native-coordinat
 
 ## Compact controls and reference appearance
 
+For a compact inline section that reveals details in Metis (such as tool groups and “View HTML”), reuse `ActivityDisclosureTrigger` from `components/activity-disclosure-trigger.tsx`. Keep the left chevron and row styling shared, wire `aria-expanded`/`aria-controls` to the panel, and verify click and keyboard operation. Do not use a browser-default `<details>/<summary>` triangle or add a second custom disclosure style. This is for expanding content in place, not for selection controls or action menus, which keep their existing primitives.
+
 The shared Button primitive defaults to `shrink-0`. Bound and explicitly shrink unpredictable model/account labels before fixed Context/Usage controls; test the actual footer parent, not only the standalone picker, and retain an operable full-value disclosure. Reference rows reuse `ReferenceResultIcon`/`ReferenceResultMetadata`, `NoteIcon` and `NotebookProjectIcon` so item glyphs and authorized project context keep their separate colors/logos.
 
 For automation appearance, omission preserves the icon and null removes it. A one-field icon change must remain metadata-only in both editor requests and storage: do not rebuild schedules, resume completed/error tasks, or clear claims/errors. Test the outgoing request as well as the API, and verify additive-schema compatibility with old writers.
