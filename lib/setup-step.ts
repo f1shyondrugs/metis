@@ -1,7 +1,6 @@
-export type SetupStep = "admin" | "complete";
+export type SetupStep = "admin" | "public-url";
 
-/** Legacy welcome/people/provider records cannot reintroduce removed setup steps.
- * Account existence comes from the server, never from browser progress storage. */
+/** Only server account existence advances the setup beyond account creation. */
 export function resolveSetupStep(hasUsers: boolean, _savedStep?: string | null): SetupStep {
-  return hasUsers ? "complete" : "admin";
+  return hasUsers ? "public-url" : "admin";
 }

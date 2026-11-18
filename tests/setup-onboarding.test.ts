@@ -9,16 +9,19 @@ delete process.env.METIS_AI_BOOTSTRAP_PASSWORD;
 const file=(name:string)=>readFileSync(path.join(root,name),"utf8");
 
 test("admin-only setup keeps the existing protected bootstrap and completion contracts",()=>{
- const api=file("app/api/setup/route.ts"),wizard=file("components/setup-wizard.tsx"),helper=file("lib/setup.ts");
+ const api=file("app/api/setup/route.ts"),wizard=file("components/setup-wizard.tsx"),helper=file("lib/setup.ts"),urlStep=file("components/setup-public-url-check.tsx");
  assert.match(api,/bootstrapSetupAccount/);assert.match(api,/markSetupComplete/);
  for(const text of ["Create your admin account","Operator setup token","data/setup-token","AI_CHAT_SETUP_TOKEN",'action: "bootstrap", setupToken','action: "complete"','setSetupToken("")'])assert(wizard.includes(text),text);
  assert(helper.includes("setup_complete"));
+ assert.match(wizard, /What's your public URL\?/);
+ assert.match(urlStep, /action: "check-public-url"/);
+ assert.doesNotMatch(urlStep, /setupToken/);
  assert.doesNotMatch(wizard,/ProviderSetupDialog|OsUserField|makeAdmin|addPerson/);
  assert(!wizard.includes("/api/admin/users"));
 });
 test("legacy progress cannot restore removed user/provider setup screens",()=>{
  for(const saved of [undefined,null,"welcome","people","provider","ready","admin","complete","invalid"]){
-  assert.equal(resolveSetupStep(false,saved),"admin");assert.equal(resolveSetupStep(true,saved),"complete");
+  assert.equal(resolveSetupStep(false,saved),"admin");assert.equal(resolveSetupStep(true,saved),"public-url");
  }
 });
 test("onboarding keeps the shared stage and provider access inside the ordinary UI",()=>{

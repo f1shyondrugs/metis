@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OnboardingStage, OnboardingProgress } from "@/components/onboarding-stage";
 import { resolveSetupStep } from "@/lib/setup-step";
+import { SetupDisclosure } from "@/components/setup-disclosure";
 import { SetupPublicUrlCheck } from "@/components/setup-public-url-check";
+
+const STEPS = [{id:"admin",label:"Admin account"}, {id:"public-url",label:"Public URL"}] as const;
 
 export function SetupWizard({ open, hasUsers, onFinished }: {
   open: boolean; hasUsers: boolean; onFinished: () => void;
@@ -22,6 +25,7 @@ export function SetupWizard({ open, hasUsers, onFinished }: {
   const submitting = useRef(false);
   useEffect(() => { if (hasUsers) setAccountCreated(true); }, [hasUsers]);
   const step = resolveSetupStep(hasUsers || accountCreated);
+  const showAdmin = step === "admin" && !signInRequired;
   if (!open) return null;
 
   async function complete() {
@@ -30,7 +34,7 @@ export function SetupWizard({ open, hasUsers, onFinished }: {
       body: JSON.stringify({ action: "complete" }),
     });
     const body = await response.json().catch(() => ({})) as { error?: string };
-    if (!response.ok) throw new Error(body.error || "Could not finish setup. Try Continue again.");
+    if (!response.ok) throw new Error(body.error || "Could not finish setup. Try Finish again.");
     try { window.sessionStorage.removeItem("metis-setup-step"); } catch { /* Optional legacy state. */ }
     onFinished();
   }
@@ -40,23 +44,24 @@ export function SetupWizard({ open, hasUsers, onFinished }: {
     if (submitting.current) return;
     submitting.current = true; setBusy(true); setError("");
     try {
-      if (step === "admin") {
-        const response = await fetch("/api/setup", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "bootstrap", setupToken, username, password }),
-        });
-        const body = await response.json().catch(() => ({})) as { error?: string };
-        if (!response.ok) {
-          if (response.status === 409) {
-            setSignInRequired(true); setPassword(""); setSetupToken("");
-            throw new Error("An account already exists. Continue to sign in.");
-          }
-          throw new Error(body.error || "Could not create the admin account.");
-        }
-        // A completion retry must never recreate the admin or resubmit secrets.
-        setAccountCreated(true); setUsername(""); setPassword(""); setSetupToken("");
+      if (!showAdmin) {
+        await complete();
+        return;
       }
-      await complete();
+      const response = await fetch("/api/setup", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "bootstrap", setupToken, username, password }),
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) {
+        if (response.status === 409) {
+          setSignInRequired(true); setPassword(""); setSetupToken("");
+          throw new Error("An account already exists. Continue to sign in.");
+        }
+        throw new Error(body.error || "Could not create the admin account.");
+      }
+      // URL checks and completion use the authenticated session, never the bootstrap secrets.
+      setAccountCreated(true); setUsername(""); setPassword(""); setSetupToken("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not finish setup.");
     } finally {
@@ -65,17 +70,17 @@ export function SetupWizard({ open, hasUsers, onFinished }: {
   }
 
   return <OnboardingStage transitionKey={signInRequired ? "sign-in" : step} eyebrow=""
-    title={signInRequired ? "Sign in to continue" : step === "admin" ? "Create your admin account" : "Your account is ready"}
-    description={step === "admin" && !signInRequired ? "Everything else is in Settings." : "Continue into your workspace."}
-    progress={<OnboardingProgress steps={[{id:"admin",label:"Admin account"}]} index={0}/>}
-    footer={<Button type={step === "admin" && !signInRequired ? "submit" : "button"}
-      form={step === "admin" && !signInRequired ? formId : undefined} disabled={busy}
-      onClick={signInRequired ? () => window.location.reload() : step === "complete" ? () => void submit() : undefined}>
+    title={signInRequired ? "Sign in to continue" : showAdmin ? "Create your admin account" : "What's your public URL?"}
+    description={signInRequired ? "Sign in as the admin to finish setup." : showAdmin ? "This account manages your Metis server." : "What address do you use to open Metis? This is where your share links will point."}
+    progress={<OnboardingProgress steps={STEPS} index={step === "public-url" ? 1 : 0}/>}
+    footer={<Button type={showAdmin ? "submit" : "button"}
+      form={showAdmin ? formId : undefined} disabled={busy}
+      onClick={signInRequired ? () => window.location.reload() : !showAdmin ? () => void submit() : undefined}>
       {busy ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin"/> : null}
-      Continue {!busy ? <ArrowRight aria-hidden="true" className="size-4"/> : null}
+      {showAdmin || signInRequired ? "Continue" : "Finish"} {!busy ? <ArrowRight aria-hidden="true" className="size-4"/> : null}
     </Button>}>
     {error ? <p role="alert" className="mb-4 text-sm text-destructive">{error}</p> : null}
-    {step === "admin" && !signInRequired ? <form id={formId} onSubmit={event => void submit(event)} className="grid gap-4" aria-busy={busy}>
+    {showAdmin ? <form id={formId} onSubmit={event => void submit(event)} className="grid gap-4" aria-busy={busy}>
       <label className="grid gap-2 text-sm">Admin username
         <Input className="h-11" value={username} onChange={event=>setUsername(event.target.value)} autoComplete="username" autoFocus
           required minLength={3} maxLength={64} disabled={busy}/>
@@ -86,13 +91,11 @@ export function SetupWizard({ open, hasUsers, onFinished }: {
       </label>
       <label className="grid gap-2 text-sm">Operator setup token
         <Input className="h-11" type="password" value={setupToken} onChange={event=>setSetupToken(event.target.value)}
-          autoComplete="off" spellCheck={false} required disabled={busy} aria-describedby="setup-token-help"/>
+          autoComplete="off" spellCheck={false} required disabled={busy}/>
       </label>
-      <details id="setup-token-help" className="text-xs text-muted-foreground">
-        <summary className="cursor-pointer">Where to find the setup token</summary>
-        <p className="mt-2">Ask your server operator for the one-time token from data/setup-token (or setup-token in CHAT_DATA_DIR), or AI_CHAT_SETUP_TOKEN.</p>
-      </details>
-      <SetupPublicUrlCheck setupToken={setupToken} disabled={busy} />
-    </form> : null}
+      <SetupDisclosure label="Where to find the setup token">
+        Ask your server operator for the one-time token from <code>data/setup-token</code> (or <code>setup-token</code> in <code>CHAT_DATA_DIR</code>), or <code>AI_CHAT_SETUP_TOKEN</code>.
+      </SetupDisclosure>
+    </form> : !signInRequired ? <SetupPublicUrlCheck disabled={busy} /> : null}
   </OnboardingStage>;
 }

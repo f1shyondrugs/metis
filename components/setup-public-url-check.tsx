@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SetupDisclosure } from "@/components/setup-disclosure";
 import { usePublicBaseUrl } from "@/components/public-base-url";
 import type { PublicBaseCheck } from "@/lib/public-base-url";
 
@@ -9,9 +10,9 @@ function checkMessage(result: PublicBaseCheck, local: boolean) {
   switch (result.state) {
     case "verified": return local
       ? "This Metis instance responded. This local URL is not used for public links."
-      : "Verified: this URL reaches this Metis instance from the server.";
-    case "other_instance": return "A different Metis instance answered. Check your reverse proxy or DNS.";
-    case "not_metis": return "The URL responded, but did not return a Metis instance proof. Check the app address and proxy route.";
+      : "Verified. This address reaches this Metis server.";
+    case "other_instance": return "This address goes to a different Metis server.";
+    case "not_metis": return "The address responded, but we couldn’t verify that it runs Metis.";
     case "redirect": return `The URL redirects (HTTP ${result.status}). Configure the final app address instead.`;
     case "http_error": return `The URL returned HTTP ${result.status}. Check your proxy and access rules.`;
     case "unreachable": return "The server could not reach this URL. Check DNS, TLS and your proxy.";
@@ -20,24 +21,30 @@ function checkMessage(result: PublicBaseCheck, local: boolean) {
   }
 }
 
-export function SetupPublicUrlCheck({ setupToken, disabled }: { setupToken: string; disabled: boolean }) {
+export function SetupPublicUrlCheck({ disabled }: { disabled: boolean }) {
   const base = usePublicBaseUrl();
+  const panel = useRef<HTMLDivElement>(null);
   const pending = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<PublicBaseCheck | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => () => pending.current?.abort(), []);
+  useEffect(() => {
+    if (document.activeElement === document.body) {
+      panel.current?.closest(".onboarding-shell")?.querySelector<HTMLElement>("[data-onboarding-heading]")?.focus({ preventScroll: true });
+    }
+    return () => pending.current?.abort();
+  }, []);
   const url = "url" in base ? base.url : null;
 
   async function check() {
-    if (!url || !setupToken.trim() || disabled || pending.current) return;
+    if (!url || disabled || pending.current) return;
     const controller = new AbortController();
     pending.current = controller;
     setBusy(true); setResult(null); setError("");
     try {
       const response = await fetch("/api/setup", {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
-        body: JSON.stringify({ action: "check-public-url", setupToken }),
+        body: JSON.stringify({ action: "check-public-url" }),
       });
       const body = await response.json().catch(() => ({})) as { check?: PublicBaseCheck; error?: string };
       if (controller.signal.aborted) return;
@@ -50,21 +57,25 @@ export function SetupPublicUrlCheck({ setupToken, disabled }: { setupToken: stri
     }
   }
 
-  return <details className="text-xs text-muted-foreground">
-    <summary className="cursor-pointer">Public app URL</summary>
-    <div className="mt-2 space-y-2">
-      {url ? <>
-        <p className="break-all text-foreground">{url}</p>
-        {base.state === "local" ? <p>This is a local-only address. Set a reachable app address to create public links.</p> : null}
-        <Button type="button" size="sm" variant="outline" disabled={disabled || busy || !setupToken.trim()} onClick={() => void check()}>
-          {busy ? "Checking…" : "Check URL"}
-        </Button>
-        {!setupToken.trim() ? <p>Enter the operator setup token above to check this address.</p> : null}
-        <div role="status" className={result?.state === "verified" ? "text-foreground" : undefined}>
-          {busy ? "Checking from the Metis server…" : result ? checkMessage(result, base.state === "local") : null}
-        </div>
-        {error ? <p role="alert" className="text-destructive">{error}</p> : null}
-      </> : <p>{base.state === "invalid" ? "The configured address is invalid." : "No public address is configured."} Set AI_CHAT_PUBLIC_URL or use the installer’s --public-url option. You can still continue setup.</p>}
-    </div>
-  </details>;
+  return <div ref={panel} className="space-y-4">
+    <dl className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+      <dt className="text-sm text-muted-foreground">Server address</dt>
+      <dd className="mt-1 min-w-0 break-all text-sm font-medium text-foreground">
+        {url ?? (base.state === "invalid" ? "Invalid address" : "No public address set")}
+      </dd>
+    </dl>
+    {base.state === "local" ? <p className="text-sm text-muted-foreground">This address only works on the server itself. It won’t be used for share links.</p> : null}
+    {url ? <div>
+      <Button type="button" className="min-h-11" variant="outline" disabled={disabled || busy} onClick={() => void check()}>
+        {busy ? "Checking…" : "Check URL"}
+      </Button>
+      <div role="status" className={result?.state === "verified" ? "text-sm text-foreground" : "text-sm text-muted-foreground"}>
+        {busy || result ? <p className="mt-2">{busy ? "Checking from your Metis server…" : result ? checkMessage(result, base.state === "local") : null}</p> : null}
+      </div>
+      {error ? <p role="alert" className="mt-2 text-sm text-destructive">{error}</p> : null}
+    </div> : <p className="text-sm text-muted-foreground">You can finish setup without a public URL and add one later.</p>}
+    <SetupDisclosure label="How do I change this?">
+      Set <code>AI_CHAT_PUBLIC_URL</code> in your server configuration, or use <code>--public-url</code> when installing. Restart your Metis web server, then open setup again.
+    </SetupDisclosure>
+  </div>;
 }
