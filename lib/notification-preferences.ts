@@ -4,6 +4,8 @@ export type NotificationPrefs = {
   browserEnabled: boolean;
   remoteEnabled: boolean;
   agentFinishedEnabled: boolean;
+  showChatTitle: boolean;
+  showServerDomain: boolean;
   remoteClientIds: string[];
 };
 
@@ -16,6 +18,8 @@ export function normalizeNotificationPrefs(value: unknown, defaultClientIds: str
     browserEnabled: false,
     remoteEnabled: typeof data.remoteEnabled === "boolean" ? data.remoteEnabled : true,
     agentFinishedEnabled: typeof data.agentFinishedEnabled === "boolean" ? data.agentFinishedEnabled : true,
+    showChatTitle: data.showChatTitle === true,
+    showServerDomain: data.showServerDomain === true,
     remoteClientIds,
   };
 }

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 
 const dir = mkdtempSync(path.join(os.tmpdir(), "metis-notifications-"));
-Object.assign(process.env,{CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"test.sqlite"),AI_CHAT_ROOT:dir,AGENT_CWD:dir});
+Object.assign(process.env,{CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"test.sqlite"),AI_CHAT_ROOT:dir,AGENT_CWD:dir,AI_CHAT_PUBLIC_URL:"https://notices.example.test:8443/server/"});
 delete process.env.AI_CHAT_TEST_BYPASS_LEASE;
 process.env.MCP_BEARER_TOKEN = "isolated-test-token";
 
@@ -19,7 +19,7 @@ test("notification backend: owner boundaries, durable replay, ACK and API authen
   const now = new Date().toISOString();
   for (const owner of ["alice","bob"]) {
     db.prepare("INSERT INTO users(id,username,password_hash,created_at) VALUES (?,?,?,?)").run(owner,owner,"not-a-real-password",now);
-    db.prepare("INSERT INTO chats(id,owner_id,data,created_at,updated_at) VALUES (?,?,?,?,?)").run(owner+"-chat",owner,JSON.stringify({id:owner+"-chat"}),now,now);
+    db.prepare("INSERT INTO chats(id,owner_id,data,created_at,updated_at) VALUES (?,?,?,?,?)").run(owner+"-chat",owner,JSON.stringify({id:owner+"-chat",title:owner==="alice"?"Release notes":"Private Bob chat"}),now,now);
     db.prepare("INSERT INTO jobs(id,chat_id,user_id,data,status,updated_at) VALUES (?,?,?,?,?,?)").run(owner+"-job",owner+"-chat",owner,JSON.stringify({id:owner+"-job",userId:owner,chatId:owner+"-chat"}),"running",now);
     db.prepare("INSERT INTO remote_clients(id,owner_id,name,created_at,updated_at) VALUES (?,?,?,?,?)").run(owner+"-pc",owner,owner+" PC",now,now);
     const token = owner+"-session";
@@ -33,7 +33,7 @@ test("notification backend: owner boundaries, durable replay, ACK and API authen
   const event = (owner:string,kind:string,data:unknown={}) => db.prepare("INSERT INTO run_events(job_id,chat_id,user_id,event,data,created_at) VALUES (?,?,?,?,?,?)")
     .run(owner+"-job",owner+"-chat",owner,kind,JSON.stringify(data),now);
   await t.test("preferences reject foreign and revoked clients and default safely", () => {
-    assert.deepEqual(store.getNotificationPrefs("alice"),{toastEnabled:true,browserEnabled:false,remoteEnabled:true,agentFinishedEnabled:true,remoteClientIds:["alice-pc"]});
+    assert.deepEqual(store.getNotificationPrefs("alice"),{toastEnabled:true,browserEnabled:false,remoteEnabled:true,agentFinishedEnabled:true,showChatTitle:false,showServerDomain:false,remoteClientIds:["alice-pc"]});
     assert.throws(()=>store.setNotificationPrefs("alice",{remoteClientIds:["bob-pc"]}));
     assert.throws(()=>store.setNotificationPrefs("alice",{toastEnabled:"yes"}));
     assert.throws(()=>store.setNotificationPrefs("alice",{execute_command:"anything"}));
@@ -220,6 +220,49 @@ test("notification backend: owner boundaries, durable replay, ACK and API authen
     const feed=await (await api.GET(req("GET",undefined,"alice","?after=0"))).json();
     assert.ok(feed.notifications.some((n:{title:string})=>n.title==="route test"));
     assert.ok(feed.clients.every((n:{id:string})=>n.id==="alice-pc"));
+  });
+  await t.test("chat details are independent, scoped and added only at display time", async () => {
+    const cursor = store.getNotificationFeed("alice").cursor;
+    const question = store.createNotification("alice", {title:"Answer needed", body:"Please answer in the chat.", chatId:"alice-chat"});
+    const finished = store.createNotification("alice", {title:"Run completed", body:"Open the result.", chatId:"alice-chat"});
+    const get = () => store.getNotificationFeed("alice",cursor).notifications;
+    assert.deepEqual(get(), [question, finished]);
+    assert.throws(()=>store.setNotificationPrefs("alice",{showChatTitle:"yes"}));
+    store.setNotificationPrefs("alice",{showChatTitle:true});
+    assert.equal(get()[0].body,"Release notes\nPlease answer in the chat.");
+    assert.equal(get()[1].body,"Release notes\nOpen the result.");
+    store.setNotificationPrefs("alice",{showChatTitle:false,showServerDomain:true});
+    assert.equal(get()[0].body,"notices.example.test:8443\nPlease answer in the chat.");
+    store.setNotificationPrefs("alice",{showChatTitle:true});
+    const opts = store.getNotificationPrefs("alice");
+    assert.equal(opts.showServerDomain,true);
+    assert.equal(store.getNotificationPrefs("bob").showChatTitle,false);
+    assert.equal(get()[0].body,"Release notes · notices.example.test:8443\nPlease answer in the chat.");
+    assert.deepEqual(db.prepare("SELECT body FROM notification_records WHERE id=?").get(question.id),Object.assign(Object.create(null), {body:question.body}));
+    assert.equal(store.notificationForDisplay("bob",question,opts),question);
+    assert.equal(store.notificationForDisplay("alice",{...question,chatId:null},opts).body,question.body);
+    db.prepare("INSERT INTO chats(id,owner_id,data,created_at,updated_at) VALUES (?,?,?,?,?)").run("alice-incognito","alice",JSON.stringify({id:"alice-incognito",title:"Hidden title",incognito:true}),now,now);
+    assert.equal(store.notificationForDisplay("alice",{...question,chatId:"alice-incognito"},opts).body,question.body);
+    const long = store.notificationForDisplay("alice",{...question,body:"😀".repeat(1000)},opts);
+    assert.ok(long.body.length <= 2000);
+    assert.ok(long.body.endsWith("…"));
+    assert.doesNotMatch(long.body, /[\ud800-\udbff]…$/);
+    const socket = new FakeSocket();
+    remote.bindNotificationSession(socket,"alice-pc","alice");
+    socket.message({type:"heartbeat",nativeNotifications:true});
+    store.setNotificationPrefs("alice",{remoteEnabled:true,remoteClientIds:["alice-pc"]});
+    const deliver = async (body:string) => {
+      const result = remote.sendRemoteNotification("alice-pc","alice",question,50);
+      const packet = socket.sent.at(-1)!;
+      assert.equal((packet.notification as typeof question).body,body);
+      socket.message({type:"notification_ack",requestId:packet.requestId,notificationId:question.id,ok:true});
+      assert.equal(await result,true);
+    };
+    await deliver(get()[0].body);
+    // An alert created before the preference was changed respects the current opt-outs.
+    store.setNotificationPrefs("alice",{showChatTitle:false,showServerDomain:false});
+    await deliver(question.body);
+    socket.emit("close");
   });
   await t.test("MCP route requires token, active lease, owner and matching run/chat", async () => {
     const api=await import("../app/api/internal/mcp-notifications/route");

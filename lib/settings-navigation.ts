@@ -7,7 +7,7 @@ export const SETTINGS_SECTIONS: Record<string, SettingsSection[]> = {
   general: [
     { id: "settings-appearance", label: "Appearance", keywords: "theme colors colour midnight graphite nord forest sand paper gray grey dark light design custom json import export fonts spacing radius aussehen farben grau schrift abstand" },
     { id: "settings-attachments", label: "Attachments", keywords: "upload file size limit unlimited MB GB anhänge anhaenge dateigröße dateigrosse größe unbegrenzt" },
-    { id: "settings-notifications", label: "Notifications", keywords: "sound cues finish sound custom audio browser push remote client toasts benachrichtigungen ton" },
+    { id: "settings-notifications", label: "Notifications", keywords: "sound cues finish sound custom audio browser push remote client toasts chat title server domain benachrichtigungen ton chat titel domäne" },
     { id: "settings-voice-input", label: "Voice & dictionary", keywords: "voice input microphone recording transcription speech dictation api key realtime mikrofon sprache diktat" },
     { id: "settings-dictionary", label: "Dictionary", parentSectionId: "settings-voice-input", keywords: "voice words spellings worter wörter worterbuch wörterbuch" },
     { id: "settings-browser", label: "Browser", keywords: "realtime preview stream fps viewport width height echtzeit breite hohe höhe" },

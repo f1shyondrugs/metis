@@ -2,13 +2,16 @@ import { canAccessChat } from "@/lib/project-access";
 import { randomUUID } from "node:crypto";
 import { getDatabase, transaction } from "@/lib/sqlite";
 import { getRemoteClient } from "@/lib/remote-clients";
+import { config } from "@/lib/config";
 import { z } from "zod";
 import { normalizeNotificationPrefs, remoteNotificationAllowed, type NotificationPrefs } from "@/lib/notification-preferences";
 export type { NotificationPrefs } from "@/lib/notification-preferences";
 
+const MAX_NOTIFICATION_BODY_LENGTH = 2000;
+
 export const notificationInput = z.object({
   title: z.string().trim().min(1).max(160),
-  body: z.string().trim().max(2000).default(""),
+  body: z.string().trim().max(MAX_NOTIFICATION_BODY_LENGTH).default(""),
   chatId: z.string().min(1).max(200).optional(),
 }).strict();
 export const notificationPrefsInput = z.object({
@@ -16,6 +19,8 @@ export const notificationPrefsInput = z.object({
   browserEnabled: z.boolean().optional(),
   remoteEnabled: z.boolean().optional(),
   agentFinishedEnabled: z.boolean().optional(),
+  showChatTitle: z.boolean().optional(),
+  showServerDomain: z.boolean().optional(),
   remoteClientIds: z.array(z.string().min(1).max(200)).max(50).optional(),
   remoteClient: z.object({ id: z.string().min(1).max(200), enabled: z.boolean() }).strict().optional(),
 }).strict();
@@ -109,6 +114,35 @@ export function notificationDeliverySummary(ownerId: string, notificationId: str
     deliveredDevices: deliveries.filter(item=>item.acknowledged_at).length };
 }
 
+// Decorate only at presentation time: a pending delivery uses the current
+// opt-ins and chat access, and the durable record never contains private context.
+export function notificationForDisplay(ownerId: string, record: NotificationRecord, prefs: NotificationPrefs): NotificationRecord {
+  if ((!prefs.showChatTitle && !prefs.showServerDomain) || !record.chatId || !canAccessChat(record.chatId, ownerId)) return record;
+  const db = notificationDatabase();
+  const chat = (db.prepare("SELECT substr(title,1,160) AS title, incognito FROM chat_list WHERE id=?").get(record.chatId)
+    ?? db.prepare("SELECT substr(json_extract(data,'$.title'),1,160) AS title, COALESCE(json_extract(data,'$.incognito'),0) AS incognito FROM chats WHERE id=?").get(record.chatId)) as
+    {title?: unknown; incognito?: unknown} | undefined;
+  if (!chat || chat.incognito) return record;
+  const details: string[] = [];
+  if (prefs.showChatTitle && typeof chat.title === "string") {
+    const title = chat.title.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/gu, " ").trim();
+    if (title) details.push(title);
+  }
+  if (prefs.showServerDomain) {
+    try {
+      const server = new URL(config.publicUrl);
+      if (["https:", "http:"].includes(server.protocol) && server.host.length > 0 && server.host.length <= 260) details.push(server.host);
+    } catch { /* An invalid configured URL is never displayed as a fallback. */ }
+  }
+  if (!details.length) return record;
+  const context = details.join(" · ");
+  const text = record.body ? context + "\n" + record.body : context;
+  // Keep the payload compatible with already installed desktop clients.
+  const body = text.length <= MAX_NOTIFICATION_BODY_LENGTH ? text
+    : text.slice(0, MAX_NOTIFICATION_BODY_LENGTH - 1).replace(/[\ud800-\udbff]$/, "") + "…";
+  return { ...record, body };
+}
+
 export function getNotificationFeed(ownerId: string, after?: number) {
   const db = notificationDatabase();
   const cursor = Number((db.prepare("SELECT COALESCE(MAX(sequence),0) AS cursor FROM notification_records WHERE owner_id=?").get(ownerId) as {cursor:number}).cursor);
@@ -116,5 +150,7 @@ export function getNotificationFeed(ownerId: string, after?: number) {
     "SELECT id,sequence,title,body,chat_id AS chatId,created_at AS createdAt FROM notification_records WHERE owner_id=? AND sequence>? ORDER BY sequence LIMIT 100"
   ).all(ownerId, after) as NotificationRecord[];
   const nextCursor = notifications.length ? notifications[notifications.length - 1].sequence : Math.max(after ?? 0, cursor);
-  return { notifications, cursor: nextCursor, hasMore: notifications.length === 100, prefs: getNotificationPrefs(ownerId) };
+  const prefs = getNotificationPrefs(ownerId);
+  return { notifications: notifications.map(record => notificationForDisplay(ownerId, record, prefs)),
+    cursor: nextCursor, hasMore: notifications.length === 100, prefs };
 }

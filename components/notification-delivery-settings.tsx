@@ -30,6 +30,18 @@ export function NotificationDeliverySettings({settings,onOpenDevices}:{settings:
       <Button type="button" size="sm" variant="outline" onClick={onOpenDevices}>Manage Remote Devices</Button>
     </div>
     <div className="flex items-center justify-between gap-4 border-t border-border/60 pt-3"><div className="min-w-0"><label htmlFor="notification-toast" className="cursor-pointer text-sm">In-app toasts</label><p className="mt-1 text-xs text-muted-foreground">Messages inside the Metis workspace.</p></div><Switch id="notification-toast" aria-label="In-app toasts" className="shrink-0" checked={prefs?.toastEnabled??false} disabled={!prefs||busy} onCheckedChange={toastEnabled=>void save({toastEnabled})}/></div>
+    <section aria-labelledby="notification-content-heading" className="space-y-3 border-t border-border/60 pt-3">
+      <h4 id="notification-content-heading" className="text-sm font-medium">Notification details</h4>
+      <div className="flex min-h-11 items-center justify-between gap-4">
+        <div className="min-w-0"><label htmlFor="notification-chat-title" className="cursor-pointer text-sm">Show chat title</label><p id="notification-chat-title-help" className="mt-1 text-xs text-muted-foreground">Identify which chat needs an answer or has finished.</p></div>
+        <Switch id="notification-chat-title" aria-describedby="notification-chat-title-help" className="shrink-0" checked={prefs?.showChatTitle ?? false} disabled={!prefs || busy} onCheckedChange={showChatTitle=>void save({showChatTitle})}/>
+      </div>
+      <div className="flex min-h-11 items-center justify-between gap-4">
+        <div className="min-w-0"><label htmlFor="notification-server-domain" className="cursor-pointer text-sm">Show server domain</label><p id="notification-server-domain-help" className="mt-1 text-xs text-muted-foreground">Identify which Metis server sent a chat notification.</p></div>
+        <Switch id="notification-server-domain" aria-describedby="notification-server-domain-help" className="shrink-0" checked={prefs?.showServerDomain ?? false} disabled={!prefs || busy} onCheckedChange={showServerDomain=>void save({showServerDomain})}/>
+      </div>
+      <p className="text-xs text-muted-foreground">Applies to in-app toasts and desktop alerts.</p>
+    </section>
     <NotificationSettingsFeedback settings={settings}/>
     <details className="border-t border-border/60 pt-3"><summary className="min-h-9 cursor-pointer text-xs">Send a custom notification</summary><div className="mt-2 space-y-2">
       <label htmlFor="custom-notification-title" className="block text-xs">Title</label><Input id="custom-notification-title" maxLength={160} value={title} onChange={e=>setTitle(e.target.value)}/>
