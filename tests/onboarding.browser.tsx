@@ -164,7 +164,7 @@ async function run(){
  await click("App settings");
  check(document.querySelector('[role="dialog"]')?.textContent?.includes("App settings")&&!!button("Replay onboarding"),"desktop App settings exposes the replay action");
  await click("Replay onboarding");
- check(document.querySelectorAll('[role="dialog"]').length===1&&!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Welcome, alice"),"App settings closes before the replay opens at Welcome");
+ check(document.querySelectorAll('[role="dialog"][data-state="open"]').length===1&&!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Welcome, alice"),"App settings closes when replay opens at Welcome");
  await click("Continue");
  check(!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Set up this desktop")&&!document.querySelector('.onboarding-stage input[type="checkbox"]'),"desktop webview replay explains device setup without offering a pairing action");
  await click("Finish");
