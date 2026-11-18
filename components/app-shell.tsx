@@ -9997,39 +9997,37 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                     {c.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
                     {c.pinned ? "Unpin" : "Pin"}
                   </DropdownMenuItem>
-                  {c.incognito ? null : (
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>
-                        <FolderInput className="size-3.5" />
-                        Move to project
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="z-[1300]">
-                        {c.projectId ? (
-                          <DropdownMenuItem onClick={() => void moveChatToProject(c.id, null)}>
-                            <FolderX className="size-3.5" />
-                            Remove from project
-                          </DropdownMenuItem>
-                        ) : null}
-                        {sidebarProjects.filter((project) => project.id !== c.projectId).map((project) => (
-                          <DropdownMenuItem key={project.id} onClick={() => void moveChatToProject(c.id, project.id)}>
-                            <ProjectAvatar
-                              id={project.id}
-                              icon={project.icon || "folder"}
-                              color={project.color || "#64748b"}
-                              hasLogo={Boolean(project.logoStoredName)}
-                              updatedAt={project.updatedAt}
-                              label=""
-                              className="size-4 rounded"
-                            />
-                            {project.name}
-                          </DropdownMenuItem>
-                        ))}
-                        {sidebarProjects.filter((project) => project.id !== c.projectId).length === 0 && !c.projectId ? (
-                          <DropdownMenuItem disabled>No projects yet</DropdownMenuItem>
-                        ) : null}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  )}
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <FolderInput className="size-3.5" />
+                      Move to project
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="z-[1300]">
+                      {c.projectId ? (
+                        <DropdownMenuItem onClick={() => void moveChatToProject(c.id, null)}>
+                          <FolderX className="size-3.5" />
+                          Remove from project
+                        </DropdownMenuItem>
+                      ) : null}
+                      {sidebarProjects.filter((project) => project.id !== c.projectId).map((project) => (
+                        <DropdownMenuItem key={project.id} onClick={() => void moveChatToProject(c.id, project.id)}>
+                          <ProjectAvatar
+                            id={project.id}
+                            icon={project.icon || "folder"}
+                            color={project.color || "#64748b"}
+                            hasLogo={Boolean(project.logoStoredName)}
+                            updatedAt={project.updatedAt}
+                            label=""
+                            className="size-4 rounded"
+                          />
+                          {project.name}
+                        </DropdownMenuItem>
+                      ))}
+                      {sidebarProjects.filter((project) => project.id !== c.projectId).length === 0 && !c.projectId ? (
+                        <DropdownMenuItem disabled>No projects yet</DropdownMenuItem>
+                      ) : null}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
                   <DropdownMenuItem
                     onClick={() => void updateChatFlags(c.id, { archived: true })}
                   >

@@ -55,7 +55,11 @@ test("authenticated search and both resolution paths use the owner and current p
   const submitted = [{ kind: "skill" as const, id: "picker-skill", label: "FORGED", path: "/fake/path", content: "FORGED", source: "explicit" as const }];
   assert.deepEqual(context.resolveReferences(owner.id, chat.id, submitted), [{ ...result[0], source: "explicit" }]);
   assert.deepEqual(scoped.resolveScopeReferences(owner.id, chat.id, submitted), [{ ...result[0], source: "explicit" }]);
-  const job = { chatId: chat.id, userId: owner.id, modeId: "agent", message: "Work", references: submitted } as Parameters<typeof prompt.buildProviderPrompt>[0]["job"];
+  const stamp = new Date().toISOString();
+  const job = {
+    id: "skill-reference-fixture", status: "running", attempts: 1, createdAt: stamp, updatedAt: stamp,
+    chatId: chat.id, userId: owner.id, modeId: "agent", message: "Work", references: submitted,
+  } satisfies Parameters<typeof prompt.buildProviderPrompt>[0]["job"];
   const used = prompt.buildProviderPrompt({ job });
   assert.match(used, /explicitly selected these skills/);
   assert.doesNotMatch(used, /FORGED|OWNER_INSTRUCTIONS_NOT_SEARCH_METADATA/);
