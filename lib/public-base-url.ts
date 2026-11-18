@@ -41,8 +41,8 @@ export function skillShareToken(value: string, currentOrigin: string, base: Publ
 }
 
 export type PublicBaseCheck =
-  | { state: "verified" | "unreachable" | "not_metis" | "other_instance" }
+  | { state: "verified" | "unreachable" | "not_metis" | "other_instance" | "unsafe_url" | "https_required" }
   | { state: "redirect" | "http_error"; status: number }
   | Extract<PublicBaseUrl, { state: "unset" | "invalid" }>;
 
-export const PUBLIC_SHARE_URL_HINT = "Public links need a reachable app URL. Ask your server operator to configure AI_CHAT_PUBLIC_URL.";
+export const PUBLIC_SHARE_URL_HINT = "Public links need a reachable app URL. Ask your server operator to set one in setup or configure AI_CHAT_PUBLIC_URL.";

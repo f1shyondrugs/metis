@@ -1,5 +1,5 @@
 import { getAuthenticatedUserId } from "@/lib/auth";
-import { config } from "@/lib/config";
+import { getPublicBaseUrl } from "@/lib/public-base-settings";
 import { publicShareUrl } from "@/lib/public-base-url";
 import { canShareSkill, createSkillShare, revokeSkillShare, skillShareLink } from "@/lib/skill-sharing";
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ async function account(req: Request, context: Context) {
   return { ownerId, id };
 }
 function result(token: string | null) {
-  return Response.json({ token, url: token ? publicShareUrl(config.publicBaseUrl, "/skills/share/" + token) : null }, { headers: { "Cache-Control": "no-store" } });
+  return Response.json({ token, url: token ? publicShareUrl(getPublicBaseUrl(), "/skills/share/" + token) : null }, { headers: { "Cache-Control": "no-store" } });
 }
 export async function GET(req: Request, context: Context) {
   const a = await account(req, context);

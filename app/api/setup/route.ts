@@ -5,8 +5,10 @@ import { bootstrapSetupAccount, SetupBootstrapError, getSetupStatus, markSetupCo
 import { isHostAdmin, inferOsUsernameForWorkspace, listHostOsUsers } from "@/lib/user-access";
 import { hostPlatform } from "@/lib/user-isolation";
 import { config } from "@/lib/config";
-import { checkPublicBaseUrl } from "@/lib/public-base-check";
-import { requestIsSecure } from "@/lib/request-network";
+import { checkEditedPublicBaseUrl, checkPublicBaseUrl } from "@/lib/public-base-check";
+import { getPublicBaseUrl, saveVerifiedPublicBaseUrl } from "@/lib/public-base-settings";
+import { resolvePublicBaseUrl } from "@/lib/public-base-url";
+import { requestIsSecure, requestOriginAllowed } from "@/lib/request-network";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { setupTokenConsumed, validSetupToken } from "@/lib/setup-token";
 
@@ -56,6 +58,7 @@ export async function POST(req: Request) {
     username?: string;
     password?: string;
     osUsername?: string | null;
+    publicUrl?: unknown;
   };
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return Response.json({ error: "Invalid setup request" }, { status: 400 });
@@ -63,7 +66,12 @@ export async function POST(req: Request) {
   const action = body.action || "";
 
   if (action === "check-public-url") {
+    if (!requestOriginAllowed(req)) return Response.json({ error: "Invalid origin." }, { status: 403 });
     const userId = await getAuthenticatedUserId(req);
+    const editing = "publicUrl" in body;
+    if (editing && (!userId || !isHostAdmin(userId) || !getSetupStatus().needed)) {
+      return Response.json({ error: "The setup administrator must be signed in and setup must still be open." }, { status: 403 });
+    }
     const allowed = userId
       ? isHostAdmin(userId)
       : !getSetupStatus().hasUsers && validSetupToken(body.setupToken);
@@ -72,7 +80,21 @@ export async function POST(req: Request) {
     if (!limit.allowed) return Response.json({ error: "Too many URL checks. Wait a minute and try again." }, {
       status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) },
     });
-    return Response.json({ check: await checkPublicBaseUrl(config.publicBaseUrl) }, { headers: { "Cache-Control": "no-store" } });
+    if (editing && typeof body.publicUrl !== "string") {
+      return Response.json({ error: "Enter an HTTP or HTTPS address." }, { status: 400 });
+    }
+    const base = typeof body.publicUrl === "string" ? resolvePublicBaseUrl(body.publicUrl) : getPublicBaseUrl();
+    const fallback = config.publicBaseUrl;
+    const operatorDefault = "url" in base && "url" in fallback && base.url === fallback.url;
+    const check = !("url" in base) || operatorDefault
+      ? await checkPublicBaseUrl(base)
+      : await checkEditedPublicBaseUrl(base);
+    if (editing && check.state === "verified" && "url" in base && base.state === "configured") {
+      if (!getSetupStatus().needed) return Response.json({ error: "Setup is already complete." }, { status: 409 });
+      saveVerifiedPublicBaseUrl(base);
+    }
+    return Response.json({ check, ...(editing && check.state === "verified" ? { base } : {}) },
+      { headers: { "Cache-Control": "no-store" } });
   }
 
   if (action === "os-users") {

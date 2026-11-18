@@ -21,6 +21,7 @@ export function SetupWizard({ open, hasUsers, onFinished }: {
   const [accountCreated, setAccountCreated] = useState(hasUsers);
   const [signInRequired, setSignInRequired] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [checkingUrl, setCheckingUrl] = useState(false);
   const [error, setError] = useState("");
   const submitting = useRef(false);
   useEffect(() => { if (hasUsers) setAccountCreated(true); }, [hasUsers]);
@@ -74,7 +75,7 @@ export function SetupWizard({ open, hasUsers, onFinished }: {
     description={signInRequired ? "Sign in as the admin to finish setup." : showAdmin ? "This account manages your Metis server." : "What address do you use to open Metis? This is where your share links will point."}
     progress={<OnboardingProgress steps={STEPS} index={step === "public-url" ? 1 : 0}/>}
     footer={<Button type={showAdmin ? "submit" : "button"}
-      form={showAdmin ? formId : undefined} disabled={busy}
+      form={showAdmin ? formId : undefined} disabled={busy || checkingUrl}
       onClick={signInRequired ? () => window.location.reload() : !showAdmin ? () => void submit() : undefined}>
       {busy ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin"/> : null}
       {showAdmin || signInRequired ? "Continue" : "Finish"} {!busy ? <ArrowRight aria-hidden="true" className="size-4"/> : null}
@@ -96,6 +97,6 @@ export function SetupWizard({ open, hasUsers, onFinished }: {
       <SetupDisclosure label="Where to find the setup token">
         Ask your server operator for the one-time token from <code>data/setup-token</code> (or <code>setup-token</code> in <code>CHAT_DATA_DIR</code>), or <code>AI_CHAT_SETUP_TOKEN</code>.
       </SetupDisclosure>
-    </form> : !signInRequired ? <SetupPublicUrlCheck disabled={busy} /> : null}
+    </form> : !signInRequired ? <SetupPublicUrlCheck disabled={busy} onCheckingChange={setCheckingUrl} /> : null}
   </OnboardingStage>;
 }

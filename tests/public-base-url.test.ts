@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import dns from "node:dns/promises";
+import https from "node:https";
+import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { after, before, test } from "node:test";
+import { after, before, mock, test } from "node:test";
 import { chatShareUrl, publicShareUrl, resolvePublicBaseUrl, skillShareToken } from "../lib/public-base-url";
 
 const token = "1".repeat(48);
@@ -80,8 +83,8 @@ const fixture = createServer(async (req, res) => {
 });
 
 const operatorToken = "synthetic-test-operator-token-not-a-production-value";
-const setupRequest = (fields: Record<string, unknown>) => setupPost(new Request(origin + "/api/setup", {
-  method: "POST", headers: { "Content-Type": "application/json" },
+const setupRequest = (fields: Record<string, unknown>, headers: Record<string, string> = {}) => setupPost(new Request(origin + "/api/setup", {
+  method: "POST", headers: { "Content-Type": "application/json", ...headers },
   body: JSON.stringify({ action: "check-public-url", ...fields }),
 }));
 
@@ -142,4 +145,60 @@ test("configured address is not verified for another instance, HTML, redirects, 
   assert.equal(redirectRequests, 0);
   assert.deepEqual(await check(resolvePublicBaseUrl(undefined)), { state: "unset" });
   assert.deepEqual(await check(resolvePublicBaseUrl("invalid")), { state: "invalid" });
+});
+
+test("only the signed-in setup admin can save a verified public URL; private destinations never connect", async () => {
+  assert.equal((await setupRequest({ publicUrl: "https://metis.example", setupToken: operatorToken })).status, 403);
+  const creation = await setupRequest({ action: "bootstrap", username: "url-fixture-admin", password: "fixture-password-12", setupToken: operatorToken });
+  assert.equal(creation.status, 201);
+  const cookie = creation.headers.get("set-cookie")?.split(";")[0] || "";
+  assert(cookie);
+  const { getPublicBaseUrl } = await import("../lib/public-base-settings");
+  assert.equal((await setupRequest({ publicUrl: "https://metis.example" }, { cookie, origin: "https://foreign.example" })).status, 403);
+  assert.deepEqual(await (await setupRequest({ publicUrl: "http://metis.example" }, { cookie })).json(), { check: { state: "https_required" } });
+  assert.deepEqual(await (await setupRequest({ publicUrl: "https://192.168.1.10" }, { cookie })).json(), { check: { state: "unsafe_url" } });
+  assert.deepEqual(getPublicBaseUrl(), resolvePublicBaseUrl(origin));
+
+  let secureRequests = 0;
+  let correctInstance = false;
+  const address = "93.184.216.34";
+  const resolver = mock.method(dns, "lookup", (async () => [{ address, family: 4 }]) as unknown as typeof dns.lookup);
+  const transport = mock.method(https, "request", ((target: URL, options: https.RequestOptions, onResponse: (response: unknown) => void) => {
+    secureRequests++;
+    assert.equal(target.origin, "https://metis.example");
+    assert.equal(target.pathname, "/api/instance-proof");
+    assert.equal(options.agent, false);
+    assert.equal(options.family, 4);
+    assert(!options.headers || !Object.keys(options.headers).some(name => /^(cookie|authorization)$/i.test(name)));
+    const pinnedLookup = options.lookup as (hostname: string, options: object, cb: (error: Error | null, ip: string, family: number) => void) => void;
+    pinnedLookup("metis.example", {}, (error, ip, family) => {
+      assert.equal(error, null); assert.equal(ip, address); assert.equal(family, 4);
+    });
+    const returned = correctInstance ? instanceProof(new Request(target)).headers.get("x-metis-instance-proof") : "1".repeat(64);
+    return Object.assign(new EventEmitter(), { end() {
+      onResponse({ statusCode: 204, headers: { "x-metis-instance-proof": returned }, destroy() {} });
+    } });
+  }) as unknown as typeof https.request);
+  try {
+    const wrong = await setupRequest({ publicUrl: "https://metis.example" }, { cookie });
+    assert.deepEqual(await wrong.json(), { check: { state: "other_instance" } });
+    assert.deepEqual(getPublicBaseUrl(), resolvePublicBaseUrl(origin));
+    correctInstance = true;
+    const verified = await setupRequest({ publicUrl: "https://metis.example/" }, { cookie });
+    const base = resolvePublicBaseUrl("https://metis.example");
+    assert.deepEqual(await verified.json(), { check: { state: "verified" }, base });
+    assert.deepEqual(getPublicBaseUrl(), base);
+    assert.equal(chatShareUrl(getPublicBaseUrl(), "test"), "https://metis.example/share?id=test");
+    assert.equal(secureRequests, 2);
+
+    const { config } = await import("../lib/config");
+    const writable = config as { publicBaseUrl: ReturnType<typeof resolvePublicBaseUrl> };
+    const oldDefault = writable.publicBaseUrl;
+    try {
+      writable.publicBaseUrl = resolvePublicBaseUrl("https://operator-change.example");
+      assert.deepEqual(getPublicBaseUrl(), writable.publicBaseUrl);
+    } finally { writable.publicBaseUrl = oldDefault; }
+    assert.equal((await setupRequest({ action: "complete" }, { cookie })).status, 200);
+    assert.equal((await setupRequest({ publicUrl: "https://metis.example" }, { cookie })).status, 403);
+  } finally { transport.mock.restore(); resolver.mock.restore(); }
 });
