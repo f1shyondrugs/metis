@@ -1,4 +1,5 @@
-export const RUNTIME_MODES = ["approval-required", "auto-accept-edits", "auto", "full-access"] as const;
+import { RUNTIME_MODES } from "./mcp-core/runtime-permissions.mjs";
+export { RUNTIME_MODES } from "./mcp-core/runtime-permissions.mjs";
 export type RuntimeMode = (typeof RUNTIME_MODES)[number];
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 

@@ -557,7 +557,8 @@ async function browserTextRedactor(page: Page) {
   return createBrowserTextRedactor([...browserInputSecrets(page),...secrets],[...browserUrlSecrets(page),...urlSecrets]);
 }
 
-export async function collectFrameText(page: Page, mode: "text" | "snapshot") {
+export async function collectFrameText(page: Page, mode: "text" | "snapshot", audience: "agent" | "user" = "agent") {
+  const outputText = audience === "user" ? (text: string) => text : await browserTextRedactor(page);
   const chunks: string[] = [];
   let remaining = MAX_SNAPSHOT_LENGTH;
   const frames = page.frames();
@@ -566,9 +567,9 @@ export async function collectFrameText(page: Page, mode: "text" | "snapshot") {
     const text = mode === "snapshot"
       ? await frame.locator("body").ariaSnapshot().catch(() => frame.locator("body").innerText().catch(() => ""))
       : await frame.locator("body").innerText().catch(() => "");
-    const clean = (await redactBrowserText(page, text)).trim();
+    const clean = outputText(text).trim();
     if (!clean) continue;
-    const header = frames.length > 1 ? `--- frame ${index}: ${await redactBrowserText(page,frameUrlLabel(frame))} ---\n` : "";
+    const header = frames.length > 1 ? `--- frame ${index}: ${outputText(frameUrlLabel(frame))} ---\n` : "";
     const chunk = `${header}${clean}`.slice(0, remaining);
     chunks.push(chunk);
     remaining -= chunk.length + 2;
@@ -576,7 +577,9 @@ export async function collectFrameText(page: Page, mode: "text" | "snapshot") {
   return chunks.join("\n\n").slice(0, MAX_SNAPSHOT_LENGTH);
 }
 
-export const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
+function browserFormStateExpression(audience: "agent" | "user") {
+  return String.raw`(() => {
+  const ownerView = ${audience === "user"};
   const cssPath = (element) => {
     if (element.id) return '#' + CSS.escape(element.id);
     const parts = [];
@@ -631,7 +634,7 @@ export const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
         label: (explicitLabel || closestLabel || (element.innerText || '').trim().slice(0, 500)) || undefined,
         placeholder: element.placeholder || undefined,
         ariaLabel: element.getAttribute('aria-label') || undefined,
-        value: element.type === 'hidden' || sensitive(element) ? '[REDACTED]' : ('value' in element ? String(element.value ?? '') : undefined),
+        value: !ownerView && (element.type === 'hidden' || sensitive(element)) ? '[REDACTED]' : ('value' in element ? String(element.value ?? '') : undefined),
         checked: typeof element.checked === 'boolean' ? element.checked : undefined,
         disabled: 'disabled' in element ? Boolean(element.disabled) : undefined,
         visible: element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0 && !['hidden', 'collapse'].includes(getComputedStyle(element).visibility),
@@ -640,14 +643,16 @@ export const BROWSER_FORM_STATE_EXPRESSION = String.raw`(() => {
     }),
   };
 })()`;
+}
+export const BROWSER_FORM_STATE_EXPRESSION = browserFormStateExpression("agent");
 
-export async function collectFormState(page: Page): Promise<{ text: string; controls: BrowserFormControl[] }> {
+export async function collectFormState(page: Page, audience: "agent" | "user" = "agent"): Promise<{ text: string; controls: BrowserFormControl[] }> {
   const controls: BrowserFormControl[] = [];
   const textChunks: string[] = [];
   const frames = page.frames();
   for (let frameIndex = 0; frameIndex < frames.length && controls.length < 500; frameIndex += 1) {
     const frame = frames[frameIndex];
-    const frameState = await frame.evaluate(BROWSER_FORM_STATE_EXPRESSION).catch(() => ({ text: '', controls: [] })) as {
+    const frameState = await frame.evaluate(browserFormStateExpression(audience)).catch(() => ({ text: '', controls: [] })) as {
       text: string;
       controls: Array<Omit<BrowserFormControl, 'index' | 'frame' | 'frameUrl'>>;
     };
@@ -665,6 +670,7 @@ export async function collectFormState(page: Page): Promise<{ text: string; cont
       });
     }
   }
+  if (audience === "user") return {text:textChunks.join("\n\n").slice(0,60_000),controls};
   // A frame may echo a password from another frame. Redact the whole serialized
   // result against every frame, including labels, selectors and frame URLs.
   const redact=await browserTextRedactor(page);
@@ -672,7 +678,7 @@ export async function collectFormState(page: Page): Promise<{ text: string; cont
   return scrub({text:textChunks.join('\n\n').slice(0,60_000),controls}) as {text:string;controls:BrowserFormControl[]};
 }
 
-async function pageInfo(state: BrowserContextState, tabId: string) {
+async function pageInfo(state: BrowserContextState, tabId: string, audience: "agent" | "user" = "agent") {
   const page = state.tabs.get(tabId)!;
   const url = page.url();
   const faviconHref = await withTimeout(
@@ -690,26 +696,34 @@ async function pageInfo(state: BrowserContextState, tabId: string) {
   } else if (url && url !== "about:blank") {
     favicon = `${new URL(url).origin}/favicon.ico`;
   }
+  const outputText = audience === "user" ? (text: string) => text : await browserTextRedactor(page);
   return {
     id: tabId,
-    url: await redactBrowserText(page,url),
-    title: await redactBrowserText(page,await withTimeout(page.title(), 5_000, "Timed out reading browser page title").catch(() => "New tab")),
-    favicon: favicon ? await redactBrowserText(page,favicon) : undefined,
+    url: outputText(url),
+    title: outputText(await withTimeout(page.title(), 5_000, "Timed out reading browser page title").catch(() => "New tab")),
+    favicon: favicon ? outputText(favicon) : undefined,
   };
 }
 
-async function resultFor(state: BrowserContextState, tabId: string): Promise<BrowserResult> {
+async function resultFor(state: BrowserContextState, tabId: string, audience: "agent" | "user" = "agent"): Promise<BrowserResult> {
   const page = state.tabs.get(tabId)!;
-  const info = await pageInfo(state, tabId);
+  const info = await pageInfo(state, tabId, audience);
   return {
     sessionId: sessionKey(state.ownerId, state.chatId),
     tabId,
     activeTabId: state.activeTabId,
     url: info.url,
     title: info.title,
-    tabs: await Promise.all([...state.tabs.keys()].map((id) => pageInfo(state, id))),
+    tabs: await Promise.all([...state.tabs.keys()].map((id) => pageInfo(state, id, audience))),
     viewport: state.context.pages().find((candidate) => candidate === page)?.viewportSize() || { width: 1280, height: 800 },
   };
+}
+
+// Advisory chat context is used by references/providers: never persist owner-only output.
+export async function getBrowserAgentContext(ownerId: string, chatId: string) {
+  const state = sessions.get(sessionKey(ownerId, chatId));
+  if (!state) throw new Error("Browser session required");
+  return resultFor(state, state.activeTabId);
 }
 
 // Trusted server-to-broker routing only. Agent-visible pageInfo stays redacted.
@@ -740,13 +754,13 @@ export async function captureBrowserFrame(
   const page = state.tabs.get(tabId)!;
   const url = page.url();
   const info = includeMetadata
-    ? await pageInfo(state, tabId)
+    ? await pageInfo(state, tabId, "user")
     : { id: tabId, url, title: "" };
   return {
     tabId,
     activeTabId: state.activeTabId,
     tabs: includeMetadata
-      ? await Promise.all([...state.tabs.keys()].map((id) => pageInfo(state, id)))
+      ? await Promise.all([...state.tabs.keys()].map((id) => pageInfo(state, id, "user")))
       : [],
     url: url === "about:blank" ? "" : url,
     title: info.title,
@@ -773,6 +787,8 @@ export async function setBrowserViewport(
 async function performBrowserActionUnlocked(ownerId: string, chatId: string, action: BrowserAction): Promise<BrowserResult> {
   if (!ownerId || !chatId) throw new Error("Browser actions require an authenticated user and chat");
   const state = await getSession(ownerId, chatId);
+  // source is assigned by the authenticated app boundary, never by MCP arguments.
+  const audience = action.source === "user" ? "user" : "agent";
   let tabId: string;
   let page: Page;
 
@@ -816,20 +832,20 @@ async function performBrowserActionUnlocked(ownerId: string, chatId: string, act
       } catch (error) {
         const message = error instanceof Error ? error.message : "Browser batch step failed";
         batch.push({ index, action: step.action, ok: false, error: message });
-        const failed = await resultFor(state, state.activeTabId);
+        const failed = await resultFor(state, state.activeTabId, audience);
         failed.batch = batch;
         if (action.includeSnapshot) {
           const activePage = state.tabs.get(state.activeTabId)!;
-          failed.snapshot = await collectFrameText(activePage, "snapshot");
+          failed.snapshot = await collectFrameText(activePage, "snapshot", audience);
         }
         return failed;
       }
     }
-    const completed = await resultFor(state, state.activeTabId);
+    const completed = await resultFor(state, state.activeTabId, audience);
     completed.batch = batch;
     if (action.includeSnapshot) {
       const activePage = state.tabs.get(state.activeTabId)!;
-      completed.snapshot = await collectFrameText(activePage, "snapshot");
+      completed.snapshot = await collectFrameText(activePage, "snapshot", audience);
     }
     emitBrowserEvent({ type: "action", source: actionSource(action), ownerId, chatId, tabId: completed.tabId, url: completed.url, title: completed.title, action: action.action, ts: Date.now() });
     return completed;
@@ -956,7 +972,7 @@ async function performBrowserActionUnlocked(ownerId: string, chatId: string, act
     const filename = await download.suggestedFilename();
     const destination = path.join(directory, filename);
     await download.saveAs(destination);
-    const downloadResult = { ...(await resultFor(state, tabId)), downloadPath: destination, downloadFilename: filename };
+    const downloadResult = { ...(await resultFor(state, tabId, audience)), downloadPath: destination, downloadFilename: filename };
     emitBrowserEvent({ type: "action", source: actionSource(action), ownerId, chatId, tabId, url: downloadResult.url, title: downloadResult.title, action: action.action, ts: Date.now() });
     return downloadResult;
   }
@@ -979,9 +995,9 @@ async function performBrowserActionUnlocked(ownerId: string, chatId: string, act
   }
 
   recordOrigin(ownerId, page.url());
-  const result = await resultFor(state, tabId);
+  const result = await resultFor(state, tabId, audience);
   if (action.action === "form_state") {
-    result.form = await collectFormState(page);
+    result.form = await collectFormState(page, audience);
   }
   // Direct browser UI calls retain automatic frames. Agent/MCP calls set
   // includeScreenshot=false and request an explicit screenshot only when visual
@@ -991,13 +1007,13 @@ async function performBrowserActionUnlocked(ownerId: string, chatId: string, act
     result.screenshot = (await screenshotPage(page, { type: "jpeg", quality: 60 })).toString("base64");
   }
   if (action.action === "snapshot") {
-    result.snapshot = await collectFrameText(page, "snapshot");
+    result.snapshot = await collectFrameText(page, "snapshot", audience);
   }
   if (action.action === "extract_text") {
-    result.snapshot = await collectFrameText(page, "text");
+    result.snapshot = await collectFrameText(page, "text", audience);
   }
   if (action.includeSnapshot && !result.snapshot) {
-    result.snapshot = await collectFrameText(page, "snapshot");
+    result.snapshot = await collectFrameText(page, "snapshot", audience);
   }
 
   emitBrowserEvent({ type: "action", source: actionSource(action), ownerId, chatId, tabId, url: result.url, title: result.title, action: action.action, ts: Date.now() });

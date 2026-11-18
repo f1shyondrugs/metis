@@ -1,5 +1,6 @@
 import { assistantOriginPrompt } from "@/lib/assistant-origin";
 import { modeById } from "@/lib/modes";
+import { runtimeModeForChat } from "@/lib/runtime-mode";
 import { memoryWorkingPrompt } from "@/lib/mcp-core/memory-instructions.mjs";
 import { agentRulesPrompt } from "@/lib/agent-rules";
 import { getChat, getGlobalModelSettings } from "@/lib/db-store";
@@ -153,6 +154,7 @@ export function buildProviderPromptParts(input: ProviderPromptContext): { instru
     // Layer 1 — Core Context: stable identity, policy, mode and tool contract.
     metisAgentIdentity(),
     `Current agent mode: ${activeMode.name}\n${activeMode.instructions}`,
+    `Current runtime permissions: ${runtimeModeForChat(chat)}. Agent mode and runtime permissions are independent.`,
     buildSkillContext(job.message, skillSettings, {
       modeId: activeMode.id,
       explicitSkillIds: resolvedReferences.filter(reference => reference.kind === "skill").map(reference => reference.id),

@@ -1,4 +1,7 @@
 "use client";
+
+import { useChatList } from "@/components/use-chat-list";
+import { ChatListLoadMore } from "@/components/chat-list-load-more";
 import { Link2 } from "lucide-react";
 import { useModelChains, useChatModelChain, notifyModelChainsChanged } from "@/components/use-model-chains";
 import type { ModelChain } from "@/lib/model-chain-types";
@@ -1598,8 +1601,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const workspaceDefaultCwd = status?.agentCwd?.trim() || defaultCwd.trim() || clientConfig.defaultCwd;
   const chatCacheScope = status?.agentCwd?.trim() || clientConfig.storagePrefix;
 
-  const [chats, setChats] = useState<ChatIndexEntry[]>([]);
-  const [chatsLoaded, setChatsLoaded] = useState(false);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const projectedTranscript = useMemo(() => projectChatTranscript(projectQuestionTranscript(messages)), [messages]);
@@ -1726,6 +1727,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [projectHomeId, setProjectHomeId] = useState<string | null>(null);
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const [sidebarAllProjects, setSidebarAllProjects] = useState(true);
+  const sidebarProjectId = sidebarAllProjects ? null : projectHomeId || draftProjectId;
+  const { chats, setChats, loaded: chatsLoaded, loading: chatsLoading, error: chatsError,
+    nextCursor: chatsNextCursor, refresh: loadChats, loadMore: loadMoreChats } = useChatList(authed === true, sidebarProjectId);
   const draftProjectIdRef = useRef<string | null>(null);
   const [sidebarProjects, setSidebarProjects] = useState<Array<{
     mode?: "chat" | "agents";
@@ -2361,7 +2365,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }).then(response => {
       if (!response.ok && acknowledgedActivityRef.current.get(id) === revision) acknowledgedActivityRef.current.delete(id);
     }).catch(() => { if (acknowledgedActivityRef.current.get(id) === revision) acknowledgedActivityRef.current.delete(id); });
-  }, []);
+  }, [setChats]);
 
   // A snapshot is acknowledged only after its messages have rendered in a visible chat.
   useEffect(() => { if (activeChatId) clearUnread(activeChatId); }, [activeChatId, messages, clearUnread]);
@@ -3618,21 +3622,16 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }
   }, []);
 
-  const loadChats = useCallback(async () => {
-    try {
-      const res = await fetchReadWithRetry("/api/chats", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to load chats");
-      const data = (await res.json()) as { chats: ChatIndexEntry[] };
-      for (const chat of data.chats) latestActivityRef.current.set(chat.id, chat.activityRevision ?? 0);
-      setChats(data.chats);
-      const serverUnreadIds = data.chats.filter(chat =>
+  useEffect(() => {
+      for (const chat of chats) latestActivityRef.current.set(chat.id, chat.activityRevision ?? 0);
+      const serverUnreadIds = chats.filter(chat =>
         (chat.unread ?? chat.badge === "blue") &&
         (chat.activityRevision === undefined || chat.activityRevision > (acknowledgedActivityRef.current.get(chat.id) ?? -1))
       ).map(chat => chat.id);
       setUnreadChatIds(serverUnreadIds);
       saveUnreadChatIds(serverUnreadIds);
-      const attentionChats = data.chats.filter(chat => chat.pendingQuestion || chat.pendingApproval);
-      setAttentionChatIds(data.chats.filter(chat => chatActivityIndicator(chat) === "question" || chatActivityIndicator(chat) === "error").map(chat => chat.id));
+      const attentionChats = chats.filter(chat => chat.pendingQuestion || chat.pendingApproval);
+      setAttentionChatIds(chats.filter(chat => chatActivityIndicator(chat) === "question" || chatActivityIndicator(chat) === "error").map(chat => chat.id));
       for (const chat of attentionChats) {
         const question = chat.pendingQuestion;
         if (!question) continue;
@@ -3641,12 +3640,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           : `${question.questions.length} questions need your input.`;
         notifyAttentionRef.current(chat.id, question.questionId, body);
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load chats");
-    } finally {
-      setChatsLoaded(true);
-    }
-  }, [markUnread]);
+  }, [chats]);
 
   const loadMemories = useCallback(async () => {
     const res = await fetch("/api/memories", { cache: "no-store" });
@@ -4995,7 +4989,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
   useEffect(() => {
     if (!authed) return;
-    void loadChats();
     void loadModes();
     void loadMemories();
     void loadModels();
@@ -10111,6 +10104,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         onCollapseNav={() => setMobileNavOpen(false)}
             />
           )}
+          <ChatListLoadMore hasMore={Boolean(chatsNextCursor)} loading={chatsLoaded && chatsLoading}
+            error={chatsError} onLoadMore={loadMoreChats} onRetry={loadChats} />
         </div>
       </div>
 

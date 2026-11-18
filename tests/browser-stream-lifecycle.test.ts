@@ -101,7 +101,7 @@ function backendHarness(capture: (attempt: number) => Promise<StreamFrame>, acti
   const captures: unknown[][] = [], actions: unknown[][] = [];
   const protectedCaptures:unknown[][]=[];
   const protectedBrowserRouting=new ProtectedBrowserRouting(async(...args)=>{
-    if(args[2]==="action"&&args[3]?.action==="screenshot"){
+    if(args[2]==="owner_action"&&args[3]?.action==="screenshot"&&args[4]===true){
       protectedCaptures.push(args);
       return {...streamFrame(),tabId:"protected",activeTabId:"protected",url:"https://fixture.test/private",screenshot:Buffer.from([9,8,7]).toString("base64")};
     }
@@ -143,8 +143,8 @@ test("vault sessions stream private frames, including restoration by explicit ta
     await done;
     assert.equal(h.captures.length,0);
     assert.equal(h.protectedCaptures.length,1);
-    assert.deepEqual(h.protectedCaptures[0].slice(0,3),["owner","chat","action"]);
-    assert.deepEqual(h.protectedCaptures[0][3],{action:"screenshot",tabId:"protected",includeScreenshot:true,quality:70});
+    assert.deepEqual(h.protectedCaptures[0],["owner","chat","owner_action",
+      {action:"screenshot",tabId:"protected",includeScreenshot:true,quality:70,source:"user"},true]);
     assert.equal(socket.frames().length,1);
     assert.deepEqual(socket.frames()[0].data,Buffer.from([9,8,7]));
     assert.equal(socket.errors().length,0);

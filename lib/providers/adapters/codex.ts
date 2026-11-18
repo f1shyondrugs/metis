@@ -48,6 +48,20 @@ import {
   type ProviderResult,
 } from "./contract";
 
+/** Delegate first-party tool authorization to Metis, not a second Codex prompt.
+ * The gateway still enforces runtime approvals, mode/capability/account policies.
+ * Do not apply this configuration to arbitrary third-party MCP servers.
+ */
+export function codexGatewayMcpConfig(mcp: { type: string; url?: string; command?: string; args?: string[]; env?: Record<string, string> }, bearerToken?: string) {
+  return {
+    ...(mcp.type === "http"
+      ? { url: mcp.url!, ...(bearerToken ? { bearer_token_env_var: "METIS_MCP_SESSION_TOKEN" } : {}) }
+      : { command: mcp.command!, args: mcp.args || [], env: mcp.env || {} }),
+    tool_timeout_sec: Math.floor(USER_INPUT_TRANSPORT_TIMEOUT_MS / 1000),
+    default_tools_approval_mode: "approve",
+  };
+}
+
 export function codexMcpOnlyConfig() {
   return {
     features: {
@@ -247,14 +261,7 @@ async function runCodex(context: ProviderContext): Promise<ProviderResult> {
       ...(codexHome ? { CODEX_HOME: codexHome.home } : {}),
       ...(bearerToken ? { METIS_MCP_SESSION_TOKEN: bearerToken } : {}),
     });
-    const codexMcp: Record<string, number | string | string[] | Record<string, string>> =
-      mcp.type === "http"
-        ? {
-            url: mcp.url,
-            ...(bearerToken ? { bearer_token_env_var: "METIS_MCP_SESSION_TOKEN" } : {}),
-          }
-        : { command: mcp.command, args: mcp.args, env: mcp.env };
-    codexMcp.tool_timeout_sec = Math.floor(USER_INPUT_TRANSPORT_TIMEOUT_MS / 1000);
+    const codexMcp = codexGatewayMcpConfig(mcp, bearerToken);
     const modelParams = effectiveModelParams(context.chat, context.job);
     const serviceTier = codexServiceTierForSelection(modelParams);
     const selectedModel = providerModelsForConnection(context.connection).find(model => model.id === context.modelId);

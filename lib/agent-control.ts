@@ -11,6 +11,7 @@ import { DEVICE_ROUTING_PROMPT } from "./mcp-core/device-routing.mjs";
 import { DEFAULT_AGENT_RUNTIME_MS } from "./agent-runtime-policy.mjs";
 import { RESPONSE_SUGGESTIONS_PROMPT } from "./response-suggestions";
 import { HTML_EMBED_PROMPT } from "./html-embed";
+import { RUNTIME_PERMISSION_PROMPT } from "./mcp-core/runtime-permissions.mjs";
 
 export const METIS_AGENT_CONTROL_VERSION = 1;
 
@@ -83,6 +84,7 @@ export const METIS_CALENDAR_PROMPT = "Native calendar: when calendar_* tools are
 export const METIS_SHARED_AGENT_CONTROL = [
   "Metis control contract v1:",
   DEVICE_ROUTING_PROMPT,
+  RUNTIME_PERMISSION_PROMPT,
   METIS_NOTIFICATIONS_PROMPT,
   METIS_CALENDAR_PROMPT,
   RESPONSE_SUGGESTIONS_PROMPT,

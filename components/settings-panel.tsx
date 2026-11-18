@@ -1185,10 +1185,17 @@ export function SettingsPanel({
     setArchivedChatsLoaded(false);
     setArchivedChatsError("");
     try {
-      const res = await fetch("/api/chats?includeArchived=true", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to load archived chats");
-      const data = (await res.json()) as { chats?: ArchivedChat[] };
-      const chats = data.chats || [];
+      const chats: ArchivedChat[] = [];
+      let cursor: string | null = null;
+      do {
+        const params = new URLSearchParams({ includeArchived: "true", limit: "100" });
+        if (cursor) params.set("cursor", cursor);
+        const res = await fetch("/api/chats?" + params, { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to load archived chats");
+        const data = (await res.json()) as { chats?: ArchivedChat[]; nextCursor: string | null };
+        chats.push(...(data.chats || []));
+        cursor = data.nextCursor;
+      } while (cursor);
       setArchivedChats(chats.filter((chat) => chat.archived));
       setSharedChats(chats.filter((chat) => chat.share?.active));
     } catch (error) {
