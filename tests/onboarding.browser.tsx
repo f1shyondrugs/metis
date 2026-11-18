@@ -5,7 +5,6 @@ import {AppearanceSettings} from "../components/appearance-settings";
 import {AppearanceProvider} from "../components/appearance-provider";
 import {applyAppearanceTheme,getSelectedTheme,createDefaultAppearanceState,APPEARANCE_STORAGE_KEY} from "../lib/appearance-storage";
 import {ClientOnboarding} from "../components/client-onboarding";
-import {DesktopAppSettingsDialog} from "../components/desktop-app-settings-dialog";
 import {SetupWizard} from "../components/setup-wizard";
 import {ProviderSetupDialog} from "../components/provider-setup-dialog";
 import {ProviderSetupPrompt} from "../components/provider-setup-prompt";
@@ -49,11 +48,10 @@ const results:string[]=[];const check=(ok:unknown,label:string)=>{results.push((
 function Harness({owner,hasProvider=true}:{owner:string;hasProvider?:boolean}){
  const [providerOpen,setProviderOpen]=useState(false);
  const [replay,setReplay]=useState(false);
- const [appSettingsOpen,setAppSettingsOpen]=useState(false);
  return <AppearanceProvider><main style={{padding:30}}><h1>Synthetic Metis workspace</h1><div style={{position:"fixed",bottom:24,left:30,width:Math.min(600,innerWidth-60)}}>{hasProvider?<input data-onboarding-target="chat" aria-label="Existing draft" defaultValue="Keep this draft" style={{width:"100%",height:44}}/>:<ProviderSetupPrompt onClick={()=>{providerCalls++;setProviderOpen(true);}}/>}</div>
- {nativeId?<button onClick={()=>setAppSettingsOpen(true)}>App settings</button>:<button onClick={()=>setReplay(true)}>Replay onboarding</button>}
+ <button onClick={()=>setReplay(true)}>Replay onboarding</button>
  {PRODUCT_TOUR.map(item=><button key={item.id} data-onboarding-target={item.id==="chat"?undefined:item.id} style={{margin:8,padding:16}}>{item.action}</button>)}
- </main>{nativeId?<DesktopAppSettingsDialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen} onReplayOnboarding={()=>setReplay(true)}/>:null}
+ </main>
  <ClientOnboarding userId={owner} username={owner} hasProvider={hasProvider} onPairDevice={()=>{pairingNavigationCalls++;}} replay={replay} onReplayClose={()=>setReplay(false)}/>
  <ProviderSetupDialog open={providerOpen} onOpenChange={setProviderOpen} onConnected={()=>setProviderOpen(false)} onSkip={()=>setProviderOpen(false)}/></AppearanceProvider>;
 }
@@ -161,10 +159,7 @@ async function run(){
  await click("Finish");check(!document.querySelector(".onboarding-stage,.onboarding-tour,.onboarding-tour-highlight"),"desktop webview finishes directly without tour cards");check(read("alice","desktop:one")?.phase==="done","native completion is stored for this user/installation");
  check(permissionCalls===0&&deviceCalls===0&&serverCalls===0,"Continue never prompts or changes system access");
  const savedDesktop=localStorage.getItem(onboardingStorageKey("alice","desktop:one"));
- await click("App settings");
- check(document.querySelector('[role="dialog"]')?.textContent?.includes("App settings")&&!!button("Replay onboarding"),"desktop App settings exposes the replay action");
  await click("Replay onboarding");
- check(document.querySelectorAll('[role="dialog"][data-state="open"]').length===1&&!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Welcome, alice"),"App settings closes when replay opens at Welcome");
  await click("Continue");
  check(!!document.querySelector(".onboarding-stage h1")?.textContent?.includes("Set up this desktop")&&!document.querySelector('.onboarding-stage input[type="checkbox"]'),"desktop webview replay explains device setup without offering a pairing action");
  await click("Finish");
@@ -245,7 +240,6 @@ async function run(){
  const noOverflow=()=>document.documentElement.scrollWidth<=innerWidth+1;
  browser();await mount("Demo");
  if(view==="appearance"){root.render(<AppearanceProvider><AppearanceSettings/></AppearanceProvider>);await pause(200);}
- else if(view==="app-settings"){native("visual");localStorage.setItem(onboardingStorageKey("Demo","desktop:visual"),JSON.stringify({version:1,phase:"done",tourIndex:0}));await mount("Demo");await click("App settings");}
  else if(view==="replay"){localStorage.setItem(onboardingStorageKey("Demo"),JSON.stringify({version:1,phase:"done",tourIndex:0}));await mount("Demo");await click("Replay onboarding");}
  else if(view==="install")await click("Continue");
  else if(view==="server"){sessionStorage.removeItem("metis-setup-step");root.render(<SetupWizard open hasUsers={false} onFinished={()=>{}}/>);await pause(200);}

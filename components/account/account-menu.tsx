@@ -6,7 +6,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useDesktopAvailable } from "@/lib/desktop-bridge";
 import { useDesktopState } from "@/lib/use-desktop-state";
-import { DesktopAppSettingsDialog } from "@/components/desktop-app-settings-dialog";
 import type { AccountIdentity, AccountProfile } from "@/lib/account-types";
 export function useAccountProfile(enabled: boolean) {
   const [profile,setProfile]=useState<AccountProfile|null>(null);
@@ -28,15 +27,14 @@ export function ProfileAvatar({profile,name,className}: {profile:AccountIdentity
     <AvatarFallback className="bg-muted text-foreground">{(profile?.displayName || name).slice(0,2).toUpperCase()}</AvatarFallback>
   </Avatar>;
 }
-export function AccountMenu({profile,username,updateAvailable,onSettings,onProfile,onUsage,onAgentHub,unreadCount=0,onNotifications,onLogout,onReplayOnboarding}: {
+export function AccountMenu({profile,username,updateAvailable,onSettings,onProfile,onUsage,onAgentHub,unreadCount=0,onNotifications,onLogout,onAppSettings}: {
   profile:AccountProfile|null;username:string;updateAvailable:boolean;
-  onSettings:()=>void;onProfile:()=>void;onUsage:()=>void;onLogout:()=>void;onAgentHub?:()=>void;unreadCount?:number;onNotifications?:()=>void;onReplayOnboarding?:()=>void;
+  onSettings:()=>void;onProfile:()=>void;onUsage:()=>void;onLogout:()=>void;onAgentHub?:()=>void;unreadCount?:number;onNotifications?:()=>void;onAppSettings?:()=>void;
 }) {
   const desktop=useDesktopAvailable();
   const {state}=useDesktopState();
-  const [appSettingsOpen,setAppSettingsOpen]=useState(false);
   const appUpdateAvailable=desktop&&state?.appUpdate?.available===true;
-  return <><DropdownMenu>
+  return <DropdownMenu>
     <DropdownMenuTrigger asChild>
       <Button variant="ghost" className="h-12 w-full justify-start gap-2.5 px-2.5" aria-label="Open account menu">
         <span className="relative shrink-0"><ProfileAvatar profile={profile} name={username} className="size-8" />
@@ -47,11 +45,11 @@ export function AccountMenu({profile,username,updateAvailable,onSettings,onProfi
         <ChevronsUpDown className="size-3.5 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent side="top" align="start" sideOffset={8} className="min-w-52" onCloseAutoFocus={event=>{if(appSettingsOpen)event.preventDefault();}}>
+    <DropdownMenuContent side="top" align="start" sideOffset={8} className="min-w-52">
       <div className="truncate px-2 py-2 text-xs text-muted-foreground">{username}</div>
       <DropdownMenuSeparator />
-      {desktop?<>
-        <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={()=>setAppSettingsOpen(true)}><Monitor /> App settings{appUpdateAvailable?<span className="ml-auto size-2 shrink-0 rounded-full bg-primary" aria-label="App update available"/>:null}</DropdownMenuItem>
+      {desktop&&onAppSettings?<>
+        <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onAppSettings}><Monitor /> App settings{appUpdateAvailable?<span className="ml-auto size-2 shrink-0 rounded-full bg-primary" aria-label="App update available"/>:null}</DropdownMenuItem>
         <DropdownMenuSeparator />
       </>:null}
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onProfile}><UserRound /> Profile</DropdownMenuItem>
@@ -62,5 +60,5 @@ export function AccountMenu({profile,username,updateAvailable,onSettings,onProfi
       <DropdownMenuSeparator />
       <DropdownMenuItem className="min-h-11 gap-2 px-2" onSelect={onLogout}><LogOut /> Logout</DropdownMenuItem>
     </DropdownMenuContent>
-  </DropdownMenu>{desktop?<DesktopAppSettingsDialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen} onReplayOnboarding={onReplayOnboarding}/>:null}</>;
+  </DropdownMenu>;
 }

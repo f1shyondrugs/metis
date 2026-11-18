@@ -1,5 +1,7 @@
 "use client";
 import { LoadError } from "@/components/load-error";
+import { DesktopClientSettings } from "@/components/desktop-client-settings";
+import { useDesktopAvailable } from "@/lib/desktop-bridge";
 import { DesktopDeviceSettings, RemoteClientInstallActions } from "@/components/desktop-device-settings";
 import { RecentlyDeletedChats } from "@/components/recently-deleted-chats";
 import { SavedWebsiteLogins } from "@/components/saved-website-logins";
@@ -395,6 +397,7 @@ type SettingsPaneId =
   | "voice"
   | "browser"
   | "usage"
+  | "app-settings"
   | "remote-clients"
   | "users"
   | "archived"
@@ -422,6 +425,7 @@ const SETTINGS_SECTION_TO_PANE: Partial<Record<string, Exclude<SettingsPaneId, "
   "settings-browser": "browser",
   "settings-usage": "usage",
   "settings-remote-clients": "remote-clients",
+  "settings-app": "app-settings",
   "settings-users": "users",
   "settings-archived": "archived",
   "settings-deleted": "deleted",
@@ -794,6 +798,7 @@ export function SettingsPanel({
   const [browserStorageError, setBrowserStorageError] = useState("");
   const [browserStorageDeleteTarget, setBrowserStorageDeleteTarget] = useState<string | null>(null);
   const [browserStorageClearAll, setBrowserStorageClearAll] = useState(false);
+  const desktop = useDesktopAvailable();
   const [settingsPane, setSettingsPane] = useState<SettingsPaneId>(() => sectionRequest ? SETTINGS_SECTION_TO_PANE[sectionRequest] ?? "tab" : "tab");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(!sectionRequest);
   const [settingsSearchTarget, setSettingsSearchTarget] = useState<string | null>(null);
@@ -1644,7 +1649,7 @@ export function SettingsPanel({
     <>
       <section aria-label="Settings" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="shrink-0 border-b border-border px-4 py-3 sm:px-8 sm:py-4 sm:pr-12">
-          <SettingsSearch key={String(open)} isHostAdmin={isHostAdmin} mobile={mobile} onSelect={openSettingsSearchResult} />
+          <SettingsSearch key={String(open)} isHostAdmin={isHostAdmin} desktop={desktop} mobile={mobile} onSelect={openSettingsSearchResult} />
         </header>
 
         <UpdateStatusProbe isHostAdmin={Boolean(isHostAdmin)} onUpdateAvailableChange={setUpdateAvailable} />
@@ -1703,7 +1708,7 @@ export function SettingsPanel({
            {label}
            </TabsTrigger>
            {expanded
-           ? settingsOverviewSections(tab.value, isHostAdmin).map((item) => (
+           ? settingsOverviewSections(tab.value, isHostAdmin, desktop).map((item) => (
            <button
             key={item.id}
             type="button"
@@ -2506,6 +2511,15 @@ export function SettingsPanel({
  <SettingsFeaturePane backLabel="Models" title="Usage" slot="usage-settings" onBack={() => backToSettings("settings-usage")}>
  <PlanUsagePanel snapshot={usageSnapshot} onRefresh={onRefreshUsage} />
  </SettingsFeaturePane>
+ ) : settingsPane === "app-settings" ? (
+ <SettingsFeaturePane backLabel="Devices" title="App settings" description="Preferences for this device’s Metis app and Remote Client." slot="desktop-app-settings" onBack={() => backToSettings("settings-app")}>
+   {desktop ? <div className="flex flex-col gap-4">
+     <DesktopClientSettings className="p-0 sm:p-0" />
+     {onReplayOnboarding ? <div className="flex justify-end border-t border-border py-4">
+       <Button variant="outline" onClick={onReplayOnboarding}><RotateCcw aria-hidden="true" />Replay onboarding</Button>
+     </div> : null}
+   </div> : <p role="status" className="text-sm text-muted-foreground">App settings are available in the Metis desktop app.</p>}
+ </SettingsFeaturePane>
  ) : settingsPane === "remote-clients" ? (
  <SettingsFeaturePane backLabel="Devices" slot="remote-client-settings" onBack={() => backToSettings("settings-remote-clients")}>
  <section className="flex flex-col gap-5">
@@ -2793,6 +2807,7 @@ export function SettingsPanel({
 </TabsContent>
 <TabsContent value="devices" className="mt-0">
  <SettingsOverview title="Devices">
+  {desktop ? <SettingsTile id="settings-app" title="App settings" meta="App updates, local preferences, shortcuts and desktop setup" icon={Monitor} onOpen={() => openSettingsPane("app-settings")} /> : null}
   <SettingsTile id="settings-remote-clients" title="Remote clients" meta="Connected devices, permissions and pairing" icon={Monitor} onOpen={() => openSettingsPane("remote-clients")} />
   <SettingsTile id="settings-device-notifications-link" title="Notifications" meta="Alerts, sounds and delivery devices" icon={Bell} onOpen={() => openSettingsPane("notifications", "general")} />
  </SettingsOverview>

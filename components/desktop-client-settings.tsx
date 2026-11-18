@@ -7,8 +7,9 @@ import { DesktopShortcutSettings } from "@/components/desktop-shortcut-settings"
 import { DesktopDeviceSettings } from "@/components/desktop-device-settings";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
-export function DesktopClientSettings({compact=false}:{compact?:boolean}={}) {
+export function DesktopClientSettings({compact=false,className}:{compact?:boolean;className?:string}={}) {
   const {state,error:loadError}=useDesktopState();
   const [error,setError]=useState(""),[busy,setBusy]=useState("");
   const [message,setMessage]=useState("");
@@ -20,7 +21,7 @@ export function DesktopClientSettings({compact=false}:{compact?:boolean}={}) {
     finally{setBusy("");}
   }
   const bridge=desktopBridge();
-  return <section className="flex min-w-0 flex-col gap-5 p-4 sm:p-6" aria-label="Client settings">
+  return <section className={cn("flex min-w-0 flex-col gap-5 p-4 sm:p-6", className)} aria-label="Client settings">
     {loadError||error?<div role="alert" className="text-sm text-destructive">{error||loadError}<Button variant="outline" className="ml-3" onClick={()=>void refreshDesktopState()}>Retry</Button></div>:null}
     {!state&&!loadError?<p role="status" className="text-sm">Loading app settings…</p>:null}
     {state?<><dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">

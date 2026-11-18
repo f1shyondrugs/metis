@@ -136,6 +136,16 @@ test("Passkeys are a searchable Security overview peer for all account roles", (
   }
 });
 
+test("App settings appear in Devices and search only in the desktop app", () => {
+  for (const admin of [false, true]) {
+    assert.ok(!settingsOverviewSections("devices", admin).some(section => section.id === "settings-app"));
+    assert.ok(!searchSettings(settingsSearchEntries(admin), "app settings").some(entry => entry.id === "settings-app"));
+    assert.equal(settingsOverviewSections("devices", admin, true)[0]?.id, "settings-app");
+    assert.deepEqual(searchSettings(settingsSearchEntries(admin, true), "app settings").map(entry => [entry.id, entry.tab]),
+      [["settings-app", "devices"]]);
+  }
+});
+
 test("blank and unmatched searches return no results without mutating the shared index", () => {
   const entries = settingsSearchEntries(true);
   const before = structuredClone(entries);

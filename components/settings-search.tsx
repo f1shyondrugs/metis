@@ -7,8 +7,9 @@ import {Popover, PopoverAnchor, PopoverContent} from "@/components/ui/popover";
 import {searchSettings, settingsSearchEntries, type SettingsSearchEntry} from "@/lib/settings-navigation";
 import {cn} from "@/lib/utils";
 
-export function SettingsSearch({isHostAdmin, mobile = false, onSelect}: {
+export function SettingsSearch({isHostAdmin, desktop = false, mobile = false, onSelect}: {
   isHostAdmin: boolean;
+  desktop?: boolean;
   mobile?: boolean;
   onSelect: (entry: SettingsSearchEntry) => void;
 }) {
@@ -17,8 +18,8 @@ export function SettingsSearch({isHostAdmin, mobile = false, onSelect}: {
   const [activeIndex, setActiveIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
-  const entries = useMemo(() => settingsSearchEntries(isHostAdmin).map(entry =>
-    mobile && entry.sectionId === "settings-links" ? {...entry, category: "Settings"} : entry), [isHostAdmin, mobile]);
+  const entries = useMemo(() => settingsSearchEntries(isHostAdmin, desktop).map(entry =>
+    mobile && entry.sectionId === "settings-links" ? {...entry, category: "Settings"} : entry), [isHostAdmin, desktop, mobile]);
   const results = useMemo(() => searchSettings(entries, query), [entries, query]);
   const showingResults = open && Boolean(query.trim());
   const activeResult = results[activeIndex];

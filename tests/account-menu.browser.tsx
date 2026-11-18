@@ -10,7 +10,7 @@ const check=(ok:unknown,label:string)=>results.push((ok?"PASS ":"FAIL ")+label);
 const bridge:DesktopBridge={openDeviceSettings:async()=>{},deviceState:async()=>({paired:false,version:"test",appUpdate:{available:true,phase:"available",version:"test-next",message:"Synthetic update"}})};
 function mount(desktop:boolean,optional=true){
  (window as Window & {metisApp?:DesktopBridge}).metisApp=desktop?bridge:undefined;
- root.render(<main className="flex min-h-dvh items-end bg-background p-4 text-foreground"><section className="w-60 max-w-full"><AccountMenu key={String(desktop)+optional} profile={null} username="Preview user" updateAvailable onProfile={()=>events.push("Profile")} onSettings={()=>events.push("Settings")} onUsage={()=>events.push("Usage")} onLogout={()=>events.push("Logout")} onAgentHub={optional?()=>events.push("Agent Hub"):undefined} onNotifications={optional?()=>events.push("Notifications"):undefined} unreadCount={optional?2:0}/></section></main>);
+ root.render(<main className="flex min-h-dvh items-end bg-background p-4 text-foreground"><section className="w-60 max-w-full"><AccountMenu key={String(desktop)+optional} profile={null} username="Preview user" updateAvailable onProfile={()=>events.push("Profile")} onSettings={()=>events.push("Settings")} onAppSettings={()=>events.push("App settings")} onUsage={()=>events.push("Usage")} onLogout={()=>events.push("Logout")} onAgentHub={optional?()=>events.push("Agent Hub"):undefined} onNotifications={optional?()=>events.push("Notifications"):undefined} unreadCount={optional?2:0}/></section></main>);
 }
 const control=(label:string)=>[...document.querySelectorAll<HTMLElement>('[role="menuitem"],button')].find(e=>e.textContent?.trim()===label);
 async function press(el:HTMLElement|undefined|null){if(!el)throw Error("Missing control");el.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,button:0,pointerType:"mouse"}));el.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,button:0,pointerType:"mouse"}));el.click();await wait();}
@@ -41,8 +41,7 @@ async function run(){
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true}));await wait();
  check(document.activeElement?.textContent?.trim()==="Profile","keyboard skips separator to Profile");
  await press(app);
- check(!!document.querySelector('[role="dialog"]')&&document.querySelector('[role="dialog"]')?.textContent?.includes("App settings"),"App settings opens canonical dialog");
- await escape();
+ check(events.at(-1)==="App settings"&&!document.querySelector('[role="dialog"]'),"App settings delegates navigation instead of opening a separate dialog");
  for(const label of ["Profile","Notifications","Agent Hub","Settings","Usage","Logout"]){await open();await press(control(label));check(events.at(-1)===label,"callback retained: "+label);}
  mount(false);await wait();await open();
  check(!control("App settings"),"web hides native App settings");
