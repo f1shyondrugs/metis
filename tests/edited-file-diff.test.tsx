@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SnapshotDiff, EditedFileDiff } from "../components/edited-file-diff";
-import { loadEditSnapshot, snapshotFromDiff, snapshotHunks, toolsForEditedFile } from "../lib/edited-file-diff";
+import { SnapshotDiff, EditedFileDiff, EditedFileEditorDiff } from "../components/edited-file-diff";
+import { initialEditTool, loadEditSnapshot, snapshotFromDiff, snapshotHunks, toolsForEditedFile } from "../lib/edited-file-diff";
 import type { ToolPart } from "../lib/store";
 
 Object.assign(globalThis, { React });
@@ -36,6 +36,16 @@ test("all edits remain ordered and remote targets never collide", () => {
   assert.match(html, /Edit 1 of 2/);
   assert.match(html, /Edit 2 of 2/);
   assert.match(renderToStaticMarkup(<EditedFileDiff file={file} />), /Historical snapshots unavailable/);
+});
+test("the editor opens the selected historical version, or the first one with a known jump", () => {
+  const range = { startLine: 120, endLine: 120, kind: "added" as const };
+  const historical = { ...tool, id: "recorded", editedFile: { ...file, ranges: [range] } };
+  const later = { ...historical, id: "later" };
+  assert.equal(initialEditTool([tool,historical,later])?.id, "recorded");
+  assert.equal(initialEditTool([tool,historical,later], {toolId:"later",range})?.id, "later");
+  assert.equal(initialEditTool([tool,historical,later], {toolId:"missing",range})?.id, "recorded");
+  const html = renderToStaticMarkup(<EditedFileEditorDiff file={file} language="plaintext" tools={[tool,historical,later]} focus={{toolId:"later",range}} />);
+  assert.match(html, /<option value="later" selected="">Edit 3 of 3<\/option>/);
 });
 test("memory snapshots avoid requests; incomplete snapshots fetch exact encoded identity and propagate abort", async () => {
   const original = globalThis.fetch;

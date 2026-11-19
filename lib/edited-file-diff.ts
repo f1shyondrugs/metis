@@ -1,9 +1,11 @@
 import { structuredPatch } from "diff";
 import { editedFileFromTool, type EditedFile } from "@/lib/edited-files";
 import type { ToolPart } from "@/lib/store";
+import type { FileChangeRange } from "@/lib/file-change-ranges";
 
 export type EditSnapshot = { before: string; after: string };
-export type EditedFileDiffRequest = { file: EditedFile; chatId?: string; messageId?: string; tools?: ToolPart[] };
+export type EditDiffFocus = { toolId: string; range: FileChangeRange };
+export type EditedFileDiffRequest = { file: EditedFile; chatId?: string; messageId?: string; tools?: ToolPart[]; focus?: EditDiffFocus };
 
 export function snapshotFromDiff(value: unknown, savedSnapshot = false): EditSnapshot | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -18,6 +20,13 @@ export function toolsForEditedFile(file: EditedFile, tools: ToolPart[] = []) {
     const edited = editedFileFromTool(tool);
     return edited?.path === file.path && edited.target === file.target;
   });
+}
+
+/** Open the requested historical edit; a plain file click prefers a recorded change. */
+export function initialEditTool(edits: ToolPart[], focus?: EditDiffFocus) {
+  return edits.find(edit => edit.id === focus?.toolId)
+    ?? edits.find(edit => editedFileFromTool(edit)?.ranges?.length)
+    ?? edits[0];
 }
 
 export async function loadEditSnapshot(

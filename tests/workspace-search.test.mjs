@@ -61,6 +61,29 @@ test("search defaults skip hidden, binary, oversized and dependency files and ne
  assert.equal((await call("grep_search",{path:"escape",pattern:"PRIVATE"})).result.isError,true);
  assert.equal((await call("grep_search",{path:"../",pattern:"PRIVATE"})).result.isError,true);
 });
+test("file names include dotfiles and non-text entries without reading their contents", async () => {
+ const deep = path.join(workspace, "nested", "deeper"); mkdirSync(deep);
+ mkdirSync(path.join(workspace, ".config"));
+ writeFileSync(path.join(deep, ".env.deep"), "other");
+ writeFileSync(path.join(workspace, ".config", ".env.binary"), Buffer.from([0,1,2]));
+ writeFileSync(path.join(workspace, ".git", ".env.hidden"), "not visible");
+ writeFileSync(path.join(workspace, ".env"), "FIXTURE_SETTING=off");
+ try {
+  const names = await call("file_search", {pattern:".env*",include_hidden:true});
+  assert.deepEqual(names.data.files.map(row => row.path), [".config/.env.binary",".env","nested/deeper/.env.deep"]);
+  assert.equal(names.data.skipped.binary,0);
+  assert.equal(names.data.skipped.oversized,0);
+  const narrow = await call("file_search", {pattern:".env*",include_hidden:true,limit:1});
+  assert.equal(narrow.data.files[0].path,".env");
+  assert.equal(narrow.data.truncated,true);
+  const explicit = await call("file_search", {pattern:"*.{bin,txt}",include_hidden:true});
+  assert(explicit.data.files.some(row => row.path === "binary.bin"));
+  assert(explicit.data.files.some(row => row.path === "large.txt"));
+ } finally {
+  for (const file of [".env", ".config", "nested/deeper", ".git/.env.hidden"]) rmSync(path.join(workspace,file), {recursive:true,force:true});
+ }
+});
+
 test("result caps explicitly mark partial results, invalid regex/parameters report tool errors",async()=>{
  const cap=await call("grep_search",{pattern:"needle",case_sensitive:false,limit:1});assert.equal(cap.data.count,1);assert.equal(cap.data.truncated,true);assert.deepEqual(cap.data.limits,["results"]);
  for(const args of [{pattern:"[",regex:true},{pattern:"",limit:1},{pattern:"Needle",limit:0},{pattern:"Needle",limit:201},{pattern:"Needle",context_lines:4},{pattern:"Needle",regex:"true"}]){
@@ -107,7 +130,11 @@ test("unprivileged gateway search uses mapped UID and cannot read private files 
  const privateFile=path.join(workspace,"root-only.txt");writeFileSync(privateFile,"ROOT_SECRET",{mode:0o600});
  const safe=await call("grep_search",{pattern:"Needle",path:"src"},{uid:Number(fields[2]),gid:Number(fields[3]),osUsername:fields[0],home:workspace,isHostAdmin:false,allowRoot:false});
  assert.ok(!safe.result.isError,safe.text);assert.equal(safe.data.count,1);
- const secret=await call("grep_search",{pattern:"ROOT_SECRET"},{uid:Number(fields[2]),gid:Number(fields[3]),osUsername:fields[0],home:workspace,isHostAdmin:false,allowRoot:false});
+ const unprivileged={uid:Number(fields[2]),gid:Number(fields[3]),osUsername:fields[0],home:workspace,isHostAdmin:false,allowRoot:false};
+ const name=await call("file_search",{pattern:"root-only.txt"},unprivileged);
+ assert.deepEqual(name.data.files.map(file=>file.path),["root-only.txt"]);
+ assert.ok(!name.text.includes("ROOT_SECRET"));
+ const secret=await call("grep_search",{pattern:"ROOT_SECRET"},unprivileged);
  assert.ok(!secret.result.isError,secret.text);assert.equal(secret.data.count,0);assert.ok(secret.data.skipped.unreadable>0);
  assert.equal((await call("grep_search",{pattern:"ROOT_SECRET"},{uid:0,gid:0,isHostAdmin:false,allowRoot:true})).result.isError,true);
 });

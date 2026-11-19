@@ -279,13 +279,25 @@ export async function POST(req: Request) {
         try { new RegExp(body.query); }
         catch { return Response.json({ error: "Invalid regular expression." }, { status: 400 }); }
       }
-      const files = body.searchMode === "files";
-      const output = await callRemoteGatewayTool(files ? "file_search" : "grep_search", {
-        path: targetPath, pattern: files ? fileNameSearchPattern(body.query.trim()) : body.query,
-        include_hidden: true, limit: 100,
-        ...(!files ? { regex: body.regex === true, case_sensitive: body.caseSensitive === true } : {}),
-      }, isolation);
-      return Response.json({ search: JSON.parse(output) });
+      const scope = { path: targetPath, include_hidden: true, limit: 100 };
+      const searchNames = async () => JSON.parse(await callRemoteGatewayTool("file_search", {
+        ...scope, pattern: fileNameSearchPattern(body.query!.trim()),
+      }, isolation));
+      if (body.searchMode === "files") return Response.json({ search: await searchNames() });
+
+      // Name matches never need to open a file. Keep them distinct from matches
+      // on actual text, even when a file cannot be scanned.
+      const [content, names] = await Promise.allSettled([
+        callRemoteGatewayTool("grep_search", {
+          ...scope, pattern: body.query, regex: body.regex === true, case_sensitive: body.caseSensitive === true,
+        }, isolation).then(output => JSON.parse(output)),
+        searchNames(),
+      ]);
+      if (content.status === "rejected" && names.status === "rejected") throw content.reason;
+      return Response.json({
+        ...(content.status === "fulfilled" ? { search: content.value } : { contentSearchError: "File contents could not be searched." }),
+        ...(names.status === "fulfilled" ? { fileNames: names.value } : { fileNamesError: "File names could not be searched." }),
+      });
     }
     if (body.action === "list") {
       const output = await callRemoteGatewayTool("list_directory", { target: "server", path: targetPath }, isolation);

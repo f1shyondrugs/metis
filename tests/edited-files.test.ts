@@ -3,12 +3,12 @@ import test, { after } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { editedFileFromTool as detailedEditedFileFromTool, editedFilesForMessage as detailedEditedFilesForMessage, editedFileHref, type EditedFile } from "../lib/edited-files";
+import { editedFileFromTool as detailedEditedFileFromTool, editedFilesForMessage as detailedEditedFilesForMessage, editedFileHref, type EditedFileSummary } from "../lib/edited-files";
 import type { ToolPart } from "../lib/store";
 import { compactChatPageMessages } from "../lib/chat-page-payload";
 import { parseWorkspaceFileLink } from "../lib/workspace-file-link";
 // These regressions assert the original count/path contract; range behavior has its own suite.
-const summary = (file: EditedFile) => { const { ranges, lineChanges, ...fields } = file; return fields; };
+const summary = (file: EditedFileSummary) => { const { ranges, lineChanges, versions, ...fields } = file; return fields; };
 const editedFileFromTool = (...args: Parameters<typeof detailedEditedFileFromTool>) => { const file = detailedEditedFileFromTool(...args); return file ? summary(file) : null; };
 const editedFilesForMessage = (...args: Parameters<typeof detailedEditedFilesForMessage>) => detailedEditedFilesForMessage(...args).map(summary);
 const dir = mkdtempSync(path.join(os.tmpdir(), "metis-edited-files-"));
@@ -42,7 +42,32 @@ test("unknown, partial and excessive diff counts remain unavailable", () => {
     assert.equal(file!.deletions,undefined);
   }
   const files=editedFilesForMessage({tools:[edit({diff:{additions:3,deletions:1}}),edit({id:"unknown"})]});
-  assert.equal(files[0].additions,undefined,"partial totals must not look complete");
+  assert.equal(files[0].additions,3);
+  assert.equal(files[0].deletions,1);
+  assert.equal(files[0].partialCounts,true,"partial totals must not look complete");
+  assert.equal(editedFilesForMessage({tools:[edit({id:"unknown"}),edit({diff:{additions:3,deletions:1}})]})[0].partialCounts,true);
+});
+
+test("per-version ranges keep historical coordinates after later inserts and replacements", async () => {
+  const {compactToolForPersistence}=await import("../lib/tool-persistence");
+  const before = "a\nb\nc\nd\ne\n";
+  const first = "a\nb\nfirst\nd\ne\n";
+  const second = "top\na\nb\nsecond\nd\ne\n";
+  const tools = [
+    edit({id:"first",diff:{before,after:first}}),
+    edit({id:"second",diff:{before:first,after:second}}),
+    edit({id:"older-metadata-only"}),
+  ].map(tool => JSON.parse(JSON.stringify(compactToolForPersistence(tool))));
+  const [file] = detailedEditedFilesForMessage({tools,parts:tools.map(tool => ({type:"tool", ...tool}))});
+  assert.equal(file.additions,3);
+  assert.equal(file.deletions,2);
+  assert.equal(file.partialCounts,true);
+  assert.deepEqual(file.versions?.map(version => [version.toolId, version.ranges?.map(range => range.startLine)]), [
+    ["first",[3]], ["second",[1,4]], ["older-metadata-only",undefined],
+  ]);
+  assert.equal(file.ranges,undefined, "an unknown later edit must not be used to guess current file positions");
+  const legacy = edit({editedFile:{path:"/workspace/src/main.ts",target:"server",lineChanges:[{oldStart:7,oldCount:1,newStart:7,newCount:1}]}});
+  assert.deepEqual(editedFileFromTool(legacy), {path:"/workspace/src/main.ts",target:"server",additions:1,deletions:1});
 });
 
 test("canonical file tools and provider-prefixed gateway wrappers resolve paths", () => {

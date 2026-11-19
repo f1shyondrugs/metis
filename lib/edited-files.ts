@@ -4,6 +4,11 @@ import { innerToolName, unwrapToolRecord } from "@/lib/tool-call-display";
 import { parseWorkspaceFileLink, workspaceFileHref } from "@/lib/workspace-file-link";
 
 export type EditedFile = { path: string; target: string; additions?: number; deletions?: number; ranges?: FileChangeRange[]; lineChanges?: FileLineChange[] };
+export type EditedFileSummary = EditedFile & {
+  partialCounts?: boolean;
+  /** Historical ranges stay in the coordinates of their own snapshot. */
+  versions?: Array<{ toolId: string; ranges?: FileChangeRange[] }>;
+};
 
 function validCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -11,15 +16,25 @@ function validCount(value: unknown): value is number {
 
 /** Prefer exact snapshots; compact historical tools can retain explicit counters. */
 function lineStats(tool: Pick<ToolPart, "diff" | "editedFile">): Pick<EditedFile, "additions" | "deletions" | "ranges" | "lineChanges"> | undefined {
-  if (validCount(tool.editedFile?.additions) && validCount(tool.editedFile?.deletions)) {
-    return { additions: tool.editedFile.additions, deletions: tool.editedFile.deletions, ...(tool.editedFile.ranges ? { ranges: tool.editedFile.ranges, lineChanges: tool.editedFile.lineChanges } : {}) };
-  }
+  const saved = tool.editedFile;
+  const savedCounts = validCount(saved?.additions) && validCount(saved?.deletions)
+    ? { additions: saved.additions, deletions: saved.deletions } : undefined;
+  if (savedCounts && saved?.ranges) return savedCounts;
   const diff = tool.diff;
-  if (diff && ("before" in diff) && typeof diff.after === "string") {
-    return fileChangeDetails(diff.before ?? "", diff.after);
+  if (diff && "before" in diff && typeof diff.after === "string") {
+    const details = fileChangeDetails(diff.before ?? "", diff.after);
+    if (details) return details;
   }
-  return validCount(diff?.additions) && validCount(diff?.deletions)
-    ? { additions: diff.additions, deletions: diff.deletions } : undefined;
+  if (savedCounts) return savedCounts;
+  if (validCount(diff?.additions) && validCount(diff?.deletions)) return { additions: diff.additions, deletions: diff.deletions };
+  const changes = saved?.lineChanges;
+  // A capped historical mapping cannot prove the complete totals.
+  if (changes?.length && changes.length < 100 && changes.every(change => validCount(change.newCount) && validCount(change.oldCount))) {
+    return {
+      additions: changes.reduce((total, change) => total + change.newCount, 0),
+      deletions: changes.reduce((total, change) => total + change.oldCount, 0),
+    };
+  }
 }
 
 function text(record: Record<string, unknown> | undefined, ...keys: string[]) {
@@ -47,8 +62,8 @@ export function editedFileFromTool(tool: Pick<ToolPart, "name" | "status" | "inp
 }
 
 /** One row per file and device, in first-edit order, scoped to this assistant message. */
-export function editedFilesForMessage(message: { tools?: ToolPart[]; parts?: Array<{ type: string } & Partial<ToolPart>> }): EditedFile[] {
-  const files = new Map<string, EditedFile>();
+export function editedFilesForMessage(message: { tools?: ToolPart[]; parts?: Array<{ type: string } & Partial<ToolPart>> }): EditedFileSummary[] {
+  const files = new Map<string, EditedFileSummary>();
   // Full canonical tools take precedence over the stripped order-only parts.
   const tools = new Map<string, ToolPart>();
   for (const part of message.parts || []) if (part.type === "tool") tools.set(part.id || "", part as ToolPart);
@@ -58,14 +73,23 @@ export function editedFilesForMessage(message: { tools?: ToolPart[]; parts?: Arr
     if (!file) continue;
     const key = file.target + "\0" + file.path;
     const previous = files.get(key);
-    if (!previous) files.set(key, file);
-    else {
-      const known = validCount(previous.additions) && validCount(previous.deletions) && validCount(file.additions) && validCount(file.deletions);
-      const ranges = file.lineChanges ? [...rebaseFileChangeRanges(previous.ranges || [], file.lineChanges), ...(file.ranges || [])].slice(0,100) : file.ranges;
-      files.set(key, { path: file.path, target: file.target, ...(ranges ? { ranges } : {}), ...(known ? {
-        additions: previous.additions! + file.additions!,
-        deletions: previous.deletions! + file.deletions!,
-      } : {}) });
+    const version = { toolId: tool.id, ranges: file.ranges };
+    if (!previous) {
+      files.set(key, { ...file, versions: [version] });
+      continue;
+    }
+    previous.versions!.push(version);
+    const hasCounts = validCount(file.additions) && validCount(file.deletions);
+    const hadCounts = validCount(previous.additions) && validCount(previous.deletions);
+    // These ranges are only for opening the current file, not reviewing history.
+    previous.ranges = file.lineChanges
+      ? [...rebaseFileChangeRanges(previous.ranges || [], file.lineChanges), ...(file.ranges || [])].slice(0, 100)
+      : file.ranges;
+    previous.lineChanges = undefined;
+    if (hasCounts || hadCounts) {
+      previous.additions = (hadCounts ? previous.additions! : 0) + (hasCounts ? file.additions! : 0);
+      previous.deletions = (hadCounts ? previous.deletions! : 0) + (hasCounts ? file.deletions! : 0);
+      if (!hasCounts || !hadCounts) previous.partialCounts = true;
     }
   }
   return [...files.values()];

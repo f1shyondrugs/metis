@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { DiffEditor } from "@monaco-editor/react";
-import type { EditedFile } from "@/lib/edited-files";
+import { DiffEditor, type MonacoDiffEditor } from "@monaco-editor/react";
+import { editedFileFromTool, type EditedFile } from "@/lib/edited-files";
 import type { ToolPart } from "@/lib/store";
-import { loadEditSnapshot, snapshotHunks, toolsForEditedFile, type EditSnapshot, type EditedFileDiffRequest } from "@/lib/edited-file-diff";
+import { initialEditTool, loadEditSnapshot, snapshotHunks, toolsForEditedFile, type EditSnapshot, type EditedFileDiffRequest } from "@/lib/edited-file-diff";
+import { fileChangeDetails, type FileChangeRange } from "@/lib/file-change-ranges";
 
-export type EditedFilesDiffProps = Omit<EditedFileDiffRequest, "file">;
+export type EditedFilesDiffProps = Omit<EditedFileDiffRequest, "file" | "focus">;
 
 export function SnapshotDiff({ snapshot }: { snapshot: EditSnapshot }) {
   const result = useMemo(() => { try { return { hunks: snapshotHunks(snapshot) }; } catch (error) { return { error: error instanceof Error ? error.message : "Diff preview unavailable." }; } }, [snapshot]);
@@ -47,7 +48,47 @@ function HunkRows({ heading, rows }: { heading: string; rows: { line: string; ol
   })}</>;
 }
 
-function EditDiff({ tool, chatId, messageId, editorLanguage }: EditedFilesDiffProps & { tool: ToolPart; editorLanguage?: string }) {
+function HistoricalSnapshotEditor({ snapshot, language, target }: { snapshot: EditSnapshot; language: string; target?: FileChangeRange }) {
+  const [editor, setEditor] = useState<MonacoDiffEditor | null>(null);
+  const range = useMemo(() => target ?? fileChangeDetails(snapshot.before, snapshot.after)?.ranges[0], [target, snapshot]);
+  useEffect(() => {
+    if (!editor || !range) return;
+    let frame = 0;
+    const reveal = () => {
+      const original = editor.getOriginalEditor(), modified = editor.getModifiedEditor();
+      const deletion = range.kind === "deleted";
+      const side = deletion ? original : modified;
+      const selection = side.getModel()?.validateRange({
+        startLineNumber: deletion ? range.oldStartLine ?? range.startLine : range.startLine,
+        endLineNumber: deletion ? range.oldEndLine ?? range.startLine : range.endLine,
+        startColumn: 1, endColumn: Number.MAX_SAFE_INTEGER,
+      });
+      if (selection) side.setSelection(selection);
+      if (deletion && original.getLayoutInfo().contentWidth <= 0) {
+        // In inline mode the original pane can still show line numbers, but
+        // its removed code is rendered in the modified pane's view zones.
+        const line = modified.getModel()?.validatePosition({ lineNumber: range.startLine, column: 1 }).lineNumber ?? 1;
+        modified.revealLineInCenter(line);
+      } else if (selection) {
+        side.revealRangeInCenter(selection);
+      }
+    };
+    const scheduleReveal = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(reveal); };
+    if (editor.getLineChanges() !== null) {
+      scheduleReveal();
+      return () => cancelAnimationFrame(frame);
+    }
+    // Monaco inserts its diff view zones asynchronously. Reveal only when
+    // these take effect, otherwise the viewport can return to the top.
+    const listener = editor.onDidUpdateDiff(() => { listener.dispose(); scheduleReveal(); });
+    return () => { listener.dispose(); cancelAnimationFrame(frame); };
+  }, [editor, range]);
+  return <DiffEditor height="100%" language={language} theme="vs-dark" original={snapshot.before} modified={snapshot.after} onMount={setEditor}
+    options={{ readOnly: true, originalEditable: false, originalAriaLabel: "File before this edit", modifiedAriaLabel: "File after this edit", automaticLayout: true, renderSideBySide: true, useInlineViewWhenSpaceIsLimited: true, renderSideBySideInlineBreakpoint: 640, ignoreTrimWhitespace: false, minimap: { enabled: false }, wordWrap: "off", diffWordWrap: "off", scrollbar: { horizontal: "visible" }, scrollBeyondLastLine: false, padding: { top: 12 } }}
+    loading={<p role="status" className="p-4 text-xs text-muted-foreground">Loading diff editor…</p>} />;
+}
+
+function EditDiff({ tool, chatId, messageId, editorLanguage, target }: EditedFilesDiffProps & { tool: ToolPart; editorLanguage?: string; target?: FileChangeRange }) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<{ status: "loading" | "ready" | "missing" | "error"; snapshot?: EditSnapshot }>({ status: "loading" });
   useEffect(() => {
@@ -63,9 +104,7 @@ function EditDiff({ tool, chatId, messageId, editorLanguage }: EditedFilesDiffPr
   if (state.snapshot) {
     if (editorLanguage === undefined) return <SnapshotDiff snapshot={state.snapshot} />;
     if (state.snapshot.before.length + state.snapshot.after.length > 2_000_000) return <p role="status" className="p-4 text-xs text-muted-foreground">This diff exceeds the 2 MB preview limit. Open the original file to continue.</p>;
-    return <DiffEditor height="100%" language={editorLanguage} theme="vs-dark" original={state.snapshot.before} modified={state.snapshot.after}
-      options={{ readOnly: true, originalEditable: false, originalAriaLabel: "File before this edit", modifiedAriaLabel: "File after this edit", automaticLayout: true, renderSideBySide: true, useInlineViewWhenSpaceIsLimited: true, renderSideBySideInlineBreakpoint: 640, minimap: { enabled: false }, wordWrap: "off", diffWordWrap: "off", scrollbar: { horizontal: "visible" }, scrollBeyondLastLine: false, padding: { top: 12 } }}
-      loading={<p role="status" className="p-4 text-xs text-muted-foreground">Loading diff editor…</p>} />;
+    return <HistoricalSnapshotEditor snapshot={state.snapshot} language={editorLanguage} target={target ?? editedFileFromTool(tool)?.ranges?.[0]} />;
   }
   return <div className="px-2 py-3 text-xs text-muted-foreground" role={state.status === "error" ? "alert" : "status"}>
     {state.status === "loading" ? "Loading saved diff…" : state.status === "missing" ? "Historical snapshots unavailable for this edit." : "Could not load saved diff."}
@@ -73,19 +112,20 @@ function EditDiff({ tool, chatId, messageId, editorLanguage }: EditedFilesDiffPr
   </div>;
 }
 
-export function EditedFileEditorDiff({ file, tools, chatId, messageId, language }: EditedFileDiffRequest & { language: string }) {
+export function EditedFileEditorDiff({ file, tools, chatId, messageId, language, focus }: EditedFileDiffRequest & { language: string }) {
   const edits = useMemo(() => toolsForEditedFile(file, tools), [file, tools]);
-  const [index, setIndex] = useState(0);
-  const tool = edits[index];
+  const first = useMemo(() => initialEditTool(edits, focus), [edits, focus]);
+  const [selectedId, setSelectedId] = useState<string>();
+  const tool = edits.find(edit => edit.id === selectedId) ?? first;
   return <div data-editor-file-diff className="flex h-full min-h-0 flex-col">
     <div className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/50 px-3 py-1 text-xs text-muted-foreground">
       <span>Before → After</span>
-      {edits.length > 1 ? <select aria-label="Edit version" className="h-11 max-w-full rounded-md border border-border bg-background px-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={index} onChange={event => setIndex(Number(event.target.value))}>
-        {edits.map((edit, i) => <option key={edit.id} value={i}>Edit {i + 1} of {edits.length}</option>)}
+      {edits.length > 1 ? <select aria-label="Edit version" className="h-11 max-w-full rounded-md border border-border bg-background px-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={tool?.id ?? ""} onChange={event => setSelectedId(event.target.value)}>
+        {edits.map((edit, i) => <option key={edit.id} value={edit.id}>Edit {i + 1} of {edits.length}</option>)}
       </select> : null}
     </div>
     <div className="min-h-0 flex-1 overflow-hidden">
-      {tool ? <EditDiff key={`${chatId}:${messageId}:${tool.id}`} tool={tool} chatId={chatId} messageId={messageId} editorLanguage={language} /> : <p role="status" className="p-4 text-xs text-muted-foreground">Historical snapshots unavailable for this file.</p>}
+      {tool ? <EditDiff key={`${chatId}:${messageId}:${tool.id}`} tool={tool} chatId={chatId} messageId={messageId} editorLanguage={language} target={tool.id === focus?.toolId ? focus.range : undefined} /> : <p role="status" className="p-4 text-xs text-muted-foreground">Historical snapshots unavailable for this file.</p>}
     </div>
   </div>;
 }

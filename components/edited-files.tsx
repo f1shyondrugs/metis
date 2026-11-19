@@ -2,19 +2,19 @@
 
 import { useState } from "react";
 import { ChevronRight, ChevronUp, FileCode2 } from "lucide-react";
-import type { EditedFile } from "@/lib/edited-files";
+import type { EditedFileSummary } from "@/lib/edited-files";
 import { editedFileHref } from "@/lib/edited-files";
 import type { FileChangeRange } from "@/lib/file-change-ranges";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { EditedFilesDiffProps } from "@/components/edited-file-diff";
-import { toolsForEditedFile } from "@/lib/edited-file-diff";
+import { toolsForEditedFile, type EditDiffFocus } from "@/lib/edited-file-diff";
 
-function openFile(file: EditedFile, context: EditedFilesDiffProps, changes = file.ranges) {
-  const first = changes?.[0];
+function openFile(file: EditedFileSummary, context: EditedFilesDiffProps, focus?: EditDiffFocus) {
+  const { versions: _versions, partialCounts: _partialCounts, ...original } = file;
   window.dispatchEvent(new CustomEvent("ai-chat:open-file", { detail: {
-    path: file.path, diff: { ...context, file: { ...file, ranges: changes }, tools: toolsForEditedFile(file, context.tools) },
-    ...(first ? { line: first.startLine, endLine: first.endLine, changes } : {}),
+    path: file.path,
+    diff: { ...context, file: original, tools: toolsForEditedFile(file, context.tools), focus },
   } }));
 }
 
@@ -24,7 +24,7 @@ function rangeLabel(change: FileChangeRange) {
   return `${change.kind === "deleted" ? "Removed " : ""}L${start}${end > start ? "–" + end : ""}`;
 }
 
-function EditedFileRows({ files, compact = false, onOpen, ...diffProps }: EditedFilesDiffProps & { files: EditedFile[]; compact?: boolean; onOpen?: () => void }) {
+function EditedFileRows({ files, compact = false, onOpen, ...diffProps }: EditedFilesDiffProps & { files: EditedFileSummary[]; compact?: boolean; onOpen?: () => void }) {
   let prefix = files[0]?.path.slice(0, files[0].path.lastIndexOf("/") + 1) || "";
   if (!files.every(file => file.target === files[0].target && file.path.startsWith("/"))) prefix = "";
   while (prefix && !files.every(file => file.path.startsWith(prefix))) {
@@ -41,10 +41,12 @@ function EditedFileRows({ files, compact = false, onOpen, ...diffProps }: Edited
         <span className="block truncate text-xs font-medium">{name}</span>
         {directory ? <span className="block truncate text-[11px] text-muted-foreground">{directory}</span> : null}
       </span> : <span className="min-w-0 flex-1 break-all font-mono">{relativePath}</span>}
-      <span data-line-stats className="ml-auto inline-flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums" title={file.additions === undefined || file.deletions === undefined ? "Line counts unavailable for these edits" : "Lines added and removed across edits in this response"}>
-        <span className={file.additions === undefined ? "text-muted-foreground" : "text-green-500"} aria-label={file.additions === undefined ? "Added lines unavailable" : `${file.additions} lines added`}>+{file.additions ?? "?"}</span>
-        <span className={file.deletions === undefined ? "text-muted-foreground" : "text-red-400"} aria-label={file.deletions === undefined ? "Removed lines unavailable" : `${file.deletions} lines removed`}>{file.deletions === undefined ? "-?" : `−${file.deletions}`}</span>
-      </span>
+      {file.additions !== undefined && file.deletions !== undefined ?
+        <span data-line-stats className="ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums" title={file.partialCounts ? "Only edits with recorded line counts are included" : "Lines added and removed across edits in this response"}>
+          <span className="text-green-500" aria-label={`${file.additions} lines added`}>+{file.additions}</span>
+          <span className="text-red-400" aria-label={`${file.deletions} lines removed`}>−{file.deletions}</span>
+          {file.partialCounts ? <span className="text-[10px] text-muted-foreground">Partial</span> : null}
+        </span> : <span data-line-stats className="shrink-0 text-[10px] text-muted-foreground">No line counts</span>}
     </>;
     const key = file.target + ":" + file.path;
     return <li key={key} className="min-w-0 max-w-full">
@@ -53,14 +55,19 @@ function EditedFileRows({ files, compact = false, onOpen, ...diffProps }: Edited
         onOpen?.();
         openFile(file, diffProps);
       }}>{label}</a> : <button type="button" aria-label={`View changes for ${file.path}`} className={cn("flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-foreground/85 hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")} title={file.path} onClick={() => { onOpen?.(); openFile(file, diffProps); }}>{label}<span className="shrink-0 text-[10px] text-muted-foreground">{file.target}</span></button>}
-      {!compact && file.ranges?.length ? <div className="flex flex-wrap gap-x-2 pl-7" data-change-lines>
-        {file.ranges.map((range,index) => <button key={index} type="button" disabled={!href} className="min-h-8 text-left text-[11px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default" title={range.kind === "deleted" ? "Jump to where these lines were removed" : "Open and select these changed lines"} onClick={() => openFile(file,diffProps,[range])}>{rangeLabel(range)}</button>)}
-      </div> : null}
+      {file.versions?.map(({ toolId, ranges }, versionIndex) => ranges?.length ? <div key={toolId} className="flex flex-wrap items-center gap-x-2 pl-7" data-change-lines>
+        {file.versions!.length > 1 ? <span className="text-[10px] text-muted-foreground">Edit {versionIndex + 1}:</span> : null}
+        {ranges.map((range, index) => <button key={index} type="button" className="min-h-8 rounded-sm text-left text-[11px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`Edit ${versionIndex + 1}: ${rangeLabel(range)}`} title={range.kind === "deleted" ? "Jump to the removed lines" : "Jump to the changed lines"} onClick={() => {
+            onOpen?.();
+            openFile(file, diffProps, { toolId, range });
+          }}>{rangeLabel(range)}</button>)}
+      </div> : null)}
     </li>;
   })}</>;
 }
 
-export function EditedFiles({ files, streaming = false, ...diffProps }: EditedFilesDiffProps & { files: EditedFile[]; streaming?: boolean }) {
+export function EditedFiles({ files, streaming = false, ...diffProps }: EditedFilesDiffProps & { files: EditedFileSummary[]; streaming?: boolean }) {
   if (streaming || !files.length) return null;
   return (
     <details className="group/edited-files my-3 min-w-0 max-w-full text-xs" data-edited-files>
@@ -76,7 +83,7 @@ export function EditedFiles({ files, streaming = false, ...diffProps }: EditedFi
   );
 }
 
-export function ComposerEditedFiles({ files, ...diffProps }: EditedFilesDiffProps & { files: EditedFile[] }) {
+export function ComposerEditedFiles({ files, ...diffProps }: EditedFilesDiffProps & { files: EditedFileSummary[] }) {
   const [open, setOpen] = useState(false);
   if (!files.length) return null;
   return <Popover open={open} onOpenChange={setOpen}>
