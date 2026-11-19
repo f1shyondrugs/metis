@@ -5,11 +5,12 @@ import { Check, Copy, LoaderCircle, LockKeyhole } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { copyText } from "@/lib/copy-text";
+import { PublicShareUrlHint } from "@/components/public-base-url";
 
 export type ShareLinkPatch = { active?: boolean; password?: string | null };
 
 export type ShareLinkControlsProps = {
-  url: string;
+  url: string | null;
   active: boolean;
   passwordProtected: boolean;
   busy: boolean;
@@ -52,6 +53,7 @@ export function ShareLinkControls({ url, active, passwordProtected, busy, onUpda
   }
 
   async function copyLink() {
+    if (!url) return;
     setError("");
     try {
       await copyText(url, linkInput.current);
@@ -66,7 +68,7 @@ export function ShareLinkControls({ url, active, passwordProtected, busy, onUpda
     {!active ? <p className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
       This link is inactive. Start sharing to make it available again.
     </p> : null}
-    <div className="flex gap-2">
+    {url ? <div className="flex gap-2">
       <Input
         ref={linkInput}
         readOnly
@@ -78,7 +80,7 @@ export function ShareLinkControls({ url, active, passwordProtected, busy, onUpda
       <Button type="button" variant="outline" size="icon-action" aria-label={copied ? "Share link copied" : "Copy share link"} onClick={() => void copyLink()}>
         {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
       </Button>
-    </div>
+    </div> : <PublicShareUrlHint />}
     {copied ? <p role="status" className="text-xs text-muted-foreground">Share link copied</p> : null}
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 p-3">
       <div className="min-w-0">

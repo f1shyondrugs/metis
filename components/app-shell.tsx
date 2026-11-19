@@ -44,6 +44,8 @@ import { workspaceFileHref, parseWorkspaceFileLink, type WorkspaceFileRequest } 
 import { QuestionForm } from "@/components/question-form";
 import { copyText } from "@/lib/copy-text";
 import { ShareLinkControls } from "@/components/share-link-controls";
+import { PublicShareUrlHint, usePublicBaseUrl } from "@/components/public-base-url";
+import { chatShareUrl } from "@/lib/public-base-url";
 import { ResearchProgressCard } from "@/components/research-progress-card";
 import { researchTracks, researchTrackKey, researchProgressFromTool } from "@/lib/research-progress";
 import { normalizeStoredQuestions, initialQuestionAnswers, restoreQuestionDraft, type PendingChatQuestion as PendingQuestion, type QuestionAnswers } from "@/lib/question-contract";
@@ -1603,6 +1605,7 @@ function paintVoiceWaveform(root: HTMLDivElement | null, level: number) {
 }
 
 export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
+  const publicBaseUrl = usePublicBaseUrl();
   const searchParams = useSearchParams();
   const routeChatId = searchParams.get("c");
   const calendarOpen = routeChatId === "calendar";
@@ -12396,7 +12399,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                 </div>
               ) : (
                 <ShareLinkControls
-                  url={`${window.location.origin}/share?id=${encodeURIComponent(shareData.id)}`}
+                  url={chatShareUrl(publicBaseUrl, shareData.id)}
                   active={shareData.active}
                   passwordProtected={shareData.passwordProtected}
                   busy={shareBusy}
@@ -12409,6 +12412,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           ) : !shareError ? (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">Create a read-only link to share this chat.</p>
+              {publicBaseUrl.state !== "configured" ? <PublicShareUrlHint /> : null}
               <Button className="w-full" onClick={() => void updateShare({ active: true })}>Create share link</Button>
             </div>
           ) : null}

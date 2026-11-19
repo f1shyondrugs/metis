@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, Crop, ExternalLink, Link2, Pencil, Plus, Share2, Trash2 } from "lucide-react";
 import { LinkIcon } from "@/components/link-icon";
+import { PublicShareUrlHint, usePublicBaseUrl } from "@/components/public-base-url";
+import { publicShareUrl } from "@/lib/public-base-url";
 import { ImageFramingDialog } from "@/components/image-framing-dialog";
 import { BannerUpload } from "@/components/banner-upload";
 import { BannerHeader } from "@/components/banner-image";
@@ -44,7 +46,8 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
   const [draft,setDraft]=useState(profile),[editing,setEditing]=useState(false),[saving,setSaving]=useState(false),[uploading,setUploading]=useState(false);
   const [handleError,setHandleError]=useState("");
   const [imageToAdjust,setImageToAdjust]=useState<string|null>(null);
-  const sharePath="/p/"+(profile.handle || profile.shareId);
+  const publicBaseUrl = usePublicBaseUrl();
+  const shareUrl = profile.shareId ? publicShareUrl(publicBaseUrl, "/p/" + encodeURIComponent(profile.handle || profile.shareId)) : null;
   const [activity,setActivity]=useState<AccountUsage|null>(null),[activityError,setActivityError]=useState(""),[copied,setCopied]=useState(false);
   useEffect(()=>{if(!editing)setDraft(profile);},[profile,editing]);
   useEffect(()=>{
@@ -68,7 +71,8 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
     finally{setSaving(false);}
   }
   async function copy() {
-    try{await navigator.clipboard.writeText(new URL(sharePath,window.location.origin).href);setCopied(true);window.setTimeout(()=>setCopied(false),2000);}
+    if (!shareUrl) return;
+    try{await navigator.clipboard.writeText(shareUrl);setCopied(true);window.setTimeout(()=>setCopied(false),2000);}
     catch{toast.error("Copy the profile link from the field below.");}
   }
   return <div className="space-y-8">
@@ -117,12 +121,13 @@ export function ProfilePanel({profile,onChange}: {profile:AccountProfile;onChang
           <div className="mt-4 flex items-center justify-between gap-4"><div><label htmlFor="profile-sharing" className="text-sm">Shareable link</label><p className="mt-1 text-xs text-muted-foreground">Anyone with the link can see your name, picture, banner, bio and links.</p></div>
             <Switch id="profile-sharing" checked={Boolean(profile.shareId)} disabled={saving || editing} onCheckedChange={sharing=>void save({...profile,shareId:sharing?"new":null})}/>
           </div>
+          {publicBaseUrl.state !== "configured" ? <div className="mt-3"><PublicShareUrlHint /></div> : null}
           {profile.shareId ? <><div className="mt-4 flex items-center justify-between gap-4"><div><label htmlFor="profile-share-activity" className="text-sm">Include token activity</label><p className="mt-1 text-xs text-muted-foreground">Share the daily heatmap. Usage details and costs stay private.</p></div>
             <Switch id="profile-share-activity" checked={profile.shareActivity} disabled={saving || editing} onCheckedChange={shareActivity=>void save({...profile,shareActivity})}/>
           </div>
-          <div className="mt-5 flex gap-2"><Input aria-label="Shared profile link" className="h-11 text-xs" readOnly value={typeof window!=="undefined"?new URL(sharePath,window.location.origin).href:sharePath}/>
+          {shareUrl ? <div className="mt-5 flex gap-2"><Input aria-label="Shared profile link" className="h-11 text-xs" readOnly value={shareUrl}/>
             <Button className="size-11 shrink-0" variant="outline" size="icon" aria-label="Copy profile link" onClick={()=>void copy()}>{copied?<Check className="size-4"/>:<Copy className="size-4"/>}</Button>
-          </div><p className="mt-2 text-xs text-muted-foreground">Turning sharing off revokes this link.</p></>:<p className="mt-4 text-xs text-muted-foreground">Your profile is private.</p>}
+          </div> : null}<p className="mt-2 text-xs text-muted-foreground">Turning sharing off revokes this link.</p></>:<p className="mt-4 text-xs text-muted-foreground">Your profile is private.</p>}
         </section>
       </div>
     </div>

@@ -6,6 +6,9 @@ import {AppearanceProvider} from "../components/appearance-provider";
 import {applyAppearanceTheme,getSelectedTheme,createDefaultAppearanceState,APPEARANCE_STORAGE_KEY} from "../lib/appearance-storage";
 import {ClientOnboarding} from "../components/client-onboarding";
 import {SetupWizard} from "../components/setup-wizard";
+import {PublicBaseUrlProvider} from "../components/public-base-url";
+import {Toaster} from "../components/ui/sonner";
+import {resolvePublicBaseUrl, type PublicBaseCheck} from "../lib/public-base-url";
 import {ProviderSetupDialog} from "../components/provider-setup-dialog";
 import {ProviderSetupPrompt} from "../components/provider-setup-prompt";
 import {getThemePreset} from "../lib/appearance-theme";
@@ -18,6 +21,8 @@ window.matchMedia=query=>query==="(prefers-reduced-motion: reduce)"?motionMedia 
 async function reduceMotion(value:boolean){reducedMotion=value;motionMedia.dispatchEvent(new Event("change"));await pause(40);}
 let failures=0,permissionCalls=0,deviceCalls=0,serverCalls=0,providerCalls=0,pairingNavigationCalls=0,setupFinished=0,setupCompleteRequests=0;
 let nativeId="",downloadFail=false,bootstrapCalls=0,providerRequests=0,adminRequests=0,osRequests=0,bootstrapFailureStatus=0,setupCompleteFailures=0;
+let urlCheck: PublicBaseCheck = { state: "other_instance" };
+let urlCheckRequests = 0, testAdminSession = false;
 const nav:TourTarget[]=[]; // No navigation callback is passed by onboarding.
 const pause=(ms=80)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(test:()=>boolean,label:string){for(let i=0;i<150;i++){if(test())return;await pause(20);}throw Error("Timed out: "+label);}
@@ -36,7 +41,10 @@ window.fetch=async(input,init)=>{
   if(downloadFail){downloadFail=false;return Response.json({error:"Synthetic download error"},{status:503});}
   return Response.json({downloads:[{label:platform==="macos"?"macOS · Apple Silicon":platform==="linux"?"Linux · Intel / AMD":"Windows installer",url:"https://github.com/f1shyondrugs/Metis-Apps/releases/download/v-fixture/"+platform+".bin"}]});
  }
- if(url==="/api/setup"){const body=init?.body?JSON.parse(String(init.body)):{};if(body.action==="bootstrap"){bootstrapCalls++;await pause(60);if(bootstrapFailureStatus){const status=bootstrapFailureStatus;bootstrapFailureStatus=0;return Response.json({error:"Synthetic bootstrap error"},{status});}return Response.json({user:{id:"fixture-admin",username:"Demo",isAdmin:true}});}if(body.action==="complete"){setupCompleteRequests++;if(setupCompleteFailures>0){setupCompleteFailures--;return Response.json({error:"Synthetic completion error"},{status:503});}return Response.json({ok:true});}if(body.action==="os-users")osRequests++;return Response.json({platform:"linux",osUsers:[],osUsersAvailable:false});}
+ if(url==="/api/setup"){const body=init?.body?JSON.parse(String(init.body)):{};if(body.action==="check-public-url"){
+   if (!testAdminSession || "setupToken" in body || typeof body.publicUrl!=="string") return Response.json({error:"Invalid fixture request"},{status:403});
+   urlCheckRequests++;await pause(300);return Response.json({check:urlCheck,...(urlCheck.state==="verified"?{base:resolvePublicBaseUrl(body.publicUrl)}:{})});
+  }if(body.action==="bootstrap"){bootstrapCalls++;await pause(60);if(bootstrapFailureStatus){const status=bootstrapFailureStatus;bootstrapFailureStatus=0;return Response.json({error:"Synthetic bootstrap error"},{status});}testAdminSession=true;return Response.json({user:{id:"fixture-admin",username:"Demo",isAdmin:true}});}if(body.action==="complete"){setupCompleteRequests++;if(setupCompleteFailures>0){setupCompleteFailures--;return Response.json({error:"Synthetic completion error"},{status:503});}return Response.json({ok:true});}if(body.action==="os-users")osRequests++;return Response.json({platform:"linux",osUsers:[],osUsersAvailable:false});}
  if(url==="/api/providers"){providerRequests++;return Response.json({providers:[{key:"synthetic-provider",name:"Fixture provider",description:"Isolated UI test only",authTypes:["api_key"],capabilities:[]}]});}
  if(url==="/api/admin/users"){adminRequests++;return Response.json({users:[{id:"fixture-admin",username:"Demo",isAdmin:true}]});}
  return originalFetch(input,init);
@@ -65,11 +73,63 @@ async function click(text:string){const target=button(text);if(!target)throw Err
  target.click();await pause(150);for(let i=0;i<60&&document.querySelector('.onboarding-transition[data-phase="out"]');i++)await pause(20);}
 function read(owner:string,client="browser"){return JSON.parse(localStorage.getItem(onboardingStorageKey(owner,client))||"null");}
 async function fill(label:string,value:string){
- const el=Array.from(document.querySelectorAll<HTMLInputElement>("input")).find(el=>el.getAttribute("aria-label")===label||el.closest("label")?.textContent?.includes(label));
+ const el=Array.from(document.querySelectorAll<HTMLInputElement>("input")).find(el=>el.getAttribute("aria-label")===label||Array.from(el.labels || []).some(item=>item.textContent?.includes(label)));
  if(!el)throw Error("Missing input "+label);
  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(el,value);el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));await pause(30);
 }
+async function reportResults() {
+ document.body.dataset.complete="true";report.textContent=failures?results.filter(x=>x.startsWith("FAIL")).join("\n"):"PASS "+results.length+" onboarding assertions · "+innerWidth+"px";
+ await originalFetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,height:innerHeight,view,results,nativeId,permissionCalls,deviceCalls,serverCalls})});
+}
+async function runPublicUrlCheck() {
+ await reduceMotion(true);
+ const mountUrl = (value: string | undefined, hasUsers: boolean) => root.render(<AppearanceProvider><PublicBaseUrlProvider base={resolvePublicBaseUrl(value)}><SetupWizard key={value || "unset"} open hasUsers={hasUsers} onFinished={()=>{setupFinished++;}}/><Toaster duration={20000}/></PublicBaseUrlProvider></AppearanceProvider>);
+ const heading = () => document.querySelector(".onboarding-stage h1")?.textContent;
+ const progress = () => document.querySelector(".onboarding-progress")?.getAttribute("aria-label");
+ const disclosureWorks = (label: string) => {
+  const toggle = button(label);
+  const content = document.getElementById(toggle?.getAttribute("aria-controls") || "");
+  if (!toggle || !content || !content.hidden || !toggle.querySelector("svg.lucide-chevron-right")) return false;
+  toggle.focus(); toggle.click();
+  return toggle;
+ };
+ const feedback = () => document.querySelector('[role="alert"]')?.textContent;
+ const address = () => document.querySelector<HTMLInputElement>('input[type="url"]');
+ const marker = () => document.querySelector<HTMLElement>('[data-url-verified]');
+ mountUrl(undefined,true);await until(()=>heading()==="What's your public URL?","resumed URL step");
+ check(address()?.value===""&&button("Check URL")?.disabled&&!button("Finish")?.disabled,"missing URL does not block Finish");
+ mountUrl("https://metis.example/",false);await until(()=>heading()==="Create your admin account","fresh admin step");
+ check(progress()==="Step 1 of 2"&&!button("Check URL"),"fresh setup starts on admin, not the URL check");
+ const tokenDisclosure=disclosureWorks("Where to find the setup token");
+ await until(()=>!!tokenDisclosure&&tokenDisclosure.getAttribute("aria-expanded")==="true","operator token help expands");
+ check(tokenDisclosure&&document.activeElement===tokenDisclosure&&!document.getElementById(tokenDisclosure.getAttribute("aria-controls")!)?.hidden,"token help uses the focusable chevron disclosure");
+ await fill("Admin username","demo-admin");await fill("Password","synthetic-password");await fill("Operator setup token","fixture-only-token");
+ await click("Continue");await until(()=>heading()==="What's your public URL?","URL step after creating admin");
+ check(progress()==="Step 2 of 2"&&address()?.value==="https://metis.example"&&!document.querySelector('input[type="password"]')&&setupCompleteRequests===0,"public address has its own editable field and credentials are cleared");
+ const urlDisclosure=disclosureWorks("How do I change this?");
+ await until(()=>!!urlDisclosure&&urlDisclosure.getAttribute("aria-expanded")==="true","URL configuration help expands");
+ check(urlDisclosure&&!document.getElementById(urlDisclosure.getAttribute("aria-controls")!)?.hidden,"URL help uses the same disclosure");
+ button("Check URL")!.click();await until(()=>!!button("Checking…"),"loading state");
+ check(button("Checking…")?.disabled&&button("Finish")?.disabled,"loading prevents a duplicate probe or early Finish");
+ await until(()=>feedback()?.includes("a different Metis server")===true,"mismatch message");
+ check(bootstrapCalls===1&&setupCompleteRequests===0&&urlCheckRequests===1&&marker()?.dataset.urlVerified==="false","mismatch stays inline and is never marked verified");
+ await fill("Server address","https://corrected.example/");
+ urlCheck={state:"verified"};
+ await click("Check URL");
+ await until(()=>marker()?.dataset.urlVerified==="true"&&!!document.querySelector('[data-sonner-toast][data-type="success"]'),"verified toast and checkmark");
+ check(urlCheckRequests===2&&!button("Finish")?.disabled&&address()?.value==="https://corrected.example","corrected address is normalized and saved without blocking Finish");
+ check(marker()?.getAttribute("aria-label")==="URL verified"&&document.querySelector('[data-sonner-toast]')?.textContent?.includes("Public URL verified"),"success uses an accessible checkmark and the canonical toast");
+ check(!!marker()?.className.includes("motion-reduce:transition-none"),"checkmark respects reduced motion");
+ await fill("Server address","https://changed.example");
+ check(marker()?.dataset.urlVerified==="false","editing a verified address clears its checkmark");
+ await fill("Server address","https://corrected.example");
+ await click("Check URL");
+ await until(()=>marker()?.dataset.urlVerified==="true","restored success for visual inspection");
+ check(document.documentElement.scrollWidth<=innerWidth+1,"expanded URL help fits viewport");
+ await reportResults();
+}
 async function run(){
+ if (view === "url-check") return runPublicUrlCheck();
  for(const key of Object.keys(localStorage))if(key.startsWith("metis:onboarding:"))localStorage.removeItem(key);
  localStorage.removeItem(APPEARANCE_STORAGE_KEY);browser();await mount();
  check(document.documentElement.dataset.surface==="midnight"&&getComputedStyle(document.documentElement).getPropertyValue("--background").trim()===getThemePreset("midnight")!.variables["--background"],"fresh theme is Midnight");
@@ -212,23 +272,25 @@ async function run(){
  check(document.querySelectorAll("input").length===3&&document.querySelectorAll('input[type="password"]').length===2,"only username, password and protected operator token remain");
  check(!document.querySelector("select")&&!document.querySelector('input[type="checkbox"]')&&!document.body.textContent?.includes("OS user"),"OS mapping and extra account options are deferred to Settings");
  check(document.activeElement?.getAttribute("autocomplete")==="username","admin username receives initial focus");
- check(!document.querySelector("details")?.open,"operator-token help is collapsed by default");
+ check(button("Where to find the setup token")?.getAttribute("aria-expanded")==="false","operator-token help is collapsed by default");
  await click("Continue");check(bootstrapCalls===0,"associated footer submit keeps native required-field validation");
  await fillAdmin();bootstrapFailureStatus=403;await click("Continue");
  check(bootstrapCalls===1&&setupCompleteRequests===0&&!!document.querySelector('[role="alert"]'),"rejected operator validation cannot finish setup");
  check(document.querySelectorAll("input").length===3,"rejected bootstrap preserves the account form for correction");
  button("Continue")!.click();button("Continue")!.click();await pause(260);
- for(let i=0;i<100&&document.querySelectorAll("input").length;i++)await pause(20);
- check(bootstrapCalls===2&&setupCompleteRequests===1&&setupFinished===1,"one valid submit creates one admin and immediately enters the UI without a provider step");
- check(document.querySelectorAll("input").length===0,"acknowledged creation clears credential fields");
+ await until(()=>!!button("Finish"),"URL step after account submission");
+ check(bootstrapCalls===2&&setupCompleteRequests===0&&document.body.textContent?.includes("What's your public URL?"),"one valid submit creates one admin and reaches the URL step before finishing");
+ await click("Finish");await until(()=>setupFinished===1,"URL step finish callback");
+ check(!document.querySelector('input[type="password"]'),"acknowledged creation clears credential fields");
  check(providerRequests===providerBeforeSetup&&adminRequests===adminBeforeSetup&&osRequests===osBeforeSetup,"setup never fetches providers, lists extra users or discovers OS users");
- await mountSetup();await fillAdmin();setupCompleteFailures=1;await click("Continue");await until(()=>!!document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic completion error")&&document.querySelectorAll("input").length===0,"completion error after committed account scene");
+ await mountSetup();await fillAdmin();setupCompleteFailures=1;await click("Continue");await until(()=>!!button("Finish"),"first URL step");
+ await click("Finish");await until(()=>!!document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic completion error")&&!document.querySelector('input[type="password"]'),"completion error after committed account scene");
  const createsBeforeRetry=bootstrapCalls,completesBeforeRetry=setupCompleteRequests;
- check(document.querySelectorAll("input").length===0&&document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic completion error"),"completion failure keeps the acknowledged admin instead of asking for credentials again");
- await click("Continue");await until(()=>setupFinished===2,"completion retry callback");check(bootstrapCalls===createsBeforeRetry&&setupCompleteRequests===completesBeforeRetry+1&&setupFinished===2,"completion retry never recreates an admin or resubmits secrets");
+ check(!document.querySelector('input[type="password"]')&&document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic completion error"),"completion failure keeps the acknowledged admin instead of asking for credentials again");
+ await click("Finish");await until(()=>setupFinished===2,"completion retry callback");check(bootstrapCalls===createsBeforeRetry&&setupCompleteRequests===completesBeforeRetry+1&&setupFinished===2,"completion retry never recreates an admin or resubmits secrets");
  sessionStorage.setItem("metis-setup-step","people");await mountSetup(true);
- check(document.querySelectorAll("input").length===0&&document.body.textContent?.includes("Your account is ready"),"existing incomplete installs resume directly at the authenticated completion action");
- const beforeResume=bootstrapCalls;await click("Continue");await until(()=>setupFinished===3,"resume completion callback");check(bootstrapCalls===beforeResume&&setupFinished===3,"resuming existing setup cannot create another account");
+ check(!!document.querySelector('input[type="url"]')&&document.body.textContent?.includes("What's your public URL?"),"existing incomplete installs resume directly at the URL step");
+ const beforeResume=bootstrapCalls;await click("Finish");await until(()=>setupFinished===3,"resume completion callback");check(bootstrapCalls===beforeResume&&setupFinished===3,"resuming existing setup cannot create another account");
  await mountSetup();await fillAdmin();bootstrapFailureStatus=409;await click("Continue");
  check(document.querySelectorAll("input").length===0&&document.body.textContent?.includes("Sign in to continue"),"an already-created account switches to sign-in recovery without another bootstrap");
  check(![...Object.keys(localStorage)].some(k=>(localStorage.getItem(k)||"").includes("synthetic-password")||(localStorage.getItem(k)||"").includes("synthetic-token")),"setup secrets never enter client onboarding storage");
@@ -246,7 +308,6 @@ async function run(){
  else if(view==="native"){native("visual");await mount("Demo");await click("Continue");}
  else if(view==="tour"||view==="finish"||view==="tour-empty"){if(view==="tour-empty")await mount("Demo-empty",false);await click("Continue");await click("Finish");}
  check(noOverflow(),"layout has no horizontal page overflow at "+innerWidth);
- document.body.dataset.complete="true";report.textContent=failures?results.filter(x=>x.startsWith("FAIL")).join("\n"):"PASS "+results.length+" onboarding assertions · "+innerWidth+"px";
- await originalFetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,height:innerHeight,view,results,nativeId,permissionCalls,deviceCalls,serverCalls})});
+ await reportResults();
 }
 void run().catch(error=>{check(false,String(error));document.body.dataset.complete="error";void originalFetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,height:innerHeight,view,results,error:String(error)})});});

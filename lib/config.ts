@@ -1,4 +1,5 @@
 import { productName } from "@/lib/product-name";
+import { resolvePublicBaseUrl } from "@/lib/public-base-url";
 import os from "node:os";
 import path from "node:path";
 import { isDockerEnv, rewriteDockerServiceUrl } from "@/lib/docker-urls.mjs";
@@ -23,7 +24,9 @@ const dataDir = env("CHAT_DATA_DIR") || path.join(root, "data");
 const port = numberEnv("PORT", 3100);
 const host = env("AI_CHAT_HOST") || "127.0.0.1";
 const publicHost = host === "0.0.0.0" ? "127.0.0.1" : host;
-const publicUrl = env("AI_CHAT_PUBLIC_URL") || `http://${publicHost}:${port}`;
+const configuredPublicUrl = env("AI_CHAT_PUBLIC_URL");
+const publicBaseUrl = resolvePublicBaseUrl(configuredPublicUrl);
+const publicUrl = configuredPublicUrl || `http://${publicHost}:${port}`;
 const docker = isDockerEnv();
 const internalOrigin = docker
   ? rewriteDockerServiceUrl(env("AI_CHAT_INTERNAL_ORIGIN") || "http://app:3100", "app", 3100)
@@ -60,6 +63,7 @@ export const config = {
   automationUrl: internalUrl("AI_CHAT_AUTOMATION_URL", "/api/internal/mcp-automation"),
   fileUrl: internalUrl("AI_CHAT_FILE_URL", "/api/internal/mcp-file"),
   publicUrl,
+  publicBaseUrl,
   serviceName: env("AI_CHAT_SERVICE_NAME") || "metis-ai",
   port,
   mcpPort: numberEnv("MCP_PORT", 8787),
