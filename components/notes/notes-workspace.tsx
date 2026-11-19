@@ -30,6 +30,7 @@ import { notesNavigationTarget, subscribeNotesHashNavigation, type NotesNavigati
 type ProjectOption = Pick<Project, "id" | "name" | "icon" | "color" | "logoStoredName" | "updatedAt">;
 type WorkspaceProps = { initialProjectId?: string | null; focusNoteId?: string | null; embedded?: boolean; active?: boolean };
 type Mode = "files" | "favorites" | "recent" | "trash";
+type CreatedContentFocus = { noteId: string; serial: number };
 const scopeKey = (id: string | null) => id || "none";
 const label = (note: TreeNote) => noteDisplayTitle(note.title) || "Untitled";
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
@@ -73,6 +74,13 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
   const searchInput = useRef<HTMLInputElement>(null);
   const loadSerial = useRef(0);
   const navigationSerial = useRef(0);
+  const workspaceActive = useRef(active);
+  workspaceActive.current = active;
+  const dialogFocus = useRef<CreatedContentFocus | null>(null);
+  const [contentFocus, setContentFocus] = useState<CreatedContentFocus | null>(null);
+  useEffect(() => {
+    if (!active) ++navigationSerial.current;
+  }, [active]);
   const notes = useMemo(() => cache[scopeKey(projectId)] || [], [cache, projectId]);
   const selected = notes.find(note => note.id === selectedId) || null;
   const activeNotes = notes.filter(note => !note.archived);
@@ -131,8 +139,8 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
   const reportEditor=useCallback((status:NotebookEditorStatus|null,id:string)=>{if(id===selectedNoteRef.current)setEditorStatus(status);},[]);
   const presenceContext=useMemo(()=>({reportEditor}),[reportEditor]);
   const flush = useCallback(async () => (await doc.current?.flush()) ?? true, []);
-  const openNote = useCallback(async (id: string, blockId?: string, canNavigate?:()=>boolean) => {
-    if(!canNavigate)stopPresence.current();
+  const openNote = useCallback(async (id: string, blockId?: string, canNavigate?:()=>boolean, focusContent = false) => {
+    if(!canNavigate || focusContent)stopPresence.current();
     const serial = ++navigationSerial.current;
     if (!(await flush()) || serial !== navigationSerial.current || canNavigate?.()===false) return false;
     try {
@@ -145,6 +153,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
         return { ...current, [scopeKey(container)]: [...existing.filter(item => item.id !== id), note] };
       });
       setPendingBlock(blockId ? { noteId: id, blockId } : null);
+      setContentFocus(focusContent && !note.archived && note.kind !== "issuebook" ? { noteId: id, serial } : null);
       setSelectedId(id); setMode(note.archived ? "trash" : "files"); setSidebar(false);
       setRecent(current => {
         const next = [id, ...current.filter(item => item !== id)].slice(0, 30);
@@ -156,6 +165,23 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
       return true;
     } catch (cause) { if (serial === navigationSerial.current) setError(cause instanceof Error ? cause.message : "Could not open file."); return false; }
   }, [embedded, flush, ownerId]);
+
+  const beginCreatedDocumentNavigation = useCallback(() => {
+    const serial = navigationSerial.current;
+    const canNavigate = () => workspaceActive.current && Boolean(workspaceRoot.current?.isConnected);
+    return (noteId: string) => {
+      if (serial === navigationSerial.current && canNavigate()) void openNote(noteId, undefined, canNavigate, true);
+    };
+  }, [openNote]);
+
+  const claimContentFocus = useCallback(() => {
+    if (!contentFocus) return false;
+    setContentFocus(current => current === contentFocus ? null : current);
+    // A delayed live-editor handshake must not steal focus from a newer action.
+    return workspaceActive.current && contentFocus.serial === navigationSerial.current
+      && contentFocus.noteId === selectedNoteRef.current
+      && (document.activeElement === document.body || document.activeElement === document.documentElement);
+  }, [contentFocus]);
 
   const presence=useNotebookPresence({ownerId,noteId:selected&&!selected.archived?selected.id:null,active,root:workspaceRoot,openNote});
   const stopNotebookFollow=presence.stop;
@@ -231,6 +257,7 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
     setCache(current => ({ ...current, [key]: (current[key] || []).map(item => item.id === note.id ? note : item) }));
   }
   async function createFile(parentId: string | null = null, input?: { title?: string; content?: string; kind?:"note"|"issuebook" }) {
+    stopPresence.current();
     const serial = ++navigationSerial.current;
     const container = projectId;
     if (!(await flush()) || serial !== navigationSerial.current) return;
@@ -249,8 +276,10 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
       }
       const key = scopeKey(note.projectId || null);
       setCache(current => ({ ...current, [key]: [...current[key] || [], note] }));
-      if (serial !== navigationSerial.current) return;
+      if (serial !== navigationSerial.current || !workspaceActive.current) return;
       if (parentId) setExpanded(current => new Set([...current, parentId]));
+      // Radix releases its focus scope after the closing animation.
+      dialogFocus.current = note.kind !== "issuebook" && !note.archived ? { noteId: note.id, serial } : null;
       setSelectedId(note.id); setMode("files"); setSidebar(false); setCreation(null); setError("");
       if (!embedded) window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search + "#note-" + encodeURIComponent(note.id));
     } catch (cause) { if (serial === navigationSerial.current) setError(cause instanceof Error ? cause.message : "Could not create file."); }
@@ -353,12 +382,16 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
   }
   async function createIssue(text: string, sourceId: string, kind: "selection" | "checkbox") {
     if (!selectedId) throw new Error("Open a file first.");
-    const body = await json<{ issue: { id: string; key?: string; identifier?: string } }>("/api/issues", {
+    const openCreatedDocument = beginCreatedDocumentNavigation();
+    const body = await json<{ issue: { id: string; noteId?: string; key?: string; identifier?: string } }>("/api/issues", {
       method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": createClientId() },
       body: JSON.stringify({ projectId, issuebookId: selected?.issueId ? selected.parentId : undefined, title: text.split("\n")[0].slice(0, 200), description: text, source: { noteId: selectedId, sourceId, kind, excerpt: text } }),
     });
     void load(projectId, true);
-    return { id: body.issue.id, key: body.issue.key || body.issue.identifier || "Issue" };
+    const { noteId } = body.issue;
+    return { id: body.issue.id, key: body.issue.key || body.issue.identifier || "Issue",
+      ...(noteId ? { openCreated: () => openCreatedDocument(noteId) } : {}),
+    };
   }
 
   const baseTree = useMemo(() => {
@@ -493,11 +526,11 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
       {working && <div role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground"><Loader2 className="size-3 animate-spin" />Saving changes…</div>}
       {selected?.kind==="issuebook"&&!selected.archived && ownerId ? <div data-note-page-scroll className="min-h-0 flex-1 overflow-y-auto">
         <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} subfiles={subfiles} spellcheckChoice={spellcheckChoice} ownerId={ownerId} headerOnly onSaved={saved} onCreateSubpage={() => setCreation({parentId:selected.id,kind:"note",title:""})} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
-        <IssuesView className="h-auto min-h-[24rem]" key={selected.id} projectId={projectId} issuebookId={selected.id} onOpenNote={id=>{void openNote(id);}} onOpenDocument={id=>{void openNote(id);}}/>
+        <IssuesView className="h-auto min-h-[24rem]" key={selected.id} projectId={projectId} issuebookId={selected.id} onOpenNote={id=>{void openNote(id);}} onOpenDocument={id=>{void openNote(id);}} beginCreatedDocumentNavigation={beginCreatedDocumentNavigation}/>
       </div> : <div data-note-page-scroll className="min-h-0 flex-1 overflow-y-auto">
         {selected && ownerId ? <>
           {selected.archived && <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-5 py-3 text-sm"><span>This file is in trash.</span><Button variant="outline" size="sm" onClick={() => void archive(selected, false)}><RotateCcw className="size-3.5" />Restore</Button></div>}
-          <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} subfiles={subfiles} spellcheckChoice={spellcheckChoice} ownerId={ownerId} afterHeader={selected.issueId ? <IssueFileProperties key={selected.id} issueId={selected.issueId} projectId={projectId} onOpenNote={id=>{void openNote(id);}} onBeforeChange={flush} onChanged={()=>{void load(projectId,true);}}/> : undefined} onSaved={saved} onCreateSubpage={() => { setCreation({parentId:selected.id,kind:"note",title:""}); }} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
+          <NoteDocument key={ownerId + ":" + selected.id} ref={doc} note={selected} subfiles={subfiles} spellcheckChoice={spellcheckChoice} ownerId={ownerId} claimContentFocus={active && contentFocus?.noteId === selected.id ? claimContentFocus : undefined} afterHeader={selected.issueId ? <IssueFileProperties key={selected.id} issueId={selected.issueId} projectId={projectId} onOpenNote={id=>{void openNote(id);}} onBeforeChange={flush} onChanged={()=>{void load(projectId,true);}}/> : undefined} onSaved={saved} onCreateSubpage={() => { setCreation({parentId:selected.id,kind:"note",title:""}); }} onOpenNote={(id, blockId) => { void openNote(id, blockId); }} onOpenIssue={id => { void openIssue(id); }} onCreateIssue={createIssue} />
 
           {backlinks.length > 0 && <section className={cn("mb-12 border-t border-border py-5", selected.issueId || selected.kind === "issuebook" ? "w-full px-4 sm:px-6" : "mx-auto max-w-[920px] px-5 sm:px-10")}><h3 className="mb-2 text-xs font-medium text-muted-foreground">Linked from</h3>{backlinks.map(note => <button className="mr-3 text-sm underline underline-offset-4" key={note.id} onClick={() => void openNote(note.id)}>{label(note)}</button>)}</section>}
         </> : <div className="mx-auto flex min-h-[420px] max-w-md flex-col items-center justify-center px-8 py-16 text-center">
@@ -510,7 +543,13 @@ export function NotesWorkspace({ initialProjectId = null, focusNoteId, embedded 
       </div>}
     </main>
     </div>
-    <Dialog open={Boolean(creation)} onOpenChange={open=>{if(!open&&!working)setCreation(null);}}><DialogContent><DialogHeader><DialogTitle>Create file or issuebook</DialogTitle></DialogHeader>
+    <Dialog open={Boolean(creation)} onOpenChange={open=>{if(!open&&!working)setCreation(null);}}><DialogContent onCloseAutoFocus={event => {
+      const focus = dialogFocus.current;
+      dialogFocus.current = null;
+      if (!focus || !workspaceActive.current || focus.serial !== navigationSerial.current) return;
+      event.preventDefault();
+      setContentFocus(focus);
+    }}><DialogHeader><DialogTitle>Create file or issuebook</DialogTitle></DialogHeader>
       <form className="space-y-4" onSubmit={event=>{event.preventDefault();if(creation)void createFile(creation.parentId,creation);}}>
         <div role="radiogroup" aria-label="File type" className="grid grid-cols-2 gap-3">
           {([{kind:"note",title:"Markdown file",description:"Write a note with optional subfiles.",Icon:FileText},{kind:"issuebook",title:"Issuebook",description:"Track issues, each with its own Markdown file.",Icon:ListTodo}] as const).map(option=><button type="button" key={option.kind} role="radio" aria-checked={creation?.kind===option.kind} disabled={working} onClick={()=>setCreation(current=>current?{...current,kind:option.kind}:current)} className={cn("flex flex-col gap-2 rounded-lg border p-4 text-left",creation?.kind===option.kind?"border-primary bg-muted":"border-border hover:bg-muted/50")}><option.Icon className="size-5"/><span className="text-sm font-medium">{option.title}</span><span className="text-xs leading-relaxed text-muted-foreground">{option.description}</span></button>)}

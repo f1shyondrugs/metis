@@ -3,6 +3,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { NotesSpellcheckChoice } from "@/lib/notes-spellcheck";
+import type { NotesIssueCreation } from "./block-editor";
 import { NoteSubfiles } from "./note-subfiles";
 import { BannerHeader } from "@/components/banner-image";
 import { Check, Loader2, RefreshCw, AlertCircle, Plus, ListTodo } from "lucide-react";
@@ -28,17 +29,18 @@ type Props = {
   spellcheckChoice?: NotesSpellcheckChoice;
   headerOnly?: boolean;
   afterHeader?: ReactNode;
+  claimContentFocus?: () => boolean;
   note: TreeNote;
   ownerId: string;
   onSaved: (note: TreeNote) => void;
   onCreateSubpage: () => void;
   onOpenNote: (id: string, blockId?: string) => void;
   onOpenIssue: (id: string) => void;
-  onCreateIssue: (text: string, sourceId: string, kind: "selection" | "checkbox") => Promise<{ id: string; key: string }>;
+  onCreateIssue: (text: string, sourceId: string, kind: "selection" | "checkbox") => Promise<NotesIssueCreation>;
 };
 
 export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteDocument({
-  note, ownerId, onSaved, onCreateSubpage, onOpenNote, onOpenIssue, onCreateIssue, headerOnly = false, afterHeader, subfiles = [], spellcheckChoice,
+  note, ownerId, onSaved, onCreateSubpage, onOpenNote, onOpenIssue, onCreateIssue, headerOnly = false, afterHeader, subfiles = [], spellcheckChoice, claimContentFocus,
 }, ref) {
   const [document, setDocument] = useState<TreeNote>(note);
   const [editorMode,setEditorMode] = useState<"loading"|"legacy"|"live">("loading");
@@ -210,7 +212,7 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
       const todoPatch=legacyId ? { todos: (current.todos || []).filter(todo => todo.id !== legacyId || todo.content !== text) } : {};
       if(liveSource.current){liveSource.current(content);if(legacyId)update(todoPatch);}
       else update({content,...todoPatch});
-      await flushRef.current();
+      if (await flushRef.current()) issue.openCreated?.();
       return issue;
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not create issue."); }
     finally { setCreatingIssue(false); }
@@ -286,6 +288,7 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
       </div>)}
     </section>}
     {editorMode === "live" && !document.archived ? <CollaborativeNoteEditor
+      claimContentFocus={claimContentFocus}
       spellcheckChoice={spellcheckChoice} maxLength={document.issueId ? 100_000 : 50_000}
       noteId={note.id} ownerId={ownerId} value={document.content}
       onChange={content=>setDocument(current=>({...current,content}))}
@@ -295,6 +298,7 @@ export const NoteDocument = forwardRef<NoteDocumentHandle, Props>(function NoteD
       onCreateIssue={(text,context)=>makeIssue(text,context?.sourceId,context?.kind)}
       onOpenNote={(id,blockId)=>{persist();onOpenNote(id,blockId);}}
     /> : editorMode === "loading" ? <p role="status" className="py-6 text-sm text-muted-foreground">Opening editor…</p> : <NotesBlockEditor
+      claimContentFocus={document.archived ? undefined : claimContentFocus}
       spellcheckChoice={spellcheckChoice} maxLength={document.issueId ? 100_000 : 50_000}
       value={document.content} onChange={content=>update({content})} noteId={note.id}
       onCreateSubpage={()=>{persist();onCreateSubpage();}}

@@ -28,7 +28,7 @@ function memberName(members:IssueMember[],id:string|null) { return members.find(
 function changed(projectId:string|null) { window.dispatchEvent(new CustomEvent("metis-issues-changed",{detail:{projectId}})); }
 
 /** The active container is always an existing Project, or the account's private No Project. */
-export function IssuesView({projectId,issuebookId,onOpenNote,onOpenDocument,focusIssueId,className}:{className?:string;projectId:string|null;issuebookId?:string;onOpenNote?:(noteId:string)=>void;onOpenDocument?:(noteId:string)=>void;focusIssueId?:string|null}) {
+export function IssuesView({projectId,issuebookId,onOpenNote,onOpenDocument,beginCreatedDocumentNavigation,focusIssueId,className}:{className?:string;projectId:string|null;issuebookId?:string;onOpenNote?:(noteId:string)=>void;onOpenDocument?:(noteId:string)=>void;beginCreatedDocumentNavigation?:()=>((noteId:string)=>void);focusIssueId?:string|null}) {
   const [issues,setIssues]=useState<Issue[]>([]);
   const [members,setMembers]=useState<IssueMember[]>([]);
   const [currentUserId,setCurrentUserId]=useState("");
@@ -118,9 +118,10 @@ export function IssuesView({projectId,issuebookId,onOpenNote,onOpenDocument,focu
   async function create() {
     if(!quickTitle.trim() || busy) return;
     const title=quickTitle;
+    const openCreated = beginCreatedDocumentNavigation?.() ?? onOpenDocument;
     await mutate(async()=>{
       const data=await request<{issue:Issue}>("/api/issues","POST",{projectId,issuebookId,title,status:quickStatus});
-      setQuickTitle("");if(data.issue.noteId&&onOpenDocument)onOpenDocument(data.issue.noteId);else setOpenId(data.issue.id);
+      setQuickTitle("");if(data.issue.noteId&&openCreated)openCreated(data.issue.noteId);else setOpenId(data.issue.id);
     });
   }
   const toggle=(id:string)=>setSelected(previous=>{const next=new Set(previous);if(next.has(id)) next.delete(id);else next.add(id);return next;});

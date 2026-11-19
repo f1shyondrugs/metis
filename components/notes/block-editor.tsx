@@ -7,7 +7,7 @@ import {EmbeddedSourceControlsContext} from "@/components/embedded-source-contro
 import { StickyActions } from "@/components/ui/sticky-actions";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
 import { type AnyExtension, type Editor, type JSONContent } from "@tiptap/core";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, Selection, TextSelection } from "@tiptap/pm/state";
 import { Fragment, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { MarkdownSourceEditor } from "./markdown-source-editor";
 import { ArrowDown, ArrowUp, Bold, Check, ChevronDown, ChevronRight, Code2, Copy, FileText, GripVertical, Italic, Link2, List, Paperclip, Plus, Redo2, Strikethrough, Trash2, Underline, Undo2, X } from "lucide-react";
@@ -47,6 +47,8 @@ import { EditorLinkIcons } from "@/components/notes/editor-link-icons";
 import { NotesContextToolbar } from "@/components/notes/context-toolbar";
 import "./block-editor.css";
 
+export type NotesIssueCreation = NotesIssueReference & { openCreated?: () => void };
+
 export type NotesBlockEditorProps = {
   collaboration?: {extensions:AnyExtension[]; metadata:()=>Record<string,unknown>; applySource:(source:string)=>void};
   spellcheckChoice?: NotesSpellcheckChoice;
@@ -60,6 +62,8 @@ export type NotesBlockEditorProps = {
   readOnly?: boolean;
   maxLength?: number;
   autoFocus?: boolean;
+  /** One-shot handoff from an explicit create action, after the editor is ready. */
+  claimContentFocus?: () => boolean;
   initialMode?: "blocks" | "markdown" | "source";
   sourceLocation?: WorkspaceFileLocation | null;
   resolveUrl?: (url: string, kind: "image" | "link") => string;
@@ -70,7 +74,7 @@ export type NotesBlockEditorProps = {
   onFiles?: (files: File[]) => void | Promise<void>;
   hideAttachmentButton?: boolean;
   onCreateSubpage?: () => void;
-  onCreateIssue?: (text: string, context?: NotesIssueContext) => Promise<NotesIssueReference | void> | void;
+  onCreateIssue?: (text: string, context?: NotesIssueContext) => Promise<NotesIssueCreation | void> | void;
   onOpenNote?: (id: string, blockId?: string) => void;
 };
 type MenuPosition = { top: number; left: number };
@@ -212,7 +216,7 @@ export function NotesBlockEditor(props: NotesBlockEditorProps) {
 }
 function NotesBlockEditorInstance({
   value, onChange, noteId, workspace, identity, onCreateSubpage, onCreateIssue, onOpenNote,
-  disabled: disabledProp = false, readOnly = false, maxLength, autoFocus = false, initialMode = "blocks",
+  disabled: disabledProp = false, readOnly = false, maxLength, autoFocus = false, claimContentFocus, initialMode = "blocks",
   collaboration, sourceLocation, resolveUrl, placeholder: placeholderText, "aria-label": ariaLabel = "Page blocks", className, onPointerDown, onFiles, hideAttachmentButton = false,
 }: NotesBlockEditorProps & { identity: string }) {
   const disabled = disabledProp || readOnly;
@@ -353,6 +357,16 @@ function NotesBlockEditorInstance({
     if (disabled) { setSlash(null); slashRef.current = null; setBlockMenu(null); setSelectionMenu(null); setHover(null); setDialog(null); }
   }, [ariaLabel, disabled, editor, spellcheckChoice, noteId]);
   useEffect(() => { if (sourceLocation) setSourceMode(true); }, [sourceLocation]);
+  useEffect(() => {
+    if (!editor || !claimContentFocus || sourceMode || disabled) return;
+    const frame = requestAnimationFrame(() => {
+      if (editor.isDestroyed || !editor.isEditable || !editor.view.dom.isConnected || !claimContentFocus()) return;
+      const { state } = editor;
+      editor.view.dispatch(state.tr.setSelection(Selection.atEnd(state.doc)).scrollIntoView());
+      editor.view.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [claimContentFocus, disabled, editor, sourceMode]);
   useEffect(() => {
     if (!editor || sourceMode || disabled) { setSelectionMenu(null); return; }
     const update = () => {
@@ -515,7 +529,8 @@ function NotesBlockEditorInstance({
       const issue = await onCreateIssue(taskNode.textBetween(0,taskNode.content.size,"\n"), {kind:"checkbox",sourceId});
       if (!mounted.current) return;
       if (!issue) { setError("Issue creation did not return a reference. The source task is preserved."); return; }
-      if (!applyTaskConversion(sourceId,signature,issue)) setIssueRecovery({sourceId,issue});
+      if (applyTaskConversion(sourceId,signature,issue)) issue.openCreated?.();
+      else setIssueRecovery({sourceId,issue});
     } catch (reason) { if (mounted.current) setError(reason instanceof Error ? reason.message : "Could not create issue. The source task is preserved."); }
     finally { creatingIssueRef.current = false; if (mounted.current) setCreatingIssue(false); }
   };
