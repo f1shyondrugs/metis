@@ -30,7 +30,7 @@ export type ProviderCapabilities = {
   usage?: boolean;
 };
 
-export type NumericModelParameter = { min: number; max: number; step: number; description?: string };
+export type NumericModelParameter = { min: number; max: number; step: number; allowMagnitudeSuffix?: boolean; description?: string };
 
 export type ProviderModelParameter = {
   id: string;

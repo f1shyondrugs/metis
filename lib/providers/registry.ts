@@ -208,7 +208,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     kind: "codex-agent",
     // Official Codex config.toml numeric overrides; this does not advertise server capacity.
     configParameters: [{ id: "context", displayName: "Context (tokens)", values: [],
-      customNumber: { min: 1024, max: Number.MAX_SAFE_INTEGER, step: 1,
+      customNumber: { min: 1024, max: Number.MAX_SAFE_INTEGER, step: 1, allowMagnitudeSuffix: true,
         description: "Applied next turn. Model and account limits still apply. Leave automatic to use Codex defaults." } }],
     authTypes: ["oauth", "account", "api_key"],
     capabilities: agentCapabilities,

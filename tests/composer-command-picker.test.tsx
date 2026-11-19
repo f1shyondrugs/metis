@@ -12,11 +12,11 @@ import type { ModelInfo } from "../components/settings-panel";
 
 Object.assign(globalThis, { React });
 
-function fixture(locks: { modelLock?: string; optionLock?: string } = {}) {
+function fixture(locks: { modelLock?: string; optionLock?: string } = {}, allowMagnitudeSuffix = false) {
   const model: ModelInfo = {
     id: "fixture:main", displayName: "Fixture model", providerName: "Synthetic provider",
     parameters: [{ id: "effort", displayName: "Thinking", values: [{ value: "low" }, { value: "high", displayName: "High" }] },
-      { id: "context", values: [], customNumber: { min: 1024, max: 4096, step: 256 } }],
+      { id: "context", values: [], customNumber: { min: 1024, max: allowMagnitudeSuffix ? 2_000_000 : 4096, step: allowMagnitudeSuffix ? 1 : 256, allowMagnitudeSuffix } }],
     defaultParams: [{ id: "effort", value: "low" }],
   };
   const applied: unknown[] = [];
@@ -69,6 +69,20 @@ test("model option values use the model contract, including numeric constraints 
   assert(commandResults(locked, [], "model").find(item => item.id === "model")?.disabled);
   assert.deepEqual(commandResults(locked, ["model"], "fixture"), []);
   assert.equal(commandScope(locked, ["model-options", "option:effort"]), undefined);
+});
+
+test("Codex shorthand in slash commands applies the canonical value and exposes examples", () => {
+  const { commands, applied } = fixture({}, true);
+  const path = ["model-options", "option:context"];
+  const scope = commandScope(commands, path);
+  const rows = commandResults(commands, path, "1.05m");
+  assert.equal(rows[0]?.label, "Apply 1050000");
+  run(rows[0]);
+  assert.deepEqual(applied, [[{ id: "context", value: "1050000" }, { id: "effort", value: "low" }]]);
+  const markup = renderToStaticMarkup(<ComposerCommandPicker scope={scope} query="1.05m" rows={rows} index={0}
+    onIndex={()=>{}} onQuery={()=>{}} onSelect={()=>{}} onKeyDown={()=>{}} />);
+  assert.match(markup, /<code>500k<\/code> or <code>1.05m<\/code>/);
+  assert.doesNotMatch(markup, /inputMode="numeric"/i);
 });
 
 test("@ and / render the same accessible picker shell, but only / offers Deep Research", () => {

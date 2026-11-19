@@ -48,6 +48,19 @@ test("resetting reasoning discloses unspecified defaults and combined switches k
   assert.deepEqual(parseRunControlEvent({ ...event, fromReasoning: "x".repeat(8001) }), switched);
 });
 
+test("context switches replay the selected counts and distinguish Automatic from a number", () => {
+  const event = { ...switched, toModelId: switched.fromModelId, fromContext: "500000", toContext: "1050000" };
+  assert.deepEqual(parseRunControlEvent(JSON.parse(JSON.stringify(event))), event);
+  assert.match(renderToStaticMarkup(<RunEventDivider event={event} />), /Switched context/);
+  const details = renderToStaticMarkup(<ModelSwitchDetails event={event} />);
+  assert.match(details, /Context from.*500,000 tokens.*Context to.*1,050,000 tokens/);
+  const reset = { ...event, toContext: null, fromReasoning: "low", toReasoning: "high" };
+  assert.deepEqual(parseRunControlEvent(reset), reset);
+  assert.match(renderToStaticMarkup(<RunEventDivider event={reset} />), /Updated model settings/);
+  assert.match(renderToStaticMarkup(<ModelSwitchDetails event={reset} />), /Context to.*Automatic/);
+  assert.deepEqual(parseRunControlEvent({ ...switched, fromContext: "500000", toContext: {} }), switched);
+});
+
 test("limit waits retain the real reset and safely render provider diagnostics", () => {
   const html = renderToStaticMarkup(<RunEventDivider event={waited} />);
   assert.match(html, /Usage limit wait/);

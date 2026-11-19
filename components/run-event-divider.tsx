@@ -12,6 +12,11 @@ function DividerLine() {
   return <span aria-hidden="true" className="h-px min-w-3 flex-1 bg-border/60" />;
 }
 const reasoningLabel = (value: string | null | undefined) => value ?? "Default (not specified)";
+const contextLabel = (value: string | null | undefined) => {
+  if (value == null) return "Automatic";
+  if (/^\d+$/.test(value) && Number.isSafeInteger(Number(value))) return `${Number(value).toLocaleString("en-US")} tokens`;
+  return value;
+};
 const defaultModelLabel = (id: string) => parseModelKey(id).modelId || id;
 
 export function ModelSwitchDetails({ event, modelLabel = defaultModelLabel }: {
@@ -29,6 +34,10 @@ export function ModelSwitchDetails({ event, modelLabel = defaultModelLabel }: {
       <dt>Reasoning from</dt><dd className="break-words text-foreground/90">{reasoningLabel(event.fromReasoning)}</dd>
       <dt>Reasoning to</dt><dd className="break-words text-foreground/90">{reasoningLabel(event.toReasoning)}</dd>
     </> : null}
+    {event.fromContext !== event.toContext ? <>
+      <dt>Context from</dt><dd className="break-words text-foreground/90">{contextLabel(event.fromContext)}</dd>
+      <dt>Context to</dt><dd className="break-words text-foreground/90">{contextLabel(event.toContext)}</dd>
+    </> : null}
     {event.reason ? <><dt>Chain</dt><dd className="break-words">{event.chainName}</dd><dt>Reason</dt><dd>{event.reason === "chain-usage" ? "Usage limit reached" : "Unavailable after 3 retries"}</dd></> : null}
     <dt>Switched at</dt><dd className="break-words"><time dateTime={event.timestamp}>{event.timestamp}</time></dd>
   </dl>;
@@ -41,7 +50,9 @@ export function RunEventDivider({ event, modelLabel }: {
   if (event.type === "model-switch") {
     const label = event.reason ? "Model chain fallback"
       : event.fromModelId !== event.toModelId ? "Switched model"
-      : event.fromReasoning !== event.toReasoning ? "Switched reasoning" : "Updated model settings";
+      : event.fromContext !== event.toContext
+        ? event.fromReasoning !== event.toReasoning ? "Updated model settings" : "Switched context"
+        : event.fromReasoning !== event.toReasoning ? "Switched reasoning" : "Updated model settings";
     return <div data-run-event={event.id} className="my-4 flex min-h-8 min-w-0 items-center gap-3">
       <DividerLine />
       <Popover>

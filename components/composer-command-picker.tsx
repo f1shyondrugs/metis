@@ -170,8 +170,8 @@ export function ComposerCommandPicker({ scope, query, rows, index, inputRef, onQ
   return <PickerFrame id={COMMAND_LIST_ID} optionIdPrefix={COMMAND_OPTION_PREFIX} inputRef={inputRef}
     index={index} count={rows.length} query={query} scope={scope?.label} label="Slash commands"
     title={number ? "Enter " + (scope?.label || "value").toLowerCase() : scope ? "Search " + scope.label.toLowerCase() : "Search commands"}
-    numeric={Boolean(number)} onQuery={onQuery} onKeyDown={onKeyDown} onBack={onBack} backLabel="Back"
-    footer={numericHelp ? <p className="px-2.5 py-2 text-xs text-muted-foreground">{numericHelp}</p> : undefined}>
+    numeric={Boolean(number && !number.allowMagnitudeSuffix)} onQuery={onQuery} onKeyDown={onKeyDown} onBack={onBack} backLabel="Back"
+    footer={numericHelp ? <p className="px-2.5 py-2 text-xs text-muted-foreground">{numericHelp}{number?.allowMagnitudeSuffix ? <> (e.g. <code>500k</code> or <code>1.05m</code>).</> : "."}</p> : undefined}>
     {rows.map((item, position) => {
       const detail = [item.context, item.detail].filter(Boolean).join(" · ");
       return <PickerRow key={item.id} id={pickerOptionId(COMMAND_OPTION_PREFIX, position)} highlighted={position === index}

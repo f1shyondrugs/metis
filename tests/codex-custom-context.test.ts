@@ -22,7 +22,14 @@ test("Codex CLI numeric contract survives discovery and storage without changing
   assert.equal(config.codexContextConfig(model,[{id:"context",value}]).model_context_window,Number(value));
   assert.equal(context.contextWindowForSelection(model,[{id:"context",value}]),Number(value));
  }
- for(const value of ["","-1","0","1023","1.5","1e6","Infinity","NaN","unlimited","9007199254740992",'1000; shell=true']){
+ assert.equal(field.customNumber.allowMagnitudeSuffix, true);
+ for (const [value, canonical] of [["500k","500000"],[" 1.05M ","1050000"],["1.024 K","1024"],
+   ["1.024000k","1024"],["1.000001m","1000001"],["9007199254.740991m",String(Number.MAX_SAFE_INTEGER)]]) {
+  assert.deepEqual(params.sanitizeModelParams(model,[{id:"context",value}]),[{id:"context",value:canonical}]);
+  assert.equal(config.codexContextConfig(model,[{id:"context",value}]).model_context_window,Number(canonical));
+ }
+ assert.equal(params.normalizeParameterValue({id:"other",values:[],customNumber:{min:1,max:10_000,step:1}},"2k"),undefined);
+ for(const value of ["","-1","0","1023","1.5","1e6","Infinity","NaN","unlimited","9007199254740992","9007199254.740992m","1.023k","1.0241k","1.0000001m","1,05m","1.2","1e3k","500kk",'1000; shell=true']){
   assert.deepEqual(config.codexContextConfig(model,[{id:"context",value}]),{});
  }
  assert.deepEqual(config.codexContextConfig(model,[]),{});
@@ -41,7 +48,7 @@ test("Codex CLI numeric contract survives discovery and storage without changing
  assert.equal(response.status,200);
  const body=await response.json();
  const apiModel=body.models.find((m:{connectionId?:string})=>m.connectionId===connection.id);
- assert.ok(apiModel?.parameters.find((p:{id:string;customNumber?:unknown})=>p.id==="context")?.customNumber);
+ assert.equal(apiModel?.parameters.find((p:{id:string;customNumber?:{allowMagnitudeSuffix?:boolean}})=>p.id==="context")?.customNumber?.allowMagnitudeSuffix,true);
 });
 
 test("SDK serializes numeric context and compaction overrides for new and resumed turns", {skip:process.platform==="win32"}, async()=>{
@@ -53,7 +60,7 @@ test("SDK serializes numeric context and compaction overrides for new and resume
  chmodSync(executable,0o700);
  const model={parameters:registry.getProviderDefinition("codex")!.configParameters};
  for(const resume of [false,true]){
-  const config=codexContextConfig(model,[{id:"context",value:"1000000"}]);
+  const config=codexContextConfig(model,[{id:"context",value:"1m"}]);
   assert.equal(config.model_auto_compact_token_limit,800000);
   const client=new Codex({codexPathOverride:executable,config,env:{...process.env as Record<string,string>,METIS_CONTEXT_CAPTURE:capture}});
   const options={model:"opaque-native-id",workingDirectory:root,skipGitRepoCheck:true};
