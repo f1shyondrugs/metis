@@ -14,13 +14,17 @@ export type UpdateSchedule = {
 const KEY = "system:update-schedule";
 const DEFAULT: UpdateSchedule = { enabled: false, time: "03:00", timezone: "UTC" };
 
+export function isUpdateScheduleTime(value: unknown): value is string {
+  return typeof value === "string" && /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(value);
+}
+
 export function getUpdateSchedule(): UpdateSchedule {
   const row = getDatabase().prepare("SELECT data FROM settings WHERE key = ?").get(KEY) as { data?: string } | undefined;
   try {
     const value = JSON.parse(row?.data || "{}") as Partial<UpdateSchedule>;
     return {
       enabled: value.enabled === true,
-      time: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(value.time || "") ? value.time! : DEFAULT.time,
+      time: isUpdateScheduleTime(value.time) ? value.time : DEFAULT.time,
       timezone: typeof value.timezone === "string" && value.timezone ? value.timezone : DEFAULT.timezone,
       ...(value.lastRunKey ? { lastRunKey: value.lastRunKey } : {}),
     };
@@ -33,7 +37,7 @@ export function saveUpdateSchedule(input: Partial<UpdateSchedule>) {
   const current = getUpdateSchedule();
   const next: UpdateSchedule = {
     enabled: input.enabled ?? current.enabled,
-    time: input.time && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(input.time) ? input.time : current.time,
+    time: isUpdateScheduleTime(input.time) ? input.time : current.time,
     timezone: input.timezone || current.timezone,
     ...((input.lastRunKey || current.lastRunKey) ? { lastRunKey: input.lastRunKey || current.lastRunKey } : {}),
   };

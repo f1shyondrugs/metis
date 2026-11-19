@@ -70,6 +70,19 @@ function isHostAdminGuarded(node: ts.Node) {
   return false;
 }
 
+test("Maintenance opens the canonical Updates pane without a separate install action", () => {
+  const maintenance = paneNode("maintenance");
+  assert.ok(isHostAdminGuarded(maintenance));
+  const updateLink = elements(maintenance, "Button").find((button) => button.getText(source).includes("Open update settings"));
+  assert.ok(updateLink);
+  const onClick = attribute(updateLink, "onClick");
+  assert.ok(onClick && ts.isJsxExpression(onClick) && onClick.expression && ts.isArrowFunction(onClick.expression));
+  const call = onClick.expression.body;
+  assert.ok(ts.isCallExpression(call) && call.expression.getText(source) === "openSettingsPane");
+  assert.deepEqual(call.arguments.map((value) => ts.isStringLiteral(value) ? value.text : null), ["updates", "updates"]);
+  assert.equal(elements(paneNode("updates"), "UpdateSettingsPanel").length, 1);
+});
+
 test("overview sections preserve navigation order and each visible section has a destination", () => {
   const declaration = nodes(source, ts.isVariableDeclaration).find(item => item.name.getText(source) === "SETTINGS_SECTION_TO_PANE");
   assert.ok(declaration?.initializer && ts.isObjectLiteralExpression(declaration.initializer));

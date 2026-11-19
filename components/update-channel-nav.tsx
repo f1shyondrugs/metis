@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GitBranch, LoaderCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatUpdateInstalledLabel } from "@/lib/update-display";
 import { UpdateLogsDialog } from "@/components/update-logs-dialog";
 import { UpdateVersionDialog } from "@/components/update-version-dialog";
+import { UpdateInstallConfirmation } from "@/components/update-install-confirmation";
 import {
   activateInstallerMaintenanceScreen,
   installerJobFinishedMessage,
   pollInstallerJob,
   reloadCompletedInstallerJob,
+  requestInstallerUpdate,
+  type InstallerUpdateRequest,
   UPDATE_JOB_STORAGE_KEY,
 } from "@/lib/update-job-client";
 import { cn } from "@/lib/utils";
@@ -101,7 +104,7 @@ type UpdateSettingsState = {
 };
 
 type UpdateScheduleState = {
-  schedule?: { enabled?: boolean; time?: string; timezone?: string };
+  schedule?: { enabled: boolean; time: string; timezone: string };
   nextRunAt?: string | null;
 };
 
@@ -174,8 +177,20 @@ export function UpdateSettingsPanel({
   const [jobId, setJobId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [schedule, setSchedule] = useState<UpdateScheduleState | null>(null);
-  const [scheduleTime, setScheduleTime] = useState("03:00");
-  const [scheduleTimezone, setScheduleTimezone] = useState("UTC");
+  const [scheduleDraft, setScheduleDraft] = useState<{ time: string; timezone: string } | null>(null);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleLoadError, setScheduleLoadError] = useState("");
+  const [scheduleSaveError, setScheduleSaveError] = useState("");
+  const [scheduleNotice, setScheduleNotice] = useState("");
+  const [scheduleReload, setScheduleReload] = useState(0);
+  const scheduleRequest = useRef({ revision: 0, saving: false });
+  const savedSchedule = schedule?.schedule;
+  const scheduleTime = scheduleDraft?.time ?? savedSchedule?.time ?? "";
+  const scheduleTimezone = scheduleDraft?.timezone ?? savedSchedule?.timezone ?? "";
+  const scheduleDirty = Boolean(savedSchedule &&
+    (scheduleTime !== savedSchedule.time || scheduleTimezone !== savedSchedule.timezone));
+  const [installChannel, setInstallChannel] = useState<UpdateChannel | null>(null);
+  const updateStarting = useRef(false);
   const [otherVersionOpen, setOtherVersionOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
 
@@ -183,17 +198,24 @@ export function UpdateSettingsPanel({
     if (!isHostAdmin) return;
     let active = true;
     const loadSchedule = async () => {
-      const response = await fetch("/api/admin/system/update-schedule", { cache: "no-store" });
-      const next = (await response.json().catch(() => ({}))) as UpdateScheduleState;
-      if (!active) return;
-      setSchedule(next);
-      setScheduleTime(next.schedule?.time || "03:00");
-      setScheduleTimezone(next.schedule?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+      if (scheduleRequest.current.saving) return;
+      const revision = ++scheduleRequest.current.revision;
+      const isCurrent = () => active && revision === scheduleRequest.current.revision;
+      try {
+        const response = await fetch("/api/admin/system/update-schedule", { cache: "no-store" });
+        const next = (await response.json().catch(() => ({}))) as UpdateScheduleState;
+        if (!response.ok || !next.schedule) throw new Error("Could not load the update schedule.");
+        if (!isCurrent()) return;
+        setSchedule(next);
+        setScheduleLoadError("");
+      } catch {
+        if (isCurrent()) setScheduleLoadError("Could not load the update schedule.");
+      }
     };
-    void loadSchedule().catch(() => undefined);
-    const timer = window.setInterval(() => void loadSchedule().catch(() => undefined), 30_000);
+    void loadSchedule();
+    const timer = window.setInterval(() => void loadSchedule(), 30_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [isHostAdmin]);
+  }, [isHostAdmin, scheduleReload]);
 
   useEffect(() => {
     const savedJobId = window.localStorage.getItem(UPDATE_JOB_STORAGE_KEY);
@@ -265,56 +287,58 @@ export function UpdateSettingsPanel({
     };
   }, [jobId]);
 
-  async function saveSchedule(enabled: boolean) {
+  function editSchedule(draft: { time: string; timezone: string }) {
+    setScheduleDraft(draft);
+    setScheduleNotice("");
+    setScheduleSaveError("");
+  }
+
+  async function saveSchedule(changes: { time: string; timezone: string } | { enabled: boolean }) {
+    const request = scheduleRequest.current;
+    if (!isHostAdmin || !savedSchedule || request.saving) return;
+    request.saving = true;
+    // A refresh that began before this write must not replace the confirmed result.
+    request.revision++;
+    setScheduleSaving(true);
+    setScheduleNotice("");
+    setScheduleSaveError("");
     try {
       const response = await fetch("/api/admin/system/update-schedule", {
         method: "PUT", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ enabled, time: scheduleTime, timezone: scheduleTimezone }),
+        body: JSON.stringify(changes),
       });
       const next = (await response.json().catch(() => ({}))) as UpdateScheduleState & { error?: string };
-      if (!response.ok) throw new Error(next.error || "Could not save automatic update schedule.");
+      if (!response.ok || !next.schedule) throw new Error(next.error || "Could not save the update schedule. Try again.");
       setSchedule(next);
-      toast.success(enabled ? `Automatic updates scheduled for ${scheduleTime}.` : "Automatic updates disabled.");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not save automatic update schedule."); }
+      setScheduleLoadError("");
+      if ("time" in changes) {
+        setScheduleDraft(null);
+        setScheduleNotice("Schedule saved.");
+      }
+    } catch (error) {
+      setScheduleSaveError(error instanceof Error ? error.message : "Could not save the update schedule. Try again.");
+    } finally {
+      request.saving = false;
+      setScheduleSaving(false);
+    }
   }
 
-  async function prepareUpdate(body: { channel: UpdateChannel; tag?: string; commit?: string } = { channel }) {
+  async function installUpdate(body: InstallerUpdateRequest) {
+    if (!isHostAdmin || preparing || updateStarting.current) throw new Error("An update cannot be started right now.");
+    updateStarting.current = true;
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch("/api/admin/system/update", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const raw = await response.text();
-      let result: {
-        error?: string;
-        message?: string;
-        requiresActivation?: boolean;
-        status?: string;
-        installerUrl?: string;
-        jobId?: string;
-      } = {};
-      try { result = JSON.parse(raw) as typeof result; } catch { /* proxy may return plain text */ }
-      if (!response.ok) {
-        throw new Error(result.error || raw.trim() || `Update preparation failed (HTTP ${response.status}).`);
-      }
-      if (result.status === "preparing" && result.jobId) {
-        const updateMessage = result.message || "Installer update started. The updating screen stays up until Metis restarts.";
-        setPreparing(true);
-        setJobId(result.jobId);
-        window.localStorage.setItem(UPDATE_JOB_STORAGE_KEY, result.jobId);
-        setMessage(updateMessage);
-        activateInstallerMaintenanceScreen(updateMessage);
-        return;
-      }
-      setMessage(result.message || "Installer update started.");
-    } catch (error) {
-      window.localStorage.removeItem(UPDATE_JOB_STORAGE_KEY);
-      setPreparing(false);
-      setMessage(error instanceof Error ? error.message : "Update preparation failed.");
+      const { jobId: startedJobId, message: updateMessage } = await requestInstallerUpdate(body);
+      setPreparing(true);
+      setJobId(startedJobId);
+      try {
+        window.localStorage.setItem(UPDATE_JOB_STORAGE_KEY, startedJobId);
+      } catch { /* The accepted job can still be tracked in this tab. */ }
+      setMessage(updateMessage);
+      activateInstallerMaintenanceScreen(updateMessage);
     } finally {
+      updateStarting.current = false;
       setBusy(false);
     }
   }
@@ -337,7 +361,7 @@ export function UpdateSettingsPanel({
     <div className="max-w-2xl space-y-6">
       <div>
         <h3 className="text-sm font-medium">Updates</h3>
-        <p className="mt-1 text-xs text-muted-foreground">Choose whether Metis follows stable releases or the latest master commits. Update runs the same installer as a fresh install.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Choose whether Metis follows stable releases or the latest master commits. Installing an update restarts Metis services.</p>
       </div>
       <label className="block max-w-sm text-xs font-medium" htmlFor="settings-update-channel-panel">
         Update channel
@@ -346,6 +370,7 @@ export function UpdateSettingsPanel({
           value={channel}
           onChange={(event) => {
             const next = event.target.value as UpdateChannel;
+            if (next !== channel) setState(null);
             setChannel(next);
             setMessage("");
             window.localStorage.setItem(STORAGE_KEY, next);
@@ -375,8 +400,8 @@ export function UpdateSettingsPanel({
       </div>
       {available && (channel === "releases" || channel === "commits") ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" size="sm" onClick={() => void prepareUpdate()} disabled={busy || preparing}>
-            {busy || preparing ? <LoaderCircle className="size-4 animate-spin" /> : "Update"}
+          <Button type="button" size="sm" onClick={() => setInstallChannel(channel)} disabled={busy || preparing}>
+            {busy || preparing ? <><LoaderCircle className="size-4 animate-spin" /> Installing…</> : "Install update"}
           </Button>
         </div>
       ) : null}
@@ -384,21 +409,63 @@ export function UpdateSettingsPanel({
       <div className="space-y-3 border-t border-border/60 pt-5">
         <div>
           <h4 className="text-sm font-medium">Automatic updates</h4>
-          <p className="mt-1 text-xs text-muted-foreground">Check stable releases daily and run the installer at a time you choose. Metis announces 10, 5 and 1 minute before the update.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Check for stable releases daily at the saved time. If an update is available, installing it restarts Metis services.</p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-xs font-medium">Time<input type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} className="mt-1 block h-9 rounded-md border border-input bg-background px-2 text-sm" /></label>
-          <label className="text-xs font-medium">Timezone<input value={scheduleTimezone} onChange={(event) => setScheduleTimezone(event.target.value)} className="mt-1 block h-9 w-48 rounded-md border border-input bg-background px-2 text-sm" /></label>
-          <Button type="button" size="sm" onClick={() => void saveSchedule(!(schedule?.schedule?.enabled))}>{schedule?.schedule?.enabled ? "Disable automatic updates" : "Enable automatic updates"}</Button>
-        </div>
-        {schedule?.nextRunAt ? <p className="text-xs text-muted-foreground">Next check: {new Date(schedule.nextRunAt).toLocaleString("en")}</p> : null}
+        {savedSchedule ? (
+          <>
+            <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => {
+              event.preventDefault();
+              if (scheduleDirty && scheduleTime && scheduleTimezone.trim()) {
+                void saveSchedule({ time: scheduleTime, timezone: scheduleTimezone.trim() });
+              }
+            }}>
+              <label className="text-xs font-medium">
+                Time
+                <input type="time" required disabled={scheduleSaving} value={scheduleTime}
+                  onChange={(event) => editSchedule({ time: event.target.value, timezone: scheduleTimezone })}
+                  className="mt-1 block h-9 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50" />
+              </label>
+              <label className="text-xs font-medium">
+                Timezone
+                <input required disabled={scheduleSaving} value={scheduleTimezone}
+                  onChange={(event) => editSchedule({ time: scheduleTime, timezone: event.target.value })}
+                  className="mt-1 block h-9 w-48 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50" />
+              </label>
+              <Button type="submit" size="sm" variant="outline"
+                disabled={scheduleSaving || !scheduleDirty || !scheduleTime || !scheduleTimezone.trim()}>
+                Save schedule
+              </Button>
+            </form>
+            {scheduleDirty ? <p className="text-xs text-muted-foreground">Unsaved changes. Turning automatic updates on or off uses the saved schedule.</p> : null}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <Button type="button" size="sm" disabled={scheduleSaving}
+                onClick={() => void saveSchedule({ enabled: !savedSchedule.enabled })}>
+                {savedSchedule.enabled ? "Disable automatic updates" : "Enable automatic updates"}
+              </Button>
+              <p className="text-xs text-muted-foreground" role="status">
+                {savedSchedule.enabled ? "Enabled" : "Disabled"} · Saved: {savedSchedule.time} ({savedSchedule.timezone})
+              </p>
+            </div>
+            {schedule?.nextRunAt && savedSchedule.enabled ? (
+              <p className="text-xs text-muted-foreground">Next check: {new Date(schedule.nextRunAt).toLocaleString("en", { dateStyle: "medium", timeStyle: "short", hourCycle: "h23", timeZone: savedSchedule.timezone })} ({savedSchedule.timezone})</p>
+            ) : null}
+          </>
+        ) : !scheduleLoadError ? <p className="text-xs text-muted-foreground" role="status">Loading update schedule…</p> : null}
+        {scheduleSaving || scheduleNotice ? <p className="text-xs text-muted-foreground" role="status">{scheduleSaving ? "Saving…" : scheduleNotice}</p> : null}
+        {scheduleSaveError ? <p className="text-xs text-destructive" role="alert">{scheduleSaveError}</p> : null}
+        {scheduleLoadError ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-destructive" role="alert">{scheduleLoadError}</p>
+            <Button type="button" variant="outline" size="sm" disabled={scheduleSaving} onClick={() => setScheduleReload((attempt) => attempt + 1)}>Retry</Button>
+          </div>
+        ) : null}
       </div>
       {available && channel === "commits" ? (
         <p className="text-xs text-muted-foreground">This runs the installer against the current checkout (git pull on master, then rebuild and restart). Master commits may be buggy or broken.</p>
       ) : null}
       <div className="space-y-2 border-t border-border/60 pt-5">
         <h4 className="text-sm font-medium">Other versions</h4>
-        <p className="text-xs text-muted-foreground">Install an older or specific GitHub release or master commit. This rebuilds Metis.</p>
+        <p className="text-xs text-muted-foreground">Install an older or specific GitHub release or master commit.</p>
         <Button type="button" size="sm" variant="outline" onClick={() => setOtherVersionOpen(true)} disabled={busy || preparing}>
           Download other version
         </Button>
@@ -410,12 +477,20 @@ export function UpdateSettingsPanel({
           View update logs
         </Button>
       </div>
+      <UpdateInstallConfirmation
+        open={installChannel !== null}
+        onOpenChange={(open) => { if (!open) setInstallChannel(null); }}
+        target={installChannel === "commits" ? "the latest master commit" : "the latest stable release"}
+        onConfirm={() => {
+          if (installChannel) return installUpdate({ channel: installChannel });
+        }}
+      />
       <UpdateLogsDialog open={logsOpen} onOpenChange={setLogsOpen} />
       <UpdateVersionDialog
         open={otherVersionOpen}
         onOpenChange={setOtherVersionOpen}
         busy={busy || preparing}
-        onInstall={(input) => prepareUpdate(input)}
+        onInstall={installUpdate}
       />
     </div>
   );

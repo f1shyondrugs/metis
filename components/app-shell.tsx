@@ -6181,16 +6181,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     window.location.assign("/");
   }
 
-  async function updateMetis() {
-    const response = await fetch("/api/admin/system/update", { method: "POST" });
-    const data = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      message?: string;
-    };
-    if (!response.ok) throw new Error(data.error || "Metis update failed.");
-    toast.success(data.message || "Metis update prepared.");
-  }
-
   async function toggleIncognito() {
     if (incognito) {
       const id = activeChatIdRef.current;
@@ -10437,7 +10427,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         onModelsChanged={() => void loadModels()}
         onModesChanged={() => void loadModes()}
         onResetMetis={resetMetis}
-        onUpdateMetis={updateMetis}
         isHostAdmin={Boolean(status?.isHostAdmin)}
       />
   ) : null;

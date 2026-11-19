@@ -1,8 +1,52 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { installerJobFinishedMessage, pollInstallerJob, reloadCompletedInstallerJob, UPDATE_JOB_STORAGE_KEY } from "../lib/update-job-client";
+import { installerJobFinishedMessage, pollInstallerJob, reloadCompletedInstallerJob, requestInstallerUpdate, UPDATE_JOB_STORAGE_KEY, type InstallerUpdateRequest } from "../lib/update-job-client";
 import { installerUpdateJobMarker } from "../lib/installer-update";
 import { settleUpdateJobFromInstaller } from "../lib/update-job";
+
+test("server update requests preserve the chosen channel or pinned revision and require a job", async () => {
+  const requests: InstallerUpdateRequest[] = [
+    { channel: "releases" },
+    { channel: "commits" },
+    { channel: "releases", tag: "v1.2.3" },
+    { channel: "commits", commit: "1234abcd" },
+  ];
+  for (const input of requests) {
+    let posts = 0;
+    const job = await requestInstallerUpdate(input, async (url, request) => {
+      ++posts;
+      assert.equal(url, "/api/admin/system/update");
+      assert.equal(request?.method, "POST");
+      assert.equal(new Headers(request.headers).get("content-type"), "application/json");
+      assert.deepEqual(JSON.parse(String(request.body)), input);
+      return Response.json({ status: "preparing", jobId: "installer-job", message: "Server update started." }, { status: 202 });
+    });
+    assert.equal(posts, 1);
+    assert.deepEqual(job, { jobId: "installer-job", message: "Server update started." });
+  }
+});
+
+test("a refused or unverified installer job never reports success", async () => {
+  const input = { channel: "releases" } as const;
+  for (const [response, expected] of [
+    [Response.json({ message: "No newer stable release is available." }, { status: 409 }), /No newer stable release/],
+    [Response.json({ status: "busy", error: "An installer update is already running." }, { status: 409 }), /already running/],
+    [Response.json({ error: "Only host administrators can update Metis." }, { status: 403 }), /Only host administrators/],
+    [new Response("<html>proxy</html>", { status: 502 }), /HTTP 502/],
+    [Response.json({ status: "preparing" }, { status: 202 }), /Could not verify the update job/],
+    [new Response("<html>unexpected success page</html>", { status: 200 }), /Could not verify the update job/],
+  ] as const) {
+    let posts = 0;
+    await assert.rejects(requestInstallerUpdate(input, async () => { ++posts; return response; }), expected);
+    assert.equal(posts, 1);
+  }
+  let posts = 0;
+  await assert.rejects(
+    requestInstallerUpdate(input, async () => { ++posts; throw new TypeError("Network failure"); }),
+    /Check update status before trying again/,
+  );
+  assert.equal(posts, 1);
+});
 
 const preparing = {
   jobId: "job-1",

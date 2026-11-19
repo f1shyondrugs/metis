@@ -14,6 +14,40 @@ export const UPDATE_JOB_STORAGE_KEY = "metis-update-job";
 
 export const INSTALLER_MAINTENANCE_EVENT = "metis:installer-maintenance";
 
+export type InstallerUpdateRequest = {
+  channel: "releases" | "commits";
+  tag?: string;
+  commit?: string;
+};
+
+export async function requestInstallerUpdate(input: InstallerUpdateRequest, fetcher: typeof fetch = fetch) {
+  let response: Response;
+  try {
+    response = await fetcher("/api/admin/system/update", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new Error("Could not confirm that the update started. Check update status before trying again.");
+  }
+  const result = await response.json().catch(() => null) as {
+    error?: string;
+    message?: string;
+    status?: string;
+    jobId?: string;
+  } | null;
+  const message = typeof result?.message === "string" && result.message.trim();
+  if (!response.ok) {
+    const error = typeof result?.error === "string" && result.error.trim();
+    throw new Error(error || message || `Could not start the server update (HTTP ${response.status}).`);
+  }
+  if (result?.status !== "preparing" || typeof result.jobId !== "string" || !result.jobId.trim()) {
+    throw new Error("Could not verify the update job. Check update status before trying again.");
+  }
+  return { jobId: result.jobId, message: message || "Server update started. Keep this page open while Metis restarts." };
+}
+
 export function activateInstallerMaintenanceScreen(reason: string) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent<InstallerMaintenanceDetail>(INSTALLER_MAINTENANCE_EVENT, {

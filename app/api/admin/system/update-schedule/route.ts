@@ -1,6 +1,6 @@
 import { getAuthenticatedUserId, isAuthenticated } from "@/lib/auth";
 import { isHostAdmin } from "@/lib/user-access";
-import { getUpdateSchedule, nextUpdateAt, saveUpdateSchedule } from "@/lib/update-schedule";
+import { getUpdateSchedule, isUpdateScheduleTime, nextUpdateAt, saveUpdateSchedule } from "@/lib/update-schedule";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,14 +21,29 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   const denied = await admin(req);
   if (denied) return denied;
-  const body = await req.json().catch(() => ({})) as { enabled?: unknown; time?: unknown; timezone?: unknown };
-  if (body.timezone && typeof body.timezone === "string") {
-    try { new Intl.DateTimeFormat("en-CA", { timeZone: body.timezone }); } catch { return Response.json({ error: "Invalid timezone." }, { status: 400 }); }
+  const body: unknown = await req.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return Response.json({ error: "Invalid update schedule." }, { status: 400 });
   }
-  const schedule = saveUpdateSchedule({
-    enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
-    time: typeof body.time === "string" ? body.time : undefined,
-    timezone: typeof body.timezone === "string" ? body.timezone : undefined,
-  });
+  const { enabled, time, timezone: rawTimezone } = body as { enabled?: unknown; time?: unknown; timezone?: unknown };
+  if (enabled === undefined && time === undefined && rawTimezone === undefined) {
+    return Response.json({ error: "No update schedule changes were provided." }, { status: 400 });
+  }
+  if (enabled !== undefined && typeof enabled !== "boolean") {
+    return Response.json({ error: "Invalid automatic update status." }, { status: 400 });
+  }
+  if (time !== undefined && !isUpdateScheduleTime(time)) {
+    return Response.json({ error: "Enter a valid time in HH:MM format." }, { status: 400 });
+  }
+  let timezone: string | undefined;
+  if (rawTimezone !== undefined) {
+    timezone = typeof rawTimezone === "string" ? rawTimezone.trim() : "";
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: timezone });
+    } catch {
+      return Response.json({ error: "Enter a valid timezone, such as Europe/Berlin." }, { status: 400 });
+    }
+  }
+  const schedule = saveUpdateSchedule({ enabled, time, timezone });
   return Response.json({ schedule, nextRunAt: schedule.enabled ? nextUpdateAt(schedule) : null });
 }

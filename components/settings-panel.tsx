@@ -306,7 +306,6 @@ type Props = {
   onModelsChanged?: () => void;
   onModesChanged?: () => void;
   onResetMetis?: () => Promise<void>;
-  onUpdateMetis?: () => Promise<void>;
   isHostAdmin?: boolean;
 };
 
@@ -675,7 +674,6 @@ export function SettingsPanel({
   onRefreshUsage,
   onModelsChanged,
   onResetMetis,
-  onUpdateMetis,
   isHostAdmin = false,
 }: Props) {
   const appearance = useAppearance();
@@ -830,7 +828,6 @@ export function SettingsPanel({
   const [archivedChatsLoaded, setArchivedChatsLoaded] = useState(false);
   const [archivedChatsError, setArchivedChatsError] = useState("");
   const [resetMetisOpen, setResetMetisOpen] = useState(false);
-  const [updateMetisOpen, setUpdateMetisOpen] = useState(false);
   const loadRemoteClients = useCallback(async () => {
     try {
       const response = await fetch("/api/remote-clients", { cache: "no-store" });
@@ -2635,12 +2632,12 @@ export function SettingsPanel({
  <div className="mt-3 border-t border-destructive/30 pt-4">
                     <h3 id="settings-maintenance" className="text-sm font-medium">Metis maintenance</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Prepare a production update or reset Metis to its clean initial state.
+                      Review server updates or reset Metis account data.
                     </p>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <Button type="button" variant="outline" onClick={() => setUpdateMetisOpen(true)}>
+                      <Button type="button" variant="outline" onClick={() => openSettingsPane("updates", "updates")}>
                         <RefreshCw data-icon="inline-start" />
-                        Update Metis
+                        Open update settings
                       </Button>
                       <Button type="button" variant="destructive" onClick={() => setResetMetisOpen(true)}>
                         <RotateCcw data-icon="inline-start" />
@@ -2717,7 +2714,7 @@ export function SettingsPanel({
  <SettingsOverview title="Admin">
   {isHostAdmin ? <SettingsTile id="settings-users" title="Users" meta="Accounts and access" icon={Users} onOpen={() => openSettingsPane("users")} /> : null}
 
-  {isHostAdmin ? <SettingsTile id="settings-maintenance" title="Maintenance" meta="Update preparation and data reset" icon={Settings2} onOpen={() => openSettingsPane("maintenance")} /> : null}
+  {isHostAdmin ? <SettingsTile id="settings-maintenance" title="Maintenance" meta="Server updates and data reset" icon={Settings2} onOpen={() => openSettingsPane("maintenance")} /> : null}
  </SettingsOverview>
 </TabsContent>
 <TabsContent value="updates" className="mt-0">
@@ -2882,17 +2879,6 @@ export function SettingsPanel({
         onConfirm={async () => {
           await clearBrowserStorage();
           setBrowserStorageClearAll(false);
-        }}
-      />
-      <ConfirmDialog
-        open={updateMetisOpen}
-        onOpenChange={setUpdateMetisOpen}
-        title="Update Metis?"
-        description="Metis will install the locked dependencies and build the inactive production slot. The active service will not be restarted automatically."
-        confirmLabel="Prepare update"
-        destructive={false}
-        onConfirm={async () => {
-          if (onUpdateMetis) await onUpdateMetis();
         }}
       />
       <ConfirmDialog

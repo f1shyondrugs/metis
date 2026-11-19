@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ExternalLink, LoaderCircle } from "lucide-react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
+import { UpdateInstallConfirmation } from "@/components/update-install-confirmation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -94,7 +94,7 @@ export function UpdateVersionDialog({
           <DialogHeader>
             <DialogTitle>Download other version</DialogTitle>
             <DialogDescription>
-              Pick a GitHub release or master commit. Installing it rebuilds Metis and restarts the services.
+              Pick a GitHub release or master commit to install. Installing it restarts Metis services.
             </DialogDescription>
           </DialogHeader>
           <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="min-h-0">
@@ -160,13 +160,10 @@ export function UpdateVersionDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <ConfirmDialog
+      <UpdateInstallConfirmation
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title={`Install ${selectedLabel}?`}
-        description="Metis will rebuild from this GitHub revision and restart. Keep this page open."
-        confirmLabel="Install"
-        destructive={false}
+        target={selectedLabel}
         onConfirm={async () => {
           if (tab === "releases" && release) await onInstall({ channel: "releases", tag: release.tag });
           if (tab === "commits" && commit) await onInstall({ channel: "commits", commit: commit.sha });

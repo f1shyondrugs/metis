@@ -8,11 +8,14 @@ import {fileURLToPath} from "node:url";
 import postcss from "postcss";
 import tailwindcss from "@tailwindcss/postcss";
 const req=createRequire(import.meta.url);
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),".."),directory=path.join(root,"output","ui-audit-preview");
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
+const serverUpdates=process.argv.includes("--fixture=server-updates");
+const directory=path.join(root,"output",serverUpdates?"server-update-preview":"ui-audit-preview");
+const entry=path.join(root,"tests",serverUpdates?"update-schedule.browser.tsx":"ui-consistency.browser.jsx");
 const {build}=createRequire(req.resolve("tsx"))("esbuild");
 async function main(){
  fs.mkdirSync(directory,{recursive:true});
- await build({entryPoints:[path.join(root,"tests/ui-consistency.browser.jsx")],outfile:path.join(directory,"app.js"),bundle:true,platform:"browser",format:"iife",jsx:"automatic",define:{"process.env.NODE_ENV":'"production"',"process.env":'{}'},loader:{".woff2":"dataurl",".woff":"dataurl",".ttf":"dataurl"}});
+ await build({entryPoints:[entry],outfile:path.join(directory,"app.js"),bundle:true,platform:"browser",format:"iife",jsx:"automatic",define:{"process.env.NODE_ENV":'"production"',"process.env":'{}'},loader:{".woff2":"dataurl",".woff":"dataurl",".ttf":"dataurl"}});
  const css=await postcss([tailwindcss()]).process(fs.readFileSync(path.join(root,"app/globals.css"),"utf8"),{from:path.join(root,"app/globals.css")});
  fs.writeFileSync(path.join(directory,"theme.css"),css.css);
  fs.writeFileSync(path.join(directory,"index.html"),'<html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Metis component audit</title><link rel="stylesheet" href="/theme.css"><body><div id="root"></div><script src="/app.js"></script></body></html>');
