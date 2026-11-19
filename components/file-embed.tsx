@@ -13,8 +13,11 @@ import { FileWorkspaceActions } from "@/components/file-workspace-actions";
 import { EditableMarkdown } from "@/components/editable-markdown";
 import { isMarkdownFile } from "@/lib/markdown-file";
 
-export function FileEmbed({ file, onChange, onRemove, className = "", resizable = true, previewOnly = false }: {
-  file:FileEmbedSpec; onChange?:(file:FileEmbedSpec)=>void; onRemove?:()=>void; className?:string; resizable?:boolean; previewOnly?:boolean;
+export function FileEmbed({
+  file, onChange, onRemove, className = "", resizable = true, previewOnly = false,
+  textPreviewLimit = previewOnly ? 8_001 : 80_001, allowHorizontalScroll = false,
+}: {
+  file:FileEmbedSpec; onChange?:(file:FileEmbedSpec)=>void; onRemove?:()=>void; className?:string; resizable?:boolean; previewOnly?:boolean; textPreviewLimit?:number; allowHorizontalScroll?:boolean;
 }) {
   const markdownFile = isMarkdownFile(file.name, file.mimeType);
   const kind = markdownFile ? "text" : fileViewKind(file.mimeType,file.name);
@@ -34,10 +37,10 @@ export function FileEmbed({ file, onChange, onRemove, className = "", resizable 
     const controller = new AbortController();
     fetch(officeUrl,{signal:controller.signal}).then(async response => {
       if (!response.ok) throw new Error("Preview unavailable. Download the original file.");
-      return readTextFilePreview(response,previewOnly ? 8_001 : 80_001);
+      return readTextFilePreview(response,textPreviewLimit);
     }).then(value=>setText(value)).catch(e=>{if(!controller.signal.aborted)setError(e.message);});
     return () => controller.abort();
-  },[file.url,file.text,kind,officeUrl,previewOnly]);
+  },[file.url,file.text,kind,officeUrl,textPreviewLimit]);
   const canEdit = Boolean(onChange && kind === "text" && text !== null && text.length <= 80_000 && !error);
   const save = () => { if(JSON.stringify({...file,text:draft}).length > 45_000) {setError("Edited content is too large for this embedding. Keep it below 45 KB, including formatting.");return;} if(onChange)onChange({...file,text:draft}); setEditing(false); };
   return <div ref={rootRef} className={"relative flex min-h-0 min-w-0 flex-col overflow-clip text-foreground " + className}
@@ -50,7 +53,7 @@ export function FileEmbed({ file, onChange, onRemove, className = "", resizable 
     </StickyActions></div>}
     <div className="min-h-0 flex-1 overflow-auto" style={{minHeight:kind === "audio" ? 60:120}}>
       {kind === "image" ?
-        <div inert={previewOnly || undefined} className="h-full max-h-[70dvh] min-h-32"><ImageSurface key={file.url} src={file.url} alt={file.name} loading="lazy"/></div>
+        <div inert={previewOnly || undefined} className="h-full max-h-[70dvh] min-h-32"><ImageSurface key={file.url} src={file.url} alt={file.name} loading="lazy" allowHorizontalScroll={allowHorizontalScroll}/></div>
         : kind === "video" ? <ViewportMedia key={file.url} kind="video" src={file.url} controls={!previewOnly} name={file.name} className="h-full max-h-[70vh] w-full object-contain" onError={()=>setError("This video format cannot be played by your browser. Download the original file.")}/>
         : kind === "audio" ? <ViewportMedia key={file.url} kind="audio" src={file.url} controls={!previewOnly} name={file.name} className="w-full px-2 py-4" onError={()=>setError("This audio format cannot be played by your browser. Download the original file.")}/>
         : kind === "pdf" ? <iframe src={file.url} title={file.name} tabIndex={previewOnly ? -1 : undefined} className="h-full min-h-64 w-full border-0" />

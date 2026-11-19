@@ -7,7 +7,7 @@ import { mergeQueuedFollowUps } from "../lib/composer-send";
 import { saveQueuedFollowUps, updateChatQueue } from "../lib/queue-client";
 
 const file = ts.createSourceFile("app-shell.tsx", readFileSync("components/app-shell.tsx", "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const names = ["queueCurrentMessage", "persistQueuedFollowUps", "applyServerQueuedMessages", "clearPendingFiles"];
+const names = ["queueCurrentMessage", "persistQueuedFollowUps", "applyServerQueuedMessages", "clearPendingFiles", "completedPendingUpload"];
 const handlers: string[] = [];
 function visit(node: ts.Node) {
   if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? "")) handlers.push(node.getText(file));
@@ -15,7 +15,7 @@ function visit(node: ts.Node) {
 }
 visit(file);
 const js = ts.transpileModule(handlers.join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
-type Item = { id: string; text: string; files: Array<{ id: string; uploadTaskId: string; file: File; previewUrl?: string; fromQueue?: true }>; uploadIds?: string[]; storedAttachments?: unknown[] };
+type Item = { id: string; text: string; files: Array<{ id: string; uploadTaskId?: string; file: Pick<File, "name" | "size" | "type">; previewUrl?: string; fromQueue?: true }>; uploadIds?: string[]; storedAttachments?: unknown[] };
 function fixture() {
   let queue: Item[] = [], cleared = 0;
   const saved: Array<{ queuedMessages: Array<Record<string, unknown>> }> = [], errors: string[] = [];
@@ -26,6 +26,7 @@ function fixture() {
     queuedSendRef: { current: new Set() }, removedIdsFor: () => new Set(),
     referenceText: "", references: [], restoredAttachments: [],
     URL, pendingByChatRef: { current: new Map() }, pendingFilesRef: { current: [] },
+    activeAttachmentDraftKey: () => "chat", persistDraftAttachments: () => {},
     setVisiblePendingFiles: () => { cleared++; },
     getCompletedUploadResult: (id: string) => id === "task" ? { id: "server-upload" } : undefined,
     fetch: async (_url: string, request: RequestInit) => { saved.push(JSON.parse(String(request.body))); return Response.json({}); },
@@ -88,6 +89,15 @@ test("unfinished or missing upload results keep the composer instead of enqueuin
   f.queueCurrentMessage("Inspect photo", [{ id: "p", uploadTaskId: "pending-task", file: new File(["p"], "photo.png") }]);
   assert.equal(f.queue().length, 0); assert.equal(f.saved.length, 0); assert.equal(f.cleared(), 0); assert.equal(f.errors.length, 1);
 });
+test("a hydrated draft queues its existing upload without a local upload task", () => {
+  const f = fixture();
+  const uploaded = { id: "upload-after-reload", name: "photo.png", mimeType: "image/png", kind: "image", size: 25 };
+  const file = { id: uploaded.id, file: { name: uploaded.name, type: uploaded.mimeType, size: uploaded.size }, uploaded };
+  f.queueCurrentMessage("Use this picture", [file]);
+  assert.deepEqual(Array.from(f.queue()[0].uploadIds!), [uploaded.id]);
+  assert.deepEqual(f.saved[0].queuedMessages[0].uploadIds, [uploaded.id]);
+});
+
 test("attachment-only prompts and two photos with identical text remain separate queue items", () => {
   const f = fixture();
   const photo = { id: "p", uploadTaskId: "task", file: new File(["p"], "photo.png") };

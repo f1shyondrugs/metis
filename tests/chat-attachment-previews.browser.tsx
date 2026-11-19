@@ -19,11 +19,11 @@ function Fixture() {
           onRemove={(id) => setDraft(draft.filter((attachment) => attachment.id !== id))} />
       ) : (
         <QueuedAttachmentPreview attachments={attachments} chatId={chatId}>
-          <div tabIndex={0} aria-label="Queued message 1" className="group/queue flex items-start gap-2 rounded-lg border border-border/40 bg-muted/20 px-2.5 py-2 text-xs">
+          {({ expanded, trigger }) => <div tabIndex={0} aria-label="Queued message 1" className="group/queue flex items-start gap-2 rounded-lg border border-border/40 bg-muted/20 px-2.5 py-2 text-xs">
             <GripVertical aria-hidden="true" className="mt-1.5 size-3.5 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1 pt-1.5">
-              <QueuedPromptPreview text="1. Can you look at these?" />
-              <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+              {trigger(<QueuedPromptPreview expanded={expanded} text={"1. Can you look at these?\nFirst, compare the mountain in the image.\nThen use the notes to write a short summary."} />)}
+              <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
                 {attachments.map((attachment) => <span key={attachment.id} className="rounded border border-border/50 px-1.5 py-0.5">{attachment.name}</span>)}
               </div>
             </div>
@@ -32,7 +32,7 @@ function Fixture() {
               <Pencil className="size-3.5" />
             </button>
             <button type="button" className="grid size-7 place-items-center" aria-label="Remove queued message"><X className="size-3.5" /></button>
-          </div>
+          </div>}
         </QueuedAttachmentPreview>
       )}
       <textarea aria-label="Message Metis" className="block h-20 w-full resize-none rounded-xl border border-border/50 bg-muted/30 p-3 text-sm" placeholder="Message Metis…" />

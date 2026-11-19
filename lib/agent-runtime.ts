@@ -4,6 +4,22 @@ import type { AgentJob } from "@/lib/jobs";
 
 /** Runs in each fresh job process, so the scheduler can stay alive during deploys. */
 export function armAgentRuntime(job: AgentJob) {
+ // Acceptance deadlines also cover private top-level test chats, including when
+ // the browser or test-console process disconnects. Existing chat limits are unchanged.
+ if (job.providerAcceptance) {
+  const deadline = Date.parse(job.providerAcceptance.deadlineAt);
+  if (!Number.isFinite(deadline)) {
+   cancelAgentJob(job.id, job.userId, "Invalid provider acceptance deadline.");
+   return () => {};
+  }
+  if (deadline <= Date.now()) {
+   cancelAgentJob(job.id, job.userId, "Provider acceptance deadline reached.");
+   return () => {};
+  }
+  return scheduleRuntimeDeadline(deadline, () => {
+   cancelAgentJob(job.id, job.userId, "Provider acceptance deadline reached.");
+  });
+ }
  if (!job.parentJobId && !job.projectTeamId) return () => {};
  const maxRuntimeMs = normalizeAgentRuntimeMs(job.maxRuntimeMs);
  if (maxRuntimeMs === 0) return () => {};

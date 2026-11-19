@@ -410,7 +410,8 @@ export type ProviderSessionBinding = {
 
 export type ChatSessionState = {
   input?: string;
-  /** ISO timestamp for last-write-wins merge of composer text across devices. */
+  draftReferences?: import("./reference-search").ReferenceResult[];
+  /** ISO timestamp for last-write-wins merge of the composer draft across devices. */
   inputUpdatedAt?: string;
   queuedUpdatedAt?: string;
   browserUrl?: string;
@@ -607,6 +608,7 @@ export type GlobalModelSettings = {
   subagentModelEnabled?: boolean;
   subagentModelId?: string;
   draftInput?: string;
+  draftReferences?: import("./reference-search").ReferenceResult[];
   pinnedNoteIds?: string[];
   favoriteModelKeys?: string[];
   modelAliases?: Record<string, string>;

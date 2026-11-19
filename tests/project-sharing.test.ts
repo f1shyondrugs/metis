@@ -17,7 +17,7 @@ before(async()=>{
  const project=projects.createProject({ownerId:owner,name:"Shared launch",instructions:"Project instructions"});
  projectId=project.id;
  chatId=chats.createChat("Planning",undefined,owner,{id:"owner-provider/model"},{projectId}).id;
- chats.updateChat(chatId,{sessionState:{modeId:"owners-custom-mode",input:"owner draft"}},owner);
+ chats.updateChat(chatId,{sessionState:{modeId:"owners-custom-mode",input:"owner draft",draftReferences:[{kind:"file",id:"owner-file",label:"Owner.md"}]}},owner);
  chats.appendMessage(chatId,{id:"msg-one",role:"user",content:"Shared transcript"},owner);
  noteId=notes.createNote({ownerId:owner,projectId,title:"Release checklist",content:"Shared note"}).id;
  projects.createProjectMemory(projectId,"Shared memory",[],owner);
@@ -50,11 +50,13 @@ test("acceptance shares project chats, notes, files and memories with actor-spec
  assert.equal(projects.listProjectMemories(projectId,member)[0].content,"Shared memory");
  assert.equal(chats.getChat(chatId,member)?.modelId,undefined);
  assert.equal(chats.getChat(chatId,member)?.sessionState,undefined);
- chats.updateChat(chatId,{modelId:"member-provider/model",sessionState:{modeId:"members-mode",input:"member draft"}},member);
+ chats.updateChat(chatId,{modelId:"member-provider/model",sessionState:{modeId:"members-mode",input:"member draft",draftReferences:[{kind:"file",id:"member-file",label:"Member.md"}]}},member);
  assert.equal(chats.getChat(chatId,member)?.modelId,"member-provider/model");
  assert.equal(chats.getChat(chatId,owner)?.modelId,"owner-provider/model");
  assert.equal(chats.getChat(chatId,owner)?.sessionState?.input,"owner draft");
  assert.equal(chats.getChat(chatId,member)?.sessionState?.input,"member draft");
+ assert.deepEqual(chats.getChatPage(chatId,owner,10,0)?.chat.sessionState?.draftReferences?.map(item=>item.id),["owner-file"]);
+ assert.deepEqual(chats.getChatPage(chatId,member,10,0)?.chat.sessionState?.draftReferences?.map(item=>item.id),["member-file"]);
  chats.appendMessage(chatId,{id:"msg-two",role:"user",content:"Member response",authorId:member},member);
  assert.equal(chats.getChat(chatId,owner)?.messages[1].content,"Member response");
  assert.equal(chats.getChat(chatId,owner)?.modelId,"owner-provider/model");

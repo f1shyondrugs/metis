@@ -1,6 +1,7 @@
 import { canAccessChat, chatActor, chatForUser, chatIndexForUser, projectRole, sharedChatForStorage } from "@/lib/project-access";
 import { getChatActivity, recordMessageActivity, recordAttentionActivity, acknowledgeChatActivity } from "@/lib/chat-activity-server";
 import { projectModelOverride } from "@/lib/project-model-server";
+import { normalizeComposerDraftReferences, retainComposerDraftReferences } from "@/lib/composer-references";
 import { isChatWaitingForUser } from "@/lib/user-input-resume";
 import { randomUUID } from "node:crypto";
 import { CHAT_LIST_MAX_PAGE_SIZE, type ChatListCursor } from "@/lib/chat-list-pagination";
@@ -840,7 +841,17 @@ export function updateChat(
       if ("input" in patch.sessionState && existingInputTs && incomingInputTs && incomingInputTs < existingInputTs) {
         merged.input = previous.input;
         merged.inputUpdatedAt = previous.inputUpdatedAt;
+        merged.draftReferences = previous.draftReferences;
+      } else if (typeof patch.sessionState.input === "string") {
+        if ("draftReferences" in patch.sessionState) {
+          merged.draftReferences = normalizeComposerDraftReferences(patch.sessionState.draftReferences);
+        } else if (previous.draftReferences && merged.input !== previous.input) {
+          merged.draftReferences = retainComposerDraftReferences(patch.sessionState.input, previous.draftReferences);
+        }
+      } else if ("draftReferences" in patch.sessionState) {
+        merged.draftReferences = previous.draftReferences;
       }
+      if (next.incognito) delete merged.draftReferences;
       const incomingUrlTs = Date.parse(patch.sessionState.browserUrlUpdatedAt || "") || 0;
       const existingUrlTs = Date.parse(previous.browserUrlUpdatedAt || "") || 0;
       if ("browserUrl" in patch.sessionState && existingUrlTs && incomingUrlTs && incomingUrlTs < existingUrlTs) {

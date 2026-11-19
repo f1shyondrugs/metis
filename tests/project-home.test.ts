@@ -68,7 +68,10 @@ test("project hub uploads files with the normal chat JSON-base64 method", () => 
 });
 
 test("project hub header stays usable on narrow screens", () => {
-  assert.match(homeSource, /grid-cols-\[3\.5rem_minmax\(0,1fr\)\]/);
+  assert.match(homeSource, /grid-cols-\[4rem_minmax\(0,1fr\)\]/);
+  assert.match(homeSource, /sm:grid-cols-\[4rem_minmax\(0,1fr\)_auto\]/);
+  assert.equal((homeSource.match(/<header className=\{PROJECT_HOME_HEADER_LAYOUT\}>/g) ?? []).length, 2);
+  assert.match(homeSource, /size-16 shrink-0 animate-pulse/);
   assert.match(homeSource, /col-span-2 grid grid-cols-2 gap-2 sm:col-span-1/);
   assert.match(homeSource, /project-home-scroll/);
 });

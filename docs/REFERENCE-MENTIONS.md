@@ -103,6 +103,13 @@ that fallback path from successful image decoding rather than treating them as
 successful website-icon loads.
 Unknown labels, emails and partial label matches never gain a reference target.
 
+While composing, the selected reference name opens its normal destination and
+shows the same hover/focus preview. A separate labeled X removes the reference
+and its mention from the draft. Normal drafts save reference identities and
+preview metadata with the text (per chat, or per account for a new chat).
+Unsent file and terminal snapshots are not part of draft autosave. Incognito
+does not persist draft references.
+
 Owners: `lib/reference-query.ts`, `components/reference-picker.tsx`,
 `components/reference-link.tsx`, `components/rich-user-text.tsx`.
 Focused regression: `tests/reference-mentions.test.tsx` (in `test:shared`).

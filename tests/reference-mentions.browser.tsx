@@ -1,11 +1,12 @@
 import React,{useEffect,useRef,useState} from "react";
 import {createRoot} from "react-dom/client";
 import {ReferencePicker} from "../components/reference-picker";
+import {ComposerReferenceChips} from "../components/composer-reference-chips";
 import {RichComposerInput} from "../components/rich-composer-input";
 import {RichUserText} from "../components/rich-user-text";
 import {NotesBlockEditor} from "../components/notes/block-editor";
 import {useReferenceSearch} from "../components/use-reference-search";
-import {composerMentionQuery,replaceComposerMention,composerReferenceKeyAction,type ComposerMentionQuery} from "../lib/composer-references";
+import {composerMentionQuery,replaceComposerMention,removeComposerReferenceMention,composerReferenceKeyAction,type ComposerMentionQuery} from "../lib/composer-references";
 import {resolveReferenceQuery,REFERENCE_SHORTCUTS} from "../lib/reference-query";
 import {REFERENCE_KINDS,type ReferenceKind,type ReferenceResult} from "../lib/reference-search";
 const requestLog:Array<{kind:string|null;q:string|null}>=[];
@@ -13,7 +14,11 @@ const originalFetch=window.fetch;
 window.fetch=(input,init)=>{const value=String(input);if(value.startsWith("/api/references?")){const url=new URL(value,location.href);requestLog.push({kind:url.searchParams.get("kind"),q:url.searchParams.get("q")});}return originalFetch(input,init);};
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function wait(check:()=>boolean,label:string){for(let n=0;n<200;n++){if(check())return;await sleep(40);}throw Error(label);}
+const draftFile: ReferenceResult = { kind: "file", id: "skill-fixture", label: "SKILL.md", detail: "Workspace file · read_file", path: "/workspace/skills/manual/example/SKILL.md", target: "server" };
+const longFile: ReferenceResult = { ...draftFile, id: "long-fixture", label: "very-long-reference-name-that-should-truncate-in-a-composer-chip.md" };
 function Fixture(){
+ const [draftFiles, setDraftFiles] = useState([draftFile, longFile]);
+ const [draftFileText, setDraftFileText] = useState("@SKILL.md");
  const [text,setText]=useState(""),[nonce,setNonce]=useState(0),[mention,setMention]=useState<ComposerMentionQuery|null>(null),[manual,setManual]=useState<ReferenceKind|null>(null),[search,setSearch]=useState<string|undefined>(),[index,setIndex]=useState(0),[selected,setSelected]=useState<ReferenceResult[]>([]),[report,setReport]=useState<string[]>([]),[note,setNote]=useState("");
  const input=useRef<HTMLTextAreaElement>(null),draft=useRef(""),eventLog=useRef<ReferenceResult[]>([]),requests=useRef(requestLog);
  const {kind,query}=resolveReferenceQuery(search??mention?.query??"",manual);
@@ -26,6 +31,19 @@ function Fixture(){
  const results:string[]=[];const check=(label:string,ok:boolean)=>{if(!ok)throw Error(label);results.push("PASS "+label);setReport([...results]);};
  const type=(value:string)=>{const element=input.current!;element.focus();Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(element,value);element.setSelectionRange(value.length,value.length);element.dispatchEvent(new Event("input",{bubbles:true}));};
  try{
+ const draftLink = document.querySelector<HTMLAnchorElement>("[data-draft-chips] [data-reference-kind=file]")!;
+ const draftRemove = document.querySelector<HTMLButtonElement>("[data-draft-chips] [aria-label='Remove reference: SKILL.md']")!;
+ draftLink.focus();
+ await wait(() => document.querySelector("[role=tooltip] [data-reference-preview=file]")?.textContent?.includes(draftFile.path!) === true, "Draft file preview");
+ const draftTooltip = document.querySelector<HTMLElement>("[role=tooltip]")!;
+ const draftBounds = draftTooltip.getBoundingClientRect();
+ check("Composer file tooltip shows name, metadata and path within viewport", draftLink.hasAttribute("aria-describedby") && draftTooltip.textContent?.includes("Workspace file · read_file") === true && draftBounds.left >= 0 && draftBounds.right <= innerWidth + 1);
+ draftLink.click();
+ check("Clicking the file opens it without removing it", eventLog.current.at(-1)?.id === draftFile.id && document.contains(draftRemove));
+ const openCount = eventLog.current.length;
+ draftRemove.click();
+ await wait(() => !document.contains(draftRemove), "Remove composer file");
+ check("Only X removes the selected reference and its token", eventLog.current.length === openCount && document.querySelector("[data-draft-token]")?.textContent === "" && document.querySelectorAll("[data-draft-chips] a").length === 1);
  for(const k of REFERENCE_KINDS){type("@"+REFERENCE_SHORTCUTS[k]);await wait(()=>document.querySelector("[data-picker]")?.getAttribute("data-kind")===k&&document.querySelector("[data-picker] [aria-busy]")?.getAttribute("aria-busy")==="false"&&requests.current.some(req=>req.kind===k&&req.q===""),"Scoped "+k);check("Shortcut filters "+k,requests.current.some(req=>req.kind===k&&req.q===""));}
  type("@chats");await wait(()=>Boolean(document.querySelector("[data-picker] [aria-label='Search chats']")),"Chat field");
  const popupInput=document.querySelector<HTMLInputElement>("[data-picker] input")!;
@@ -73,6 +91,14 @@ function Fixture(){
  }catch(error){const failed=[...results,"FAIL "+String(error)];setReport(failed);await fetch("/report",{method:"POST",body:JSON.stringify({width:innerWidth,passed:false,results:failed})});}
  }
  return <main className="mx-auto max-w-3xl space-y-4 p-4 text-foreground"><h1 className="font-semibold">Category shortcuts and reference links</h1><p className="text-xs text-muted-foreground">Synthetic browser fixture · {innerWidth}px</p>
+ <section data-draft-chips className="rounded-lg border border-border p-3">
+   <h2 className="mb-2 text-xs text-muted-foreground">Composer file references</h2>
+   <ComposerReferenceChips references={draftFiles} onRemove={reference => {
+     setDraftFileText(text => removeComposerReferenceMention(text, reference.label, draftFiles.map(item => item.label)));
+     setDraftFiles(files => files.filter(item => item.id !== reference.id));
+   }} />
+   <div data-draft-token className="mt-2 text-sm">{draftFileText}</div>
+ </section>
  <section className="rounded-lg border border-border p-3"><RichComposerInput ref={input} value={text} syncNonce={nonce} onChange={change} onSelectionChange={(value,start,end)=>{if(value===draft.current)setMention(composerMentionQuery(value,start,end,selected.map(item=>item.label)));}} mentionLabels={selected.map(item=>item.label)} onKeyDown={key} aria-label="Message"/>
  {mention?<div data-picker data-kind={kind??""} data-query={query} className="mt-2 bg-popover p-1.5"><ReferencePicker id="fixture" kind={kind} query={query} results={refs.results} loading={refs.loading} indexing={refs.indexing} error={refs.error} retry={refs.retry} index={index} onIndex={setIndex} onCategory={value=>{setManual(value);setSearch("");}} onQuery={value=>{setManual(kind);setSearch(value);}} onKeyDown={key} onSelect={choose}/></div>:null}</section>
  <section data-sent className="rounded-lg border border-border p-3 leading-7"><h2 className="mb-2 text-xs text-muted-foreground">Sent references</h2><RichUserText content={selected.map(item=>"@"+item.label).join(" · ")} references={selected}/></section>

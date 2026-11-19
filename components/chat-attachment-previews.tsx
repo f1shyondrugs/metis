@@ -1,9 +1,9 @@
 "use client";
 
 import { File, X } from "lucide-react";
-import { HoverCard } from "radix-ui";
-import type { ReactElement } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from "react";
 import { FileEmbed } from "@/components/file-embed";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { StoredAttachment } from "@/lib/uploads";
 
@@ -17,18 +17,18 @@ export function chatAttachmentUrl(attachment: ChatAttachment, chatId?: string | 
   return attachment.previewUrl;
 }
 
-export function ChatAttachmentPreviews({ attachments, chatId, label = "Attachments", onRemove, className, previewOnly = false }: {
+export function ChatAttachmentPreviews({ attachments, chatId, label = "Attachments", onRemove, className, compact = false }: {
   attachments?: readonly ChatAttachment[];
   chatId?: string | null;
   label?: string;
   onRemove?: (id: string) => void;
   className?: string;
-  previewOnly?: boolean;
+  compact?: boolean;
 }) {
   if (!attachments?.length) return null;
   return (
-    <div role="group" aria-label={label} className={cn(
-      previewOnly ? "grid gap-2" : "flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1",
+    <div role="group" aria-label={label} tabIndex={compact && attachments.length > 1 ? 0 : undefined} className={cn(
+      "flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1 focus-visible:outline-2 focus-visible:outline-ring",
       className,
     )}>
       {attachments.map((attachment) => {
@@ -36,12 +36,11 @@ export function ChatAttachmentPreviews({ attachments, chatId, label = "Attachmen
         return (
           <div key={attachment.id} className={cn(
             "relative min-w-0 rounded-lg border border-border/40 bg-background/40",
-            !previewOnly && "w-80 max-w-full shrink-0",
+            "w-80 max-w-full shrink-0",
           )}>
-            {previewOnly && url && <div className="truncate px-2 py-1.5 text-xs text-muted-foreground" title={attachment.name}>{attachment.name}</div>}
             {url ? (
-              <FileEmbed key={url} file={{ ...attachment, url }} previewOnly={previewOnly}
-                resizable={false} className={cn("rounded-[inherit]", previewOnly || onRemove ? "max-h-56" : "max-h-96")} />
+              <FileEmbed key={url} file={{ ...attachment, url }} textPreviewLimit={compact ? 8_001 : undefined}
+                allowHorizontalScroll={compact && attachments.length > 1} resizable={false} className={cn("rounded-[inherit]", compact || onRemove ? "max-h-56" : "max-h-96")} />
             ) : (
               <div className={cn("flex items-center gap-2 p-3 text-xs text-muted-foreground", onRemove && "pr-11")}>
                 <File aria-hidden="true" className="size-4 shrink-0" />
@@ -64,25 +63,88 @@ export function ChatAttachmentPreviews({ attachments, chatId, label = "Attachmen
   );
 }
 
-/** Open above the queue row without moving its drag handle or action buttons. */
+/** Keep the queue row expanded while the pointer or keyboard is inside its portalled preview. */
 export function QueuedAttachmentPreview({ attachments, chatId, suspended, children }: {
   attachments: readonly ChatAttachment[];
   chatId?: string | null;
   suspended?: boolean;
-  children: ReactElement;
+  children: (preview: { expanded: boolean; trigger: (label: ReactElement) => ReactElement }) => ReactElement;
 }) {
-  if (!attachments.length) return children;
+  const [mode, setMode] = useState<"closed" | "peek" | "pinned">("closed");
+  const row = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const panelFocused = useRef(false);
+  const panelWasFocused = useRef(false);
+  const available = attachments.length > 0 && !suspended;
+  const open = available && mode !== "closed";
+  const clearTimer = () => clearTimeout(timer.current);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!available) {
+      clearTimeout(timer.current);
+      setMode("closed");
+    }
+  }, [available]);
+
+  function enter(event: PointerEvent<HTMLElement>) {
+    if (event.pointerType === "touch" || !available) return;
+    clearTimer();
+    if (!open) timer.current = setTimeout(() => setMode("peek"), 160);
+  }
+
+  function closePeek() {
+    clearTimer();
+    timer.current = setTimeout(() => {
+      if (panelFocused.current || row.current?.matches(":hover") || panel.current?.matches(":hover")) return;
+      setMode((current) => current === "peek" ? "closed" : current);
+    }, 220);
+  }
+
+  function leave(event: PointerEvent<HTMLElement>) {
+    if (event.pointerType !== "touch") closePeek();
+  }
+
+  if (!attachments.length) return children({ expanded: false, trigger: (label) => label });
   return (
-    <HoverCard.Root openDelay={160} closeDelay={140}>
-      <HoverCard.Trigger asChild>{children}</HoverCard.Trigger>
-      {!suspended && (
-        <HoverCard.Portal>
-          <HoverCard.Content side="top" align="start" sideOffset={6} collisionPadding={8}
-            className="z-50 w-[min(26rem,calc(100vw-1rem))] max-h-[min(22rem,var(--radix-hover-card-content-available-height))] overflow-y-auto overscroll-contain rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-lg">
-            <ChatAttachmentPreviews attachments={attachments} chatId={chatId} label="Queued attachment previews" previewOnly />
-          </HoverCard.Content>
-        </HoverCard.Portal>
-      )}
-    </HoverCard.Root>
+    <Popover open={open} onOpenChange={(next) => {
+      clearTimer();
+      setMode(next ? "pinned" : "closed");
+    }}>
+      <PopoverAnchor asChild>
+        <div ref={row} onPointerEnter={enter} onPointerLeave={leave}>
+          {children({
+            expanded: open,
+            trigger: (label) => <PopoverTrigger asChild>
+              <button type="button" aria-label="Preview queued attachments" disabled={!available}
+                className="block min-w-0 w-full rounded-sm text-left focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default"
+                onClick={(event) => {
+                  event.preventDefault();
+                  clearTimer();
+                  setMode((current) => current === "pinned" ? "closed" : "pinned");
+                  if (mode === "peek" && event.detail === 0) panel.current?.focus();
+                }}>
+                {label}
+              </button>
+            </PopoverTrigger>,
+          })}
+        </div>
+      </PopoverAnchor>
+      <PopoverContent ref={panel} side="top" align="start" sideOffset={6} collisionPadding={8} aria-label="Queued attachments"
+        onPointerEnter={enter} onPointerLeave={leave}
+        onFocusCapture={() => { panelFocused.current = true; panelWasFocused.current = true; clearTimer(); }}
+        onBlurCapture={() => { panelFocused.current = false; closePeek(); }}
+        onOpenAutoFocus={(event) => { if (mode === "peek") event.preventDefault(); }}
+        onCloseAutoFocus={(event) => {
+          // A pointer-only preview should never steal focus from another control.
+          if (!panelWasFocused.current) event.preventDefault();
+          panelFocused.current = false;
+          panelWasFocused.current = false;
+        }}
+        className="w-[min(26rem,calc(100vw-1rem))] max-h-[min(22rem,var(--radix-popover-content-available-height))] overflow-y-auto overscroll-contain p-2">
+        <ChatAttachmentPreviews attachments={attachments} chatId={chatId} label="Queued attachment previews" compact />
+      </PopoverContent>
+    </Popover>
   );
 }

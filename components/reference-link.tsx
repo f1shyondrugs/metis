@@ -30,8 +30,8 @@ export function ReferencePreviewContent({reference}:{reference:ReferenceResult})
 }
 
 /** Saved reference identity is authoritative; labels alone never create a destination. */
-export function ReferenceLink({reference,children,className}:{
-  reference:ReferenceResult;children?:ReactNode;className?:string;
+export function ReferenceLink({reference,children,className,appearance="inline"}:{
+  reference:ReferenceResult;children?:ReactNode;className?:string;appearance?:"inline"|"chip";
 }) {
   const share=usePublicMarkdownShare();
   const href=referenceHref(reference);
@@ -43,7 +43,13 @@ export function ReferenceLink({reference,children,className}:{
     ? <InternalLinkPreviewContent target={target} chatId={reference.chatId || null}/>
     : <ReferencePreviewContent reference={reference}/>}>
     <a href={webHref || href} data-reference-kind={reference.kind}
-      className={cn("reference-mention text-primary underline decoration-dotted decoration-primary/60 underline-offset-4 hover:decoration-solid hover:text-primary/80 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",className)}
+      className={cn(
+        "focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        appearance === "chip"
+          ? "flex min-w-0 items-center gap-1 self-stretch pl-2 hover:text-foreground"
+          : "reference-mention text-primary underline decoration-dotted decoration-primary/60 underline-offset-4 hover:decoration-solid hover:text-primary/80",
+        className,
+      )}
       onClick={event=>{
         if(webHref && (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey))return;
         event.preventDefault();event.stopPropagation();
@@ -52,7 +58,7 @@ export function ReferenceLink({reference,children,className}:{
       onAuxClick={event=>{
         if(!webHref && event.button===1){event.preventDefault();window.dispatchEvent(new CustomEvent("ai-chat:open-reference",{detail:reference}));}
       }}>
-      <LinkIcon href={browserHref || href}/>{children || "@"+reference.label}
+      {appearance === "inline" ? <LinkIcon href={browserHref || href}/> : null}{children || "@"+reference.label}
     </a>
   </HoverPreview>;
 }

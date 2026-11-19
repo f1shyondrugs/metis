@@ -1,3 +1,32 @@
+import { REFERENCE_KINDS, type ReferenceResult } from "./reference-search";
+
+/** Keep durable draft links, not cached file contents or terminal output. */
+export function normalizeComposerDraftReferences(value: unknown): ReferenceResult[] {
+  if (!Array.isArray(value)) return [];
+  const result: ReferenceResult[] = [];
+  const seen = new Set<string>();
+  for (const item of value.slice(0, 50)) {
+    if (!item || typeof item !== "object" || !(REFERENCE_KINDS as readonly string[]).includes(item.kind)
+      || typeof item.id !== "string" || !item.id.trim() || item.id.length > 2_000 || /[\u0000-\u001f\u007f]/.test(item.id)
+      || typeof item.label !== "string" || !item.label.trim() || /[\r\n]/.test(item.label)) continue;
+    const key = JSON.stringify([item.kind, item.id]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const reference: ReferenceResult = { kind: item.kind, id: item.id, label: item.label.slice(0, 1_000) };
+    for (const field of ["detail", "chatId", "path", "sessionId", "parentId", "target"] as const) {
+      if (typeof item[field] === "string") reference[field] = item[field].slice(0, field === "path" ? 4_096 : 1_000);
+    }
+    result.push(reference);
+  }
+  return result;
+}
+
+/** Older clients only write draft text. Never leave unrelated links attached to that text. */
+export function retainComposerDraftReferences(text: string, references: readonly ReferenceResult[]): ReferenceResult[] {
+  const labels = new Set(composerMentionTokens(text, references.map((reference) => reference.label)).map((token) => token.label));
+  return references.filter((reference) => labels.has(reference.label));
+}
+
 /** Offsets are UTF-16, matching textarea selectionStart/selectionEnd. */
 export type ComposerMentionQuery = { start: number; end: number; query: string };
 export type ComposerMentionToken = { start: number; end: number; label: string };
@@ -24,6 +53,15 @@ export function composerMentionTokens(text: string, labels: readonly string[]): 
     start = end - 1;
   }
   return tokens;
+}
+
+/** Remove the linked token, not a partial label, an email address, or unrelated spacing. */
+export function removeComposerReferenceMention(text: string, label: string, labels: readonly string[]): string {
+  const token = composerMentionTokens(text, labels).find((candidate) => candidate.label === label);
+  if (!token) return text;
+  const before = text.slice(0, token.start);
+  const after = text.slice(token.end);
+  return before + (!before || /[ \t]$/u.test(before) ? after.replace(/^[ \t]+/u, "") : after);
 }
 
 /** A selection, completed token, email, or new line cannot be an active query. */

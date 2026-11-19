@@ -26,6 +26,7 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 | [NOTEBOOK-PRESENCE.md](./NOTEBOOK-PRESENCE.md) | Account avatars, notebook-wide presence and permission-scoped follow mode |
 | [RELEASE-TESTING.md](./RELEASE-TESTING.md) | Release and upgrade checks |
 | [NATIVE-UPDATER.md](./NATIVE-UPDATER.md) | Prebuilt native updates, recovery and desktop diagnostics |
+| [PROVIDER-ACCEPTANCE.md](./PROVIDER-ACCEPTANCE.md) | Provider/auth/model test matrix, bounded live probes and evidence reports |
 | [STORAGE-RETENTION.md](./STORAGE-RETENTION.md) | Update retention, compiler caches, and safe cleanup boundaries |
 
 ## Architecture (historical + current)

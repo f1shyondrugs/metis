@@ -92,6 +92,8 @@ function ProjectHomeTile({
  );
 }
 
+const PROJECT_HOME_HEADER_LAYOUT = "grid grid-cols-[4rem_minmax(0,1fr)] items-start gap-x-3 gap-y-4 sm:grid-cols-[4rem_minmax(0,1fr)_auto] sm:gap-4";
+
 function ProjectHomeSkeleton() {
  return (
  <div
@@ -100,8 +102,8 @@ function ProjectHomeSkeleton() {
  aria-label="Loading project"
  data-slot="project-home-skeleton"
  >
- <header className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-4 sm:grid-cols-[3.5rem_minmax(0,1fr)_auto] sm:gap-4">
- <div className="size-14 shrink-0 animate-pulse rounded-xl bg-muted" />
+ <header className={PROJECT_HOME_HEADER_LAYOUT}>
+ <div className="size-16 shrink-0 animate-pulse rounded-xl bg-muted" />
  <div className="min-w-0 space-y-2">
  <div className="h-8 w-2/3 animate-pulse rounded-md bg-muted" />
  <p className="text-sm text-muted-foreground">Loading project…</p>
@@ -407,7 +409,7 @@ export function ProjectHome({
  return (
   <div className="project-home-scroll min-h-0 w-full flex-1 overflow-y-auto">
    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-5 sm:gap-8 sm:px-6 sm:py-8">
-   <header className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-4 sm:grid-cols-[3.5rem_minmax(0,1fr)_auto] sm:gap-4">
+   <header className={PROJECT_HOME_HEADER_LAYOUT}>
     <button
      type="button"
      className="group relative shrink-0"

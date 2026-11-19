@@ -53,7 +53,9 @@ type ChatBody = {
   streamDeviceId?: string;
 };
 
-export async function submitChat(req: Request) {
+/** Server-only constraints are supplied by trusted callers, never by the JSON body. */
+export type ChatSubmitConstraints = { providerAcceptance?: { reportId: string; deadlineAt: string }; maxRuntimeMs?: number; beforeEnqueue?: () => void };
+export async function submitChat(req: Request, constraints?: ChatSubmitConstraints) {
   if (!(await isAuthenticated(req))) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -224,6 +226,11 @@ export async function submitChat(req: Request) {
       job = enqueueJob({
         chatId,
         userId: ownerId,
+        ...(constraints?.providerAcceptance ? {
+          providerAcceptance: constraints.providerAcceptance,
+          maxRuntimeMs: constraints.maxRuntimeMs,
+          priority: 10, workload: "background" as const,
+        } : {}),
         message,
         messageId,
         ...(assistantDeviceId ? { assistantDeviceId } : {}),
@@ -242,6 +249,7 @@ export async function submitChat(req: Request) {
       }, {
         interruptActiveRun: sendQueuedNow,
         beforeInsert: () => {
+          constraints?.beforeEnqueue?.();
           rememberAssistantOrigin(ownerId,chatId,messageId,assistantDeviceId);
           if (storedAttachments.length) stored.push(...storedAttachments);
           if (attachments.length) {

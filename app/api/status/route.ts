@@ -24,6 +24,7 @@ export async function GET(req: Request) {
     authenticated: authed,
     username: user?.username,
     userId: user?.id,
+    draftOwnerId: user?.id,
     agentCwd: ownerId ? getUserAgentCwd(ownerId) : undefined,
     cursorSdkConfigured: hasCursorSdkConnection,
     isHostAdmin: Boolean(ownerId && isHostAdmin(ownerId)),

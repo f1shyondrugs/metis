@@ -339,6 +339,7 @@ async function runAlternativeProviderAttempt(
     content: "",
   });
   emit("assistantId", { messageId: assistantMessageId });
+  emit("providerExecution", { providerId: definition.key, connectionId: credential.id, modelId: parsed.modelId, execution });
   emit("status", { status: "running", message: "Starting model…" });
   updateChat(
     job.chatId,
@@ -529,6 +530,7 @@ async function runAlternativeProviderAttempt(
         ...runConfiguration,
         providerId: definition.key,
         modelId: parsed.modelId,
+        connectionId: credential.id,
         inputTokens,
         ...(measuredInputTokens === undefined
           ? { inputTokensEstimated: true }

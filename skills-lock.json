@@ -41,7 +41,7 @@
       "source": "custom",
       "sourceType": "local",
       "skillPath": "skills/manual/metis-development/SKILL.md",
-      "computedHash": "9669b001f82d511cb41c65cf4c025e7eec9579ca3d5ba02c0673a055c269479d"
+      "computedHash": "0e39e7806613f6d102a83058cbc160f4444327e7d00110b865a88564a308e1fe"
     },
     "pdf": {
       "source": "anthropics/skills",
@@ -251,7 +251,7 @@
       "source": "custom",
       "sourceType": "local",
       "skillPath": "skills/manual/social-video-downloader/SKILL.md",
-      "computedHash": "28f0b892b987cf49e115f55ef4d4f039b6fa7bfc98599c1a9b638908dc6659a9"
+      "computedHash": "4b0b64f15b0d302153b50770e79536ea62d9181c66c7494dafa366496c0441b5"
     }
   }
 }

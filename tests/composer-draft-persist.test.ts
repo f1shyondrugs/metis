@@ -54,6 +54,6 @@ test("opening a chat does not mark the composer dirty before server hydration", 
   );
   assert.match(
     shellSource,
-    /persistActiveSnapshot\(\);[\s\S]*draftInput: stateRef\.current\.input/,
+    /persistActiveSnapshot\(\);[\s\S]*saveNewChatDraft\(stateRef\.current\.input, referencesRef\.current\)/,
   );
 });

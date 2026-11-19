@@ -1,0 +1,33 @@
+name: Provider acceptance inventory
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "37 5 * * *"
+permissions:
+  contents: read
+concurrency:
+  group: provider-acceptance-inventory
+  cancel-in-progress: false
+jobs:
+  offline-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Execute contracts and local synthetic provider transport
+        run: pnpm test:provider-acceptance
+      - name: Generate explicitly unverified registry inventory (no credentials)
+        run: pnpm acceptance:providers --out outputs/provider-acceptance-ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provider-acceptance-inventory
+          path: outputs/provider-acceptance-ci/
+          retention-days: 14

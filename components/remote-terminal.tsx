@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { copyText } from "@/lib/copy-text";
 import "@xterm/xterm/css/xterm.css";
 
 type RemoteTerminalProps = {
@@ -94,6 +96,18 @@ export function RemoteTerminal({ cwd, sessionId, onSessionIdChange }: RemoteTerm
       const fitAddon = new FitAddon();
       terminal.loadAddon(fitAddon);
       terminal.open(terminalElementRef.current);
+      terminal.attachCustomKeyEventHandler((event) => {
+        if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey || event.key.toLowerCase() !== "c") return true;
+
+        // Copy belongs to the local UI, never to the remote terminal session.
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.type === "keydown" && !event.repeat) {
+          const selection = terminal.getSelection();
+          if (selection) void copyText(selection).catch(() => toast.error("Could not copy the terminal selection."));
+        }
+        return false;
+      });
       fitAddon.fit();
       terminalRef.current = terminal;
       fitAddonRef.current = fitAddon;
@@ -200,7 +214,7 @@ export function RemoteTerminal({ cwd, sessionId, onSessionIdChange }: RemoteTerm
         </Button>
       </div>
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-md bg-[#09090b] p-2">
-        <div ref={terminalElementRef} className="h-full w-full" aria-label="Remote terminal" />
+        <div ref={terminalElementRef} className="h-full w-full" role="group" aria-label="Remote terminal" aria-keyshortcuts="Control+Shift+C" />
         {starting ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#09090b]/70">
             <LoaderCircle className="size-4 animate-spin text-muted-foreground" />

@@ -79,6 +79,8 @@ export type AgentJob = {
  subagentFollowUp?: boolean;
   /** Source-chat context plus recent run summaries, kept separate from the run transcript. */
   automationContext?: string;
+  /** Internal acceptance tests carry a durable deadline; never accepted from public chat bodies. */
+  providerAcceptance?: { reportId: string; deadlineAt: string };
   /** Per-run hard limit. Automations use this to support long autonomous tasks without changing normal chat limits. */
   maxRuntimeMs?: number;
   /** Persisted execution deadline for child/project runs; retained across recovery. */

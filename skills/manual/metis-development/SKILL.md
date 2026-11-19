@@ -68,4 +68,6 @@ Staged web snapshots can retain a different canonical `AI_CHAT_INSTALL_DIR` for 
 
 For an authorized deployment, read `docs/DEPLOY.md` and the current deployment configuration. Build the inactive production slot with `scripts/build-production-slot.sh`; never overwrite the active slot. Switch only after the build succeeds. Restart only the service required by the approved deployment, preserving the worker/MCP runtime when instructed. Verify the artifact's BUILD_ID, active service, and actual HTTP response through `verify_work` before reporting deployment success.
 
+On an intentional split Next.js deployment, verify the HTML and referenced script/style bytes for both the chat root and a non-root entry point (such as Desktop Assistant). A 200 HTML shell does not prove hydration. If both builds must remain reachable through one static URL prefix, a static-only Nginx 404 fallback can serve chunks absent from the first slot without rerouting APIs or upgraded connections. Also verify a real asset miss remains 404 and compare process identities and active job leases before and after a graceful reload.
+
 Commit only the owned changes. Preserve the configured author and provide the direct GitHub commit link when pushing. Report what changed, what was verified, and any material limit; a refactor does not prove that unrelated instability has been resolved.

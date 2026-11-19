@@ -36,9 +36,10 @@ import { useAccountNotifications } from "@/hooks/use-account-notifications";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { flushNoteEditors } from "@/lib/note-editor-lifecycle";
-import { composerMentionQuery, replaceComposerMention, composerReferenceKeyAction, composerIsComposing } from "@/lib/composer-references";
+import { composerMentionQuery, replaceComposerMention, composerReferenceKeyAction, composerIsComposing, normalizeComposerDraftReferences, removeComposerReferenceMention } from "@/lib/composer-references";
 import { resolveReferenceQuery } from "@/lib/reference-query";
 import { ReferenceLink } from "@/components/reference-link";
+import { ComposerReferenceChips } from "@/components/composer-reference-chips";
 import { workspaceFileHref, parseWorkspaceFileLink, type WorkspaceFileRequest } from "@/lib/workspace-file-link";
 import { QuestionForm } from "@/components/question-form";
 import { copyText } from "@/lib/copy-text";
@@ -65,6 +66,9 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { startUpload, waitForUpload, cancelUpload, subscribeUploads, getUploadStatus, getCompletedUploadResult } from "@/lib/background-uploads";
+import { composerAttachmentKey, readDraftAttachments, saveDraftAttachments } from "@/lib/chat-draft-attachments";
+import type { UploadedFile } from "@/lib/upload-limits";
+import type { StoredAttachment } from "@/lib/uploads";
 import { UploadProgress, UploadTray } from "@/components/upload-progress";
 import { ComposerAddMenu } from "@/components/composer-add-menu";
 import { ignoresNavigationSwipe } from "@/lib/navigation-swipe";
@@ -477,10 +481,16 @@ type Msg = {
 type PendingFile = {
   id: string;
   uploadTaskId?: string;
-  file: File;
   previewUrl?: string;
   fromQueue?: true;
-};
+} & (
+  | { file: File; uploaded?: undefined }
+  | { file: Pick<File, "name" | "type" | "size">; uploaded: UploadedFile }
+);
+
+function completedPendingUpload(pending: PendingFile) {
+  return pending.uploaded ?? (pending.uploadTaskId ? getCompletedUploadResult(pending.uploadTaskId) : undefined);
+}
 
 function pendingFileAttachment(pending: PendingFile, previewUrl = pending.previewUrl): MsgAttachment {
   return {
@@ -679,6 +689,7 @@ type ChatPage = {
 
 type ChatSessionState = {
   input?: string;
+  draftReferences?: ReferenceItem[];
   inputUpdatedAt?: string;
   queuedUpdatedAt?: string;
   browserUrl?: string;
@@ -789,6 +800,7 @@ type StatusPayload = {
   authenticated: boolean;
   userId?: string;
   username?: string;
+  draftOwnerId?: string;
   isHostAdmin?: boolean;
   agentCwd?: string;
   cursorSdkConfigured: boolean;
@@ -1918,6 +1930,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       });
     };
     if (reason) {
+      draftInputRef.current = value;
+      stateRef.current.input = value;
       const edit = composerUserEditMeta();
       inputUpdatedAtRef.current = edit.updatedAt;
       composerDirtyUntilRef.current = edit.dirtyUntil;
@@ -1927,7 +1941,12 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     else startTransition(apply);
   }, [setInput]);
   const busyRef = useRef(false);
-  const [references, setReferences] = useState<ReferenceItem[]>([]);
+  const [references, setReferencesState] = useState<ReferenceItem[]>([]);
+  const referencesRef = useRef(references);
+  const setReferences = useCallback((next: ReferenceItem[] | ((current: ReferenceItem[]) => ReferenceItem[])) => {
+    referencesRef.current = typeof next === "function" ? next(referencesRef.current) : next;
+    setReferencesState(referencesRef.current);
+  }, []);
   const [referenceMenu, setReferenceMenu] = useState<{
     query: string;
     kind: ReferenceKind | null;
@@ -1996,12 +2015,18 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const [paneKey, setPaneKey] = useState(0);
   const [pendingFiles, setVisiblePendingFiles] = useState<PendingFile[]>([]);
   const pendingByChatRef = useRef(new Map<string, PendingFile[]>());
+  const privateAttachmentDraftKeys = useRef(new Set<string>());
+  const draftOwnerId = authed ? status?.draftOwnerId : undefined;
+  const attachmentDraftOwnerRef = useRef(draftOwnerId);
+  attachmentDraftOwnerRef.current = draftOwnerId;
+  const boundAttachmentOwnerRef = useRef<string | undefined>(undefined);
   // Boolean snapshot avoids rerendering the whole chat for every upload byte.
   const attachmentSendBlocked = useSyncExternalStore(
     subscribeUploads,
     () => hasUnfinishedComposerUploads(pendingFiles, getUploadStatus),
     () => false,
   );
+  const restoredAttachmentsRef = useRef(new Map<string | null, MsgAttachment[]>());
   const [restoredAttachmentsByChat, setRestoredAttachmentsByChat] = useState<Map<string | null, MsgAttachment[]>>(() => new Map());
   const restoredAttachments = restoredAttachmentsByChat.get(activeChatId) ?? [];
   const [activeAttachment, setActiveAttachment] = useState<{
@@ -2222,6 +2247,17 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const pendingQuestionIdRef = useRef<string | null>(null);
   const draftInputRef = useRef("");
   const draftInputLoadedRef = useRef(false);
+  const newChatDraftRef = useRef({ draftInput: "", draftReferences: [] as ReferenceItem[] });
+  const saveNewChatDraft = useCallback((draftInput: string, references: ReferenceItem[]) => {
+    if (!authedRef.current) return;
+    const draft = { draftInput, draftReferences: normalizeComposerDraftReferences(references) };
+    newChatDraftRef.current = draft;
+    void fetch("/api/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+  }, []);
   const notifiedPlanRef = useRef<Set<string>>(new Set());
   const swipeRef = useRef<{ x: number; y: number; ignored: boolean } | null>(null);
   const chatModelSettingsRef = useRef<ReturnType<typeof createChatModelSettingsQueue> | null>(null);
@@ -2263,6 +2299,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   const workspaceListSaveTimerRef = useRef<number | null>(null);
   const stateRef = useRef({
     chatId: activeChatId,
+    incognito,
     queueChatId: queuedState.chatId,
     loadingChatId,
     messages,
@@ -2459,6 +2496,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   useEffect(() => {
     stateRef.current = {
       chatId: activeChatId,
+      incognito,
       queueChatId: queuedState.chatId,
       loadingChatId,
       messages,
@@ -2487,6 +2525,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     };
   }, [
     activeChatId,
+    incognito,
     queuedState.chatId,
     loadingChatId,
     messages,
@@ -2545,6 +2584,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     const nowIso = new Date().toISOString();
     browserUrlUpdatedAtRef.current = nowIso;
     const timer = window.setTimeout(() => {
+      if (activeChatIdRef.current !== activeChatId) return;
       void fetch(`/api/chats/${activeChatId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -2552,7 +2592,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           sessionState: {
             ...(persistComposer
               ? {
-                  input,
+                  input: stateRef.current.input,
+                  draftReferences: normalizeComposerDraftReferences(referencesRef.current),
                   inputUpdatedAt: inputUpdatedAtRef.current || undefined,
                 }
               : {}),
@@ -2591,6 +2632,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     workspaceOpen,
     workspaceWidth,
     input,
+    references,
     browserUrl,
     questionCustom,
     questionAnswers,
@@ -2727,6 +2769,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     if (!id || activeChatIncognito) return;
     const s = stateRef.current;
     if (s.chatId !== id || s.queueChatId !== id || s.loadingChatId) return;
+    const draftReferences = normalizeComposerDraftReferences(referencesRef.current);
     const cachedMessages = s.messages.slice(-CHAT_MESSAGE_PRELOAD_MAX).map((m) => ({
       ...m,
       streaming: false,
@@ -2760,6 +2803,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       ),
       sessionState: {
         input: s.input,
+        draftReferences,
         inputUpdatedAt: inputUpdatedAtRef.current || undefined,
         terminalCwd: s.remoteTerminalCwd,
         fileCwd: s.remoteFileCwd,
@@ -2796,6 +2840,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           ...(composerPersistChatRef.current === id
             ? {
                 input: s.input,
+                draftReferences,
                 inputUpdatedAt: inputUpdatedAtRef.current || undefined,
               }
             : {}),
@@ -3806,6 +3851,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           subagentModelEnabled?: boolean;
           subagentModelId?: string;
           draftInput?: string;
+          draftReferences?: ReferenceItem[];
           favoriteModelKeys?: string[];
           modelAliases?: Record<string, string>;
           browserRealtime?: boolean;
@@ -3892,33 +3938,29 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
           ? Math.max(240, Math.min(1600, Math.round(settings.browserViewportHeight)))
           : 800;
         setBrowserDefaultViewport({ width: defaultWidth, height: defaultHeight });
-        const serverDraft = typeof settings.draftInput === "string"
-          ? settings.draftInput
-          : "";
-        draftInputLoadedRef.current = true;
-        if (serverDraft.trim() && !activeChatIdRef.current) {
-          draftInputRef.current = serverDraft;
-          setInput(serverDraft);
+        if (!draftInputLoadedRef.current) {
+          const draftInput = typeof settings.draftInput === "string" ? settings.draftInput : "";
+          const draftReferences = normalizeComposerDraftReferences(settings.draftReferences);
+          draftInputLoadedRef.current = true;
+          newChatDraftRef.current = { draftInput, draftReferences };
+          if (!activeChatIdRef.current && !stateRef.current.incognito && !draftInputRef.current) {
+            draftInputRef.current = draftInput;
+            setInput(draftInput);
+            setReferences(draftReferences);
+          }
         }
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [authed, models, setInput]);
+  }, [authed, models, setInput, setReferences]);
 
   useEffect(() => {
-    if (!authed || activeChatId || !draftInputLoadedRef.current) return;
-    draftInputRef.current = input;
-    const timer = window.setTimeout(() => {
-      void fetch("/api/preferences", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draftInput: input }),
-      });
-    }, 250);
+    if (!authed || activeChatId || incognito || !draftInputLoadedRef.current) return;
+    const timer = window.setTimeout(() => saveNewChatDraft(input, references), 250);
     return () => window.clearTimeout(timer);
-  }, [activeChatId, authed, input]);
+  }, [activeChatId, authed, incognito, input, references, saveNewChatDraft]);
 
   function applyChatModelSelection(chatId: string, selection: ChatModelSettingsSelection) {
     const snapshot = chatCacheRef.current.get(chatId);
@@ -4154,7 +4196,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     const remoteInput = typeof session.input === "string" ? session.input : "";
     const allowRemoteComposer =
       source === "cache" ||
-      composerPersistChatRef.current !== id ||
+      (!inputUpdatedAtRef.current && composerPersistChatRef.current !== id) ||
       shouldAcceptRemoteComposerInput({
         dirtyUntil: composerDirtyUntilRef.current,
         localUpdatedAt: inputUpdatedAtRef.current,
@@ -4162,7 +4204,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         remoteInput,
       });
     if (allowRemoteComposer) {
+      draftInputRef.current = remoteInput;
+      stateRef.current.input = remoteInput;
       setInput(remoteInput);
+      setReferences(snap.incognito ? [] : session.draftReferences ?? []);
       if (composerPersistChatRef.current !== id) {
         setComposerSyncNonce((current) => current + 1);
       }
@@ -4174,7 +4219,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     if (source === "server") composerPersistChatRef.current = id;
     const extra = session.extraFields || {};
     setReferenceMenu(null);
-    setReferences([]);
     setMessages(snap.messages);
     setMessageOffset(snap.messageOffset);
     setHasEarlierMessages(snap.hasEarlierMessages);
@@ -4217,7 +4261,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     setQuestionError(null);
     setQuestionFieldErrors({});
     setPaneKey((k) => k + 1);
-  }, [acceptServerSnapshot, clearUnread, setBusySynced, setInput, workspaceDefaultCwd]);
+  }, [acceptServerSnapshot, clearUnread, setBusySynced, setInput, setReferences, workspaceDefaultCwd]);
 
   const openDraft = useCallback(
     (opts?: { skipNav?: boolean; projectId?: string | null }) => {
@@ -4311,10 +4355,13 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       setBrowserUrl(activeTab?.url || "");
       setBrowserInput(activeTab?.url || "");
       setMessages([]);
-      setInput(draftInputRef.current);
+      const { draftInput, draftReferences } = newChatDraftRef.current;
+      draftInputRef.current = draftInput;
+      stateRef.current.input = draftInput;
+      setInput(draftInput);
       setComposerSyncNonce((current) => current + 1);
       setReferenceMenu(null);
-      setReferences([]);
+      setReferences(draftReferences);
       setMessageOffset(0);
       setHasEarlierMessages(false);
       setQueuedState({ chatId: null, messages: [] });
@@ -4324,7 +4371,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       setLiveStatus("");
       setPaneKey((k) => k + 1);
     },
-    [activeChatIncognito, modelParamsByModel, models, navigateChat, persistActiveSnapshot, setBusySynced, setInput],
+    [activeChatIncognito, modelParamsByModel, models, navigateChat, persistActiveSnapshot, setBusySynced, setInput, setReferences],
   );
 
   const prefetchChat = useCallback(async (id: string) => {
@@ -4393,7 +4440,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       const alreadyActive = activeChatIdRef.current === id;
       const previousChatId = activeChatIdRef.current;
       if (!alreadyActive) {
+        if (!previousChatId && !stateRef.current.incognito && draftInputLoadedRef.current) {
+          saveNewChatDraft(stateRef.current.input, referencesRef.current);
+        }
         persistActiveSnapshot();
+        setReferences([]);
         composerPersistChatRef.current = null;
         composerDirtyUntilRef.current = 0;
         inputUpdatedAtRef.current = "";
@@ -4595,7 +4646,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
             setRemoteFileCwd(normalizeWorkDirectory(session.fileCwd || session.remoteCwd, workspaceDefaultCwd));
             const remoteInput = session.input;
             if (
-              composerPersistChatRef.current !== id ||
+              (!inputUpdatedAtRef.current && composerPersistChatRef.current !== id) ||
               shouldAcceptRemoteComposerInput({
                 dirtyUntil: composerDirtyUntilRef.current,
                 localUpdatedAt: inputUpdatedAtRef.current,
@@ -4603,7 +4654,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                 remoteInput,
               })
             ) {
-              setInput(typeof remoteInput === "string" ? remoteInput : "");
+              const draftInput = typeof remoteInput === "string" ? remoteInput : "";
+              draftInputRef.current = draftInput;
+              stateRef.current.input = draftInput;
+              setInput(draftInput);
+              setReferences(next.incognito ? [] : session.draftReferences ?? []);
               inputUpdatedAtRef.current = session.inputUpdatedAt || "";
               if (composerPersistChatRef.current !== id) composerDirtyUntilRef.current = 0;
               const extra = session.extraFields || {};
@@ -4685,7 +4740,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         }
       }
     },
-    [acceptServerSnapshot, activeChatIncognito, applySnapshot, chatCacheScope, clearUnread, navigateChat, persistActiveSnapshot, setBusySynced, setInput, workspaceDefaultCwd],
+    [acceptServerSnapshot, activeChatIncognito, applySnapshot, chatCacheScope, clearUnread, navigateChat, persistActiveSnapshot, saveNewChatDraft, setBusySynced, setInput, setReferences, workspaceDefaultCwd],
   );
 
   // Prefetch on explicit sidebar hover/focus only. Startup prefetches compete
@@ -5329,6 +5384,10 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         if (terminal) setActiveTerminalTabId(terminal.id);
         setWorkspaceTab("terminal");
         setWorkspaceOpen(true);
+        return;
+      }
+      if (reference.kind === "file" && !targetChatId && reference.target === "server" && reference.path?.startsWith("/")) {
+        window.dispatchEvent(new CustomEvent("ai-chat:open-file", { detail: { path: reference.path } }));
         return;
       }
       if (reference.kind === "file" && targetChatId) {
@@ -6082,6 +6141,25 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     setMessages([]);
     setQueuedState({ chatId: null, messages: [] });
     removedQueueIdsRef.current.clear();
+    attachmentDraftOwnerRef.current = undefined;
+    for (const files of pendingByChatRef.current.values()) {
+      for (const pending of files) {
+        if (pending.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(pending.previewUrl);
+        if (pending.uploadTaskId) cancelUpload(pending.uploadTaskId);
+      }
+    }
+    pendingByChatRef.current.clear();
+    privateAttachmentDraftKeys.current.clear();
+    pendingFilesRef.current = [];
+    setVisiblePendingFiles([]);
+    restoredAttachmentsRef.current.clear();
+    setRestoredAttachmentsByChat(new Map());
+    draftInputLoadedRef.current = false;
+    draftInputRef.current = "";
+    newChatDraftRef.current = { draftInput: "", draftReferences: [] };
+    setInput("");
+    setComposerSyncNonce((current) => current + 1);
+    setReferences([]);
     setChats([]);
     chatCacheRef.current.clear();
     void clearClientChatSnapshots();
@@ -6177,6 +6255,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         workspaces: [],
         browserContext: normalizeBrowserContext(data.chat.browserContext, data.chat.id),
         sessionState: {
+          ...(!data.chat.incognito && !activeChatIdRef.current ? {
+            input: stateRef.current.input,
+            draftReferences: normalizeComposerDraftReferences(referencesRef.current),
+            inputUpdatedAt: inputUpdatedAtRef.current || undefined,
+          } : {}),
           terminalCwd: stateRef.current.remoteTerminalCwd,
           fileCwd: stateRef.current.remoteFileCwd,
           terminalTabs: stateRef.current.terminalTabs,
@@ -6191,9 +6274,22 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       });
       const stillOnDraft = !activeChatIdRef.current;
       if (stillOnDraft) {
+        if (!data.chat.incognito) {
+          composerPersistChatRef.current = data.chat.id;
+          saveNewChatDraft("", []);
+        }
         setQueuedState({ chatId: data.chat.id, messages: draftQueuedMessages });
-        const files = pendingByChatRef.current.get("__draft__");
-        if (files) { pendingByChatRef.current.set(data.chat.id, files); pendingByChatRef.current.delete("__draft__"); }
+        const draftAttachmentKey = composerAttachmentKey(null, Boolean(data.chat.incognito));
+        const files = pendingByChatRef.current.get(draftAttachmentKey);
+        if (files) {
+          pendingByChatRef.current.set(data.chat.id, files);
+          pendingByChatRef.current.delete(draftAttachmentKey);
+          if (data.chat.incognito) privateAttachmentDraftKeys.current.add(data.chat.id);
+          else {
+            persistDraftAttachments(data.chat.id);
+            persistDraftAttachments(draftAttachmentKey);
+          }
+        }
         setActiveChatId(data.chat.id);
         activeChatIdRef.current = data.chat.id;
         setActiveChatIncognito(Boolean(data.chat.incognito));
@@ -6586,33 +6682,90 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }
   }
 
+  function activeAttachmentDraftKey() {
+    return composerAttachmentKey(activeChatIdRef.current, incognito);
+  }
+
+  function persistDraftAttachments(key: string) {
+    const ownerId = attachmentDraftOwnerRef.current;
+    if (!ownerId || key === "__private_draft__" || privateAttachmentDraftKeys.current.has(key)) return;
+    const chatId = key === "__draft__" ? null : key;
+    const uploads = (pendingByChatRef.current.get(key) ?? []).flatMap((pending) => {
+      const upload = completedPendingUpload(pending);
+      return upload ? [upload] : [];
+    });
+    const stored = (restoredAttachmentsRef.current.get(chatId) ?? []).filter((entry): entry is StoredAttachment =>
+      typeof entry.storedName === "string" && typeof entry.size === "number");
+    try { saveDraftAttachments(window.localStorage, ownerId, chatId, { uploads, stored }); }
+    catch { /* Storage may be unavailable; keep the in-memory draft. */ }
+  }
+
   function setRestoredAttachments(next: MsgAttachment[] | ((previous: MsgAttachment[]) => MsgAttachment[])) {
     const chatId = activeChatIdRef.current;
-    setRestoredAttachmentsByChat((previous) => {
-      const attachments = typeof next === "function" ? next(previous.get(chatId) ?? []) : next;
-      if (!attachments.length && !previous.has(chatId)) return previous;
-      const updated = new Map(previous);
-      if (attachments.length) updated.set(chatId, attachments);
-      else updated.delete(chatId);
-      return updated;
-    });
+    const attachments = typeof next === "function" ? next(restoredAttachmentsRef.current.get(chatId) ?? []) : next;
+    restoredAttachmentsRef.current.set(chatId, attachments);
+    setRestoredAttachmentsByChat(new Map(restoredAttachmentsRef.current));
+    if (!incognito && !activeChatIncognito) persistDraftAttachments(activeAttachmentDraftKey());
   }
 
   function setPendingFiles(next: PendingFile[] | ((previous: PendingFile[]) => PendingFile[])) {
-    const key = activeChatIdRef.current || "__draft__";
+    const key = activeAttachmentDraftKey();
+    if (incognito || activeChatIncognito) privateAttachmentDraftKeys.current.add(key);
     const previous = pendingByChatRef.current.get(key) || [];
     const files = typeof next === "function" ? next(previous) : next;
     pendingByChatRef.current.set(key, files);
     pendingFilesRef.current = files;
     setVisiblePendingFiles(files);
+    persistDraftAttachments(key);
   }
+  useLayoutEffect(() => {
+    const previous = boundAttachmentOwnerRef.current;
+    if (previous && previous !== draftOwnerId) {
+      for (const files of pendingByChatRef.current.values()) {
+        for (const pending of files) {
+          if (pending.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(pending.previewUrl);
+        }
+      }
+      pendingByChatRef.current.clear();
+      privateAttachmentDraftKeys.current.clear();
+      restoredAttachmentsRef.current.clear();
+      setRestoredAttachmentsByChat(new Map());
+      pendingFilesRef.current = [];
+      setVisiblePendingFiles([]);
+    }
+    boundAttachmentOwnerRef.current = draftOwnerId;
+  }, [draftOwnerId]);
   useEffect(() => {
-    const files = pendingByChatRef.current.get(activeChatId || "__draft__") || [];
+    // Resolve chat privacy before reading any draft from browser storage.
+    if (loadingChatId) return;
+    const key = composerAttachmentKey(activeChatId, incognito);
+    const privateDraft = activeChatId ? activeChatIncognito : incognito;
+    if (privateDraft) privateAttachmentDraftKeys.current.add(key);
+    let pending = pendingByChatRef.current.get(key);
+    if (draftOwnerId && !privateDraft && (!pending || !restoredAttachmentsRef.current.has(activeChatId))) {
+      try {
+        const saved = readDraftAttachments(window.localStorage, draftOwnerId, activeChatId);
+        if (!pending) {
+          pending = saved.uploads.map((upload) => ({
+            id: upload.id, uploaded: upload,
+            file: { name: upload.name, size: upload.size, type: upload.mimeType },
+            previewUrl: `/api/file-uploads/${encodeURIComponent(upload.id)}/file`,
+          }));
+          pendingByChatRef.current.set(key, pending);
+        }
+        if (!restoredAttachmentsRef.current.has(activeChatId)) {
+          restoredAttachmentsRef.current.set(activeChatId, saved.stored);
+          setRestoredAttachmentsByChat(new Map(restoredAttachmentsRef.current));
+        }
+      } catch { /* Storage unavailable; do not block the composer. */ }
+    }
+    const files = pending ?? [];
     pendingFilesRef.current = files;
     setVisiblePendingFiles(files);
-  }, [activeChatId]);
+  }, [activeChatId, activeChatIncognito, draftOwnerId, incognito, loadingChatId]);
 
   function addPendingFiles(files: FileList | File[]) {
+    if (loadingChatId || activeChatIdRef.current !== activeChatId) return;
     const list = Array.from(files).filter((f) => f.size > 0);
     if (!list.length) return;
 
@@ -6627,13 +6780,21 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       }
       // The upload API validates the account limit before accepting file bytes.
       const nextFiles = list.slice(0, room);
+      const owner = attachmentDraftOwnerRef.current;
+      const privateDraft = incognito || activeChatIncognito;
       const next = nextFiles.map((file) => {
-        return {
-          id: `pf-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          uploadTaskId: startUpload(file, { label: chatTitle || "New chat" }),
-          file,
-          previewUrl: URL.createObjectURL(file),
-        };
+        const id = `pf-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        const uploadTaskId = startUpload(file, { label: chatTitle || "New chat" });
+        if (!privateDraft && owner) {
+          void waitForUpload(uploadTaskId).then(() => {
+            if (attachmentDraftOwnerRef.current !== owner) return;
+            // The selected chat may have changed while bytes were uploading.
+            for (const [key, pending] of pendingByChatRef.current) {
+              if (pending.some((entry) => entry.id === id)) persistDraftAttachments(key);
+            }
+          }).catch(() => undefined);
+        }
+        return { id, uploadTaskId, file, previewUrl: URL.createObjectURL(file) };
       });
       return [...prev, ...next];
     });
@@ -6649,7 +6810,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     });
   }
 
-  function clearPendingFiles(key = activeChatIdRef.current || "__draft__", sentFiles?: PendingFile[]) {
+  function clearPendingFiles(key = activeAttachmentDraftKey(), sentFiles?: PendingFile[]) {
     const previous = pendingByChatRef.current.get(key) || [];
     const sentIds = sentFiles ? new Set(sentFiles.map((file) => file.id)) : undefined;
     for (const pending of previous) {
@@ -6657,10 +6818,11 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     }
     const remaining = sentIds ? previous.filter((file) => !sentIds.has(file.id)) : [];
     pendingByChatRef.current.set(key, remaining);
-    if ((activeChatIdRef.current || "__draft__") === key) {
+    if (activeAttachmentDraftKey() === key) {
       pendingFilesRef.current = remaining;
       setVisiblePendingFiles(remaining);
     }
+    persistDraftAttachments(key);
   }
 
   function onComposerPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
@@ -6824,7 +6986,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     const uploadIds: string[] = [];
     const queuedFiles: PendingFile[] = [];
     for (const pending of files) {
-      const uploaded = pending.uploadTaskId ? getCompletedUploadResult(pending.uploadTaskId) : undefined;
+      const uploaded = completedPendingUpload(pending);
       if (!uploaded) {
         toast.error("Wait for attachments to finish uploading before queuing.");
         return;
@@ -7373,7 +7535,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   ) {
     const text = (textOverride ?? composerLiveText(textareaRef.current ? composerPlainText(textareaRef.current, "Message Metis…") : "", input)).trim();
     const filesToSend = attachmentsOverride ?? pendingFilesRef.current;
-    const uploadOriginKey = activeChatIdRef.current || "__draft__";
+    const uploadOriginKey = activeAttachmentDraftKey();
     const referencesToSend = incognito ? [] : (referencesOverride ?? references);
     const storedAttachmentsToSend = storedAttachmentsOverride ?? restoredAttachments;
     const isOverride = textOverride !== undefined && !asComposerSubmission;
@@ -7422,11 +7584,6 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       draftInputRef.current = "";
       setComposerSyncNonce((current) => current + 1);
       window.setTimeout(() => textareaRef.current?.focus(), 0);
-      void fetch("/api/preferences", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draftInput: "" }),
-      });
       setReferenceText("");
       setReferences([]);
       setRestoredAttachments([]);
@@ -7439,7 +7596,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     const localAttachments: MsgAttachment[] = [
       ...storedAttachmentsToSend,
       ...filesToSend.map((pending) => {
-        const uploaded = pending.uploadTaskId && getCompletedUploadResult(pending.uploadTaskId);
+        const uploaded = completedPendingUpload(pending);
         return pendingFileAttachment(pending, uploaded ? `/api/file-uploads/${encodeURIComponent(uploaded.id)}/file` : pending.previewUrl);
       }),
     ];
@@ -7491,6 +7648,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
 
     try {
       const uploadIds = filesToSend.length ? await Promise.all(filesToSend.map(async (pending) => {
+        if (pending.uploaded) return pending.uploaded.id;
         const taskId = pending.uploadTaskId || startUpload(pending.file, { label: chatTitle || "Chat" });
         return (await waitForUpload(taskId)).id;
       })) : (queuedUploadIdsOverride ?? []);
@@ -8315,12 +8473,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   useEffect(() => {
     const flush = () => {
       persistActiveSnapshot();
-      if (!activeChatIdRef.current && draftInputLoadedRef.current) {
-        void fetch("/api/preferences", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ draftInput: stateRef.current.input }),
-        });
+      if (!activeChatIdRef.current && !stateRef.current.incognito && draftInputLoadedRef.current) {
+        saveNewChatDraft(stateRef.current.input, referencesRef.current);
       }
       const current = stateRef.current;
       persistQueuedFollowUps(current.chatId, current.queuedMessages, true);
@@ -8345,7 +8499,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       window.removeEventListener("focus", retryQueue);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [persistActiveSnapshot]);
+  }, [persistActiveSnapshot, saveNewChatDraft]);
 
   const normalizedModelSearch = modelSearch.trim().toLowerCase();
   const availableProviders = modelAccountGroups(models, configuredModelProviders);
@@ -8789,8 +8943,9 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
     // Select immediately; a slow terminal snapshot cannot overwrite new typing.
     setReferences(current => current.some(item => item.kind === reference.kind && item.id === reference.id)
       ? current : [...current, reference]);
-    draftInputRef.current = replacement.value;
-    stateRef.current.input = replacement.value;
+    handleComposerInputChange(replacement.value, replacement.cursor);
+    if (inputCommitTimerRef.current) window.clearTimeout(inputCommitTimerRef.current);
+    inputCommitTimerRef.current = 0;
     setInput(replacement.value);
     setComposerSyncNonce(current => current + 1);
     referenceAutocompleteDismissedRef.current = null;
@@ -8815,10 +8970,16 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
   }
 
   function removeReference(reference: ReferenceItem) {
+    const live = textareaRef.current?.value ?? draftInputRef.current;
+    const value = removeComposerReferenceMention(live, reference.label, referencesRef.current.map((item) => item.label));
     setReferences((current) => current.filter(
       (item) => !(item.kind === reference.kind && item.id === reference.id),
     ));
-    setInput((current) => current.replace(`@${reference.label}`, "").replace(/[ \t]{2,}/g, " "));
+    handleComposerInputChange(value, Math.min(textareaRef.current?.selectionStart ?? value.length, value.length));
+    if (inputCommitTimerRef.current) window.clearTimeout(inputCommitTimerRef.current);
+    inputCommitTimerRef.current = 0;
+    setInput(value);
+    setReferenceMenu(null);
     setComposerSyncNonce((current) => current + 1);
   }
 
@@ -9018,7 +9179,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
         ];
         return (
           <QueuedAttachmentPreview key={message.id} attachments={attachments} chatId={activeChatId} suspended={Boolean(draggedQueueId)}>
-            <div
+            {({ expanded, trigger }) => <div
               tabIndex={0}
               aria-label={`Queued message ${index + 1}`}
               onDragOver={(event) => {
@@ -9063,11 +9224,12 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                 <GripVertical className="size-3.5" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1 pt-1.5">
-                <QueuedPromptPreview
+                {trigger(<QueuedPromptPreview
+                  expanded={expanded}
                   text={`${index + 1}. ${message.text || `Attached ${Math.max(message.files.length, message.uploadIds?.length ?? 0) + (message.storedAttachments?.length ?? 0)} file(s)`}`}
-                />
+                />)}
                 {message.referenceText || message.references?.length || attachments.length ? (
-                  <div className="mt-1 flex min-w-0 flex-wrap gap-1 text-[10px] text-muted-foreground/80">
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1 text-[10px] text-muted-foreground/80">
                     {message.referenceText ? (
                       <span className="max-w-full truncate rounded border border-primary/20 bg-primary/[0.06] px-1.5 py-0.5">
                         Referenced: {message.referenceText}
@@ -9105,7 +9267,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
               <Button type="button" size="icon-xs" variant="ghost" className="size-7 shrink-0 max-md:min-h-11 max-md:min-w-11" aria-label="Remove queued message" onClick={() => { void removeMessageFromQueue(message); }}>
                 <X className="size-3.5" />
               </Button>
-            </div>
+            </div>}
           </QueuedAttachmentPreview>
         );
       })}
@@ -9299,23 +9461,7 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
       ) : null}
       <ChatAttachmentPreviews attachments={restoredAttachments} chatId={activeChatId} label="Restored attachments" className="px-1"
         onRemove={(id) => setRestoredAttachments((current) => current.filter((item) => item.id !== id))} />
-      {references.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5 px-1" aria-label="Selected references">
-          {references.map((reference) => (
-            <button
-              key={`${reference.kind}-${reference.id}`}
-              type="button"
-              className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/25 px-2 py-1 text-xs text-muted-foreground hover:bg-muted/55 hover:text-foreground"
-              title={reference.detail || reference.label}
-              onClick={() => removeReference(reference)}
-            >
-              <span className="text-muted-foreground">@</span>
-              <span className="max-w-48 truncate">{reference.label}</span>
-              <X className="size-3" />
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <ComposerReferenceChips references={references} onRemove={removeReference} />
       <div className="flex flex-col gap-1">
       <form
         ref={composerFormRef}

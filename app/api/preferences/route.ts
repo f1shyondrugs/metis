@@ -4,6 +4,7 @@ import {
   saveGlobalModelSettings,
   type GlobalModelSettings,
 } from "@/lib/db-store";
+import { normalizeComposerDraftReferences, retainComposerDraftReferences } from "@/lib/composer-references";
 import { agentRulesForSettings } from "@/lib/agent-rules";
 import { normalizeVoiceSettings } from "@/lib/shared-context";
 import type { CompressionMode } from "@/lib/compression";
@@ -30,6 +31,7 @@ export async function PATCH(req: Request) {
     subagentModelEnabled?: unknown;
     subagentModelId?: unknown;
     draftInput?: unknown;
+    draftReferences?: unknown;
     pinnedNoteIds?: unknown;
     favoriteModelKeys?: unknown;
     modelAliases?: unknown;
@@ -105,6 +107,13 @@ export async function PATCH(req: Request) {
     typeof body.subagentModelEnabled === "boolean" ? body.subagentModelEnabled : undefined;
   const draftInput =
     typeof body.draftInput === "string" ? body.draftInput.slice(0, 100_000) : undefined;
+  const draftReferences = draftInput === undefined
+    ? undefined
+    : "draftReferences" in body
+      ? normalizeComposerDraftReferences(body.draftReferences)
+      : draftInput !== current.draftInput && current.draftReferences
+        ? retainComposerDraftReferences(draftInput, current.draftReferences)
+        : undefined;
   const pinnedNoteIds = Array.isArray(body.pinnedNoteIds)
     ? body.pinnedNoteIds
         .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
@@ -186,6 +195,7 @@ export async function PATCH(req: Request) {
         ...(subagentModelId !== undefined ? { subagentModelId } : {}),
         ...(subagentModelEnabled !== undefined ? { subagentModelEnabled } : {}),
         ...(draftInput !== undefined ? { draftInput } : {}),
+        ...(draftReferences !== undefined ? { draftReferences } : {}),
         ...(pinnedNoteIds !== undefined ? { pinnedNoteIds } : {}),
         ...(favoriteModelKeys !== undefined ? { favoriteModelKeys } : {}),
         ...(modelAliases !== undefined ? { modelAliases } : {}),

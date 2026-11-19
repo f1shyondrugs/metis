@@ -543,6 +543,7 @@ async function runQueuedJobAttempt(job: AgentJob) {
     resumeMarker: { jobId: job.id, runId: job.runId || job.id, safe: false, reason: "Agent run was active at checkpoint." },
     availability: "available",
   });
+  emit("providerExecution", { providerId: "cursor", connectionId: cursorConnection.id, modelId: modelReference.modelId, execution: "cursor-agent" });
   emit("status", { status: "running", message: "Starting agent session…" });
   let agent: Awaited<ReturnType<typeof Agent.create>> | undefined;
   let text = "";
@@ -1793,6 +1794,6 @@ export async function runJobById(id: string) {
   const job = getJob(id);
   if (job && job.status === "running") {
     const disarm = armAgentRuntime(job);
-    try { await runQueuedJob(getJob(id) || job); } finally { disarm(); }
+    try { const current = getJob(id); if (current?.status === "running") await runQueuedJob(current); } finally { disarm(); }
   }
 }

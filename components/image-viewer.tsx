@@ -10,7 +10,7 @@ import { fileDownloadUrl } from "@/lib/file-types";
 const actionClass = "flex size-10 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring";
 
 /** Pointer motion only paints this leaf; it never rerenders the chat or dialog. */
-export function ImageSurface({ src, alt, fullscreen = false, loading = "eager", onDimensions }: { src: string; alt: string; fullscreen?: boolean; loading?: "eager" | "lazy"; onDimensions?: (width: number, height: number) => void }) {
+export function ImageSurface({ src, alt, fullscreen = false, loading = "eager", allowHorizontalScroll = false, onDimensions }: { src: string; alt: string; fullscreen?: boolean; loading?: "eager" | "lazy"; allowHorizontalScroll?: boolean; onDimensions?: (width: number, height: number) => void }) {
   const helpId = useId();
   const surfaceRef = useRef<HTMLDivElement>(null), imageRef = useRef<HTMLImageElement>(null);
   const lensRef = useRef<HTMLDivElement>(null), detailRef = useRef<HTMLImageElement>(null);
@@ -41,6 +41,7 @@ export function ImageSurface({ src, alt, fullscreen = false, loading = "eager", 
     if (!surface) return;
     const wheel = (event: WheelEvent) => {
       if (event.ctrlKey || event.metaKey || !imageRef.current) return;
+      if (allowHorizontalScroll && (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY))) return;
       const image = imageRef.current;
       const bounds = containedImageBounds(image.getBoundingClientRect(), image.naturalWidth, image.naturalHeight);
       if (!bounds || !magnifierGeometry(bounds, surface.getBoundingClientRect(), event.clientX, event.clientY, zoom.current)) return;
@@ -55,10 +56,10 @@ export function ImageSurface({ src, alt, fullscreen = false, loading = "eager", 
       surface.removeEventListener("wheel", wheel); window.removeEventListener("blur", hide); window.removeEventListener("resize", hide);
       if (frame.current !== null) cancelAnimationFrame(frame.current);
     };
-  }, [hide, schedule]);
+  }, [allowHorizontalScroll, hide, schedule]);
   return <div ref={surfaceRef} data-image-surface tabIndex={0} role="group" aria-label={alt + " image preview"}
     aria-describedby={helpId} className="relative flex h-full min-h-0 w-full select-none items-center justify-center overflow-hidden focus-visible:outline-2 focus-visible:outline-ring"
-    style={{ touchAction: fullscreen ? "none" : "pan-y" }}
+    style={{ touchAction: fullscreen ? "none" : allowHorizontalScroll ? "manipulation" : "pan-y" }}
     onBlur={hide} onDragStart={e => e.preventDefault()}
     onPointerDown={e => {
       if (e.button !== 0 || status !== "ready") return;
