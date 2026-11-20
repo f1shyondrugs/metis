@@ -2,6 +2,8 @@ import {bearerTokenMatches} from "@/lib/security";
 import {internalRunLeaseAuthorized} from "@/lib/internal-run-lease";
 import {getJob} from "@/lib/db-jobs";
 import {listSavedLoginSummaries} from "@/lib/protected-console-login";
+import {browserLoginRequest} from "@/lib/browser-login-client";
+import {namedVaultSummarySchema} from "@/lib/named-vault-contract";
 import {z} from "zod";
 
 export const runtime="nodejs";
@@ -17,7 +19,17 @@ export async function POST(req:Request){
   try{
    // Reuse the existing read-only management index, including older live engines.
    // It returns routing metadata only; no credential envelope is retrieved.
-   return Response.json({credentials:[...await listSavedLoginSummaries(owner,chat),...mcp]},{headers});
+   const credentials=[...await listSavedLoginSummaries(owner,chat),...mcp];
+   try {
+    const {entries}=await browserLoginRequest(owner,chat,"named_vault_list",{},true);
+    const namedEntries=z.array(namedVaultSummarySchema).parse(entries).map(({id,title,kind,fields})=>({
+     id,title,kind,fields,...(kind==="custom"?{}:{usage:kind==="browser"?"browser_request_login":"console_connect"}),
+    }));
+    return Response.json({credentials,namedEntries},{headers});
+   } catch {
+    // Older brokers expose legacy credentials without named references.
+    return Response.json({credentials,namedEntriesUnavailable:true},{headers});
+   }
   }catch{
    return Response.json({credentials:mcp,partial:true,unavailable:["browser","console"]},{headers});
   }

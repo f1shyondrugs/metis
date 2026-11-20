@@ -18,9 +18,10 @@ export class ProtectedBrowserRouting {
     const target = active ? undefined : await this.target(owner, chat, action.tabId);
     const url=typeof target==="string"?target:target?.url;
     try {
-      const result = await this.request(owner, chat, "prepare", {
+      const result = await this.request(owner, chat, action.credentialId?"prepare_named":"prepare", {
         ...(url ? {url,...(typeof target==="object"&&target.entryOrigin?{entryOrigin:target.entryOrigin}:{})} : {}), selector:action.selector, usernameSelector:action.usernameSelector,
         emailSelector:action.emailSelector, fields:action.fields, replace:action.replace,
+        ...(action.credentialId?{credentialId:action.credentialId}:{}),
       });
       this.chats.add(key);
       return result;
@@ -28,7 +29,7 @@ export class ProtectedBrowserRouting {
       if (error instanceof ProtectedLoginError && error.code === "session_unavailable") this.chats.delete(key);
       // These failures occur after opening the private page. Inspection and
       // selector corrections must keep using that same private page.
-      if (error instanceof ProtectedLoginError && ["invalid_fields","field_ambiguous","unsafe_target","field_not_visible"].includes(error.code)) this.chats.add(key);
+      if (error instanceof ProtectedLoginError && ["invalid_fields","field_ambiguous","unsafe_target","field_not_visible","credential_target_changed","credential_binding_mismatch","credential_unavailable"].includes(error.code)) this.chats.add(key);
       throw error;
     }
   }

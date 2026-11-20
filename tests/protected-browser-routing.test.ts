@@ -30,6 +30,19 @@ test("readiness routes school selection privately and repeated prepare never rea
   assert.equal(router.has("owner-a","chat-a"), false);
 });
 
+test("named browser references use a distinct broker operation and never fall back to legacy prepare",async()=>{
+  const args:string[]=[];
+  const credentialId="ecae24e6-c357-42eb-a326-4cdbf00247ea";
+  const router=new ProtectedBrowserRouting(async(owner,chat,op,input)=>{
+    assert.deepEqual([owner,chat],["owner","chat"]);
+    args.push(op);
+    assert.equal(input?.credentialId,credentialId);
+    throw new ProtectedLoginError("credential_binding_mismatch");
+  },async()=> "https://portal.test/");
+  await assert.rejects(router.prepare("owner","chat",{credentialId,fields:["username"]}),/different target or SSH host key/);
+  assert.deepEqual(args,["prepare_named"]);
+});
+
 test("verified entry origin joins a new login flow, never caller-supplied overrides",async()=>{
  const calls:Record<string,unknown>[]=[];
  const router=new ProtectedBrowserRouting(async(_owner,_chat,_operation,input)=>{calls.push(input||{});return {status:"protected_browser_ready"};},

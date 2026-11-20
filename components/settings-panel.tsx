@@ -6,6 +6,7 @@ import { chatShareUrl } from "@/lib/public-base-url";
 import { DesktopDeviceSettings, RemoteClientInstallActions } from "@/components/desktop-device-settings";
 import { RecentlyDeletedChats } from "@/components/recently-deleted-chats";
 import { SavedWebsiteLogins } from "@/components/saved-website-logins";
+import { NamedVaultEntriesPanel } from "@/components/named-vault-entries";
 import { PasskeySettings } from "@/components/passkey-settings";
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
@@ -2653,6 +2654,7 @@ export function SettingsPanel({
  ) : settingsPane === "credential-vault" ? (
  <SettingsFeaturePane backLabel="Security" title="Credential vault" slot="credential-vault-settings" onBack={() => backToSettings("settings-credential-vault")}>
   <SavedWebsiteLogins />
+  <NamedVaultEntriesPanel />
  </SettingsFeaturePane>
  ) : settingsPane === "updates" ? (
  <SettingsFeaturePane backLabel="Updates" slot="update-settings" onBack={() => backToSettings("settings-update-preferences")}>

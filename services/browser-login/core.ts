@@ -9,6 +9,7 @@ import {BROWSER_PUBLIC_URL_VALUE_SELECTOR,BROWSER_NAVIGATION_PARAMETER,createBro
 import { publicBrowserProxy } from "./public-proxy";
 import { browserSecretRepresentations, loginNavigationOrigins, protectedRequestAllowed, withOperatorReturnOrigins } from "./navigation-policy";
 import {ScopedCredentials} from "./scoped-credentials";
+import {NamedVaultEntries} from "./named-vault";
 import {consoleConnectionSchema,consoleTargetInfo,savedLoginSummaries,type SavedLogin} from "../../lib/credential-vault";
 import {secureConsole} from "./console-client";
 import { snapshotOperatorReturnOrigins, type OperatorReturnOrigins } from "./operator-return-origins";
@@ -34,6 +35,7 @@ function requiredText(value:unknown):string {
 export class SavedBrowserLogins {
   private db: DatabaseSync;
   private credentials:ScopedCredentials;
+  private namedVault:NamedVaultEntries;
   private sessions = new Map<string, Session>();
   private locks = new Map<string, Promise<unknown>>();
   private inputs = new SecureBrowserInputs();
@@ -47,6 +49,7 @@ export class SavedBrowserLogins {
     this.db = new DatabaseSync(database);
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS website_logins(owner TEXT NOT NULL, origin TEXT NOT NULL, envelope TEXT NOT NULL, PRIMARY KEY(owner,origin));");
     this.credentials=new ScopedCredentials(key,this.db);
+    this.namedVault=new NamedVaultEntries(key,this.db);
   }
   private site(value: string | undefined) {
     let url: URL;
@@ -170,16 +173,26 @@ export class SavedBrowserLogins {
     return {target,label};
   }
   private async perform({owner,chat,operation,input={}}: Payload, management: boolean): Promise<ProtectedLoginReply> {
+    if(operation==="named_vault_list"&&management){
+      this.namedVault.syncBound(owner,this.credentials.list(owner) as SavedLogin[]);
+      return {entries:this.namedVault.list(owner)};
+    }
+    if(operation==="named_vault_mutate"&&management){
+      this.namedVault.syncBound(owner,this.credentials.list(owner) as SavedLogin[]);
+      return this.namedVault.mutate(owner,input);
+    }
     if(operation==="inspect_console"&&management)return this.inspectConsole(owner,input.connection);
     if(operation==="vault_list"&&chat)return parseProtectedLoginReply({credentials:savedLoginSummaries(this.credentials.list(owner) as SavedLogin[])});
     if (operation === "list" && management) return parseProtectedLoginReply({credentials:this.credentials.list(owner)});
     if (operation === "delete" && management) {
       if(input.kind==="console"){
         this.credentials.delete(owner,"console",String(input.origin));
+        this.namedVault.revokeBound(owner,"console",String(input.origin));
         return {status:"deleted"};
       }
       const origin = this.site(input.origin).origin;
       this.credentials.delete(owner,"browser",origin);
+      this.namedVault.revokeBound(owner,"browser",origin);
       for (const [id,s] of this.sessions) if (id.startsWith(`${owner}:`) && s.origin===origin) {this.sessions.delete(id);await s.browser.close();}
       return {status:"deleted"};
     }
@@ -223,14 +236,31 @@ export class SavedBrowserLogins {
       return {status:"updated"};
     }
     if (!chat) throw Error("Chat required");
-    if(operation==="console_prepare"||operation==="console_elevate"){
-      const prepared=await secureConsole(owner,chat,operation==="console_elevate"?"elevate":"prepare",input);
+    if(operation==="console_prepare"||operation==="console_elevate"||operation==="console_prepare_named"){
+      const named=operation==="console_prepare_named";
+      const entryId=named?requiredText(input.credentialId):undefined;
+      let targetBefore:string|undefined;
+      if (entryId) {
+        if(input.replace)throw new ProtectedLoginError("credential_unavailable");
+        this.namedVault.requireBound(owner,entryId,"console");
+        const {target}=await this.inspectConsole(owner,input.method==="ssh"
+          ? {method:input.method,host:input.host,port:input.port,user:input.user}
+          : {method:input.method,user:input.user});
+        this.namedVault.requireBound(owner,entryId,"console",target);
+        targetBefore=target;
+      }
+      const {credentialId:_privateReference,...consoleArgs}=input;
+      void _privateReference;
+      const prepared=await secureConsole(owner,chat,operation==="console_elevate"?"elevate":"prepare",consoleArgs);
+      if(targetBefore&&["console_ready","input_required"].includes(String(prepared.status))&&prepared.target!==targetBefore)
+        throw new ProtectedLoginError("credential_binding_mismatch");
       if(prepared.status!=="input_required")return prepared;
       if(this.consoleRequests.size>=100)this.consoleRequests.delete(this.consoleRequests.keys().next().value!);
       const secureInput=requireProtectedInput(prepared),target=requiredText(prepared.target),label=requiredText(prepared.label);
       this.consoleRequests.set(secureInput.requestId,{owner,chat,target,label});
-      const saved=this.credentials.get(owner,chat,"console",target);
-      if(saved&&!input.replace){await secureConsole(owner,chat,"fill",{requestId:secureInput.requestId,password:saved.password});return {status:"console_password_entered",sessionId:prepared.sessionId};}
+      const saved=this.credentials.get(owner,entryId?"":chat,"console",target);
+      if(typeof saved?.password==="string"&&!input.replace){await secureConsole(owner,chat,"fill",{requestId:secureInput.requestId,password:saved.password});return {status:"console_password_entered",sessionId:prepared.sessionId};}
+      if(entryId)throw new ProtectedLoginError("credential_unavailable");
       return prepared;
     }
     if(operation==="console_fill"&&management){
@@ -262,7 +292,12 @@ export class SavedBrowserLogins {
       input.password="";input.username="";input.email="";return {status:input.persist===true?"filled_and_saved":"filled_for_chat"};
     }
     if (operation === "status" && management) {const saved=this.requests.get(input.requestId ?? "");return {filled:this.inputs.status(owner,chat,requiredText(input.requestId))&&saved?.persist!==undefined,scope:saved?.persist?"permanent":"chat"};}
-    if (operation === "prepare") {
+    if (operation === "prepare" || operation === "prepare_named") {
+      const entryId=operation==="prepare_named"?requiredText(input.credentialId):undefined;
+      if(entryId){
+        if(input.replace)throw new ProtectedLoginError("credential_unavailable");
+        this.namedVault.requireBound(owner,entryId,"browser");
+      }
       const session=await this.session(owner,chat,input.url,input.entryOrigin);
       const origin=this.site(session.page.url()).origin;
       if (origin!==session.origin) {
@@ -283,11 +318,13 @@ export class SavedBrowserLogins {
           instruction:"The private browser has a separate website session. Inspect browser_form_state and complete any school, tenant or earlier login step here, then retry browser_request_login with selectors for visible fields. Request username/email through browser_request_login too. Never request credentials through ordinary chat or ask_user. No credentials were entered and no login dialog was created.",
         };
       }
-      const saved=this.credentials.get(owner,chat,"browser",origin);
+      if(entryId)this.namedVault.requireBound(owner,entryId,"browser",origin);
+      const saved=this.credentials.get(owner,entryId?"":chat,"browser",origin);
       if (saved && !input.replace&&fields.every(field=>typeof saved[field]==="string"&&saved[field])) {
         await this.inputs.fillValues(owner,chat,request.requestId,saved as Partial<Record<CredentialField,string>>);
         return {status:"filled_saved",origin};
       }
+      if(entryId)throw new ProtectedLoginError("credential_unavailable");
       if (this.requests.size>=100) this.requests.delete(this.requests.keys().next().value!);
       this.requests.set(request.requestId,{owner,chat,origin});
       return {status:"input_required",secureInput:request};

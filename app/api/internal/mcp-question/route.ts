@@ -68,18 +68,21 @@ export async function POST(req: Request) {
       secureBrowserInput=await prepareMcpInput(userId!,chatId,jobId,raw.mcpInput);
       input=normalizeAskUserInput({title:"Configure MCP credentials securely",description:`Connection: ${secureBrowserInput.origin}`,questions:[{key:"secure_login",type:"text",question:"Protected MCP input",required:false}],responseTemplate:"MCP credentials configured securely."});
     }else if(raw.consoleLogin){
-      const consoleInput=z.object({consoleLogin:z.object({action:z.enum(["connect","authenticate","request_password"]),method:z.enum(["ssh","sudo","su"]).optional(),user:z.string().regex(/^[a-z_][a-z0-9_.-]{0,63}$/).optional(),host:z.string().max(253).optional(),port:z.number().int().min(1).max(65535).optional(),replace:z.boolean().optional()}).strict()}).strict().parse(raw).consoleLogin;
+      const consoleInput=z.object({consoleLogin:z.object({action:z.enum(["connect","authenticate","request_password"]),method:z.enum(["ssh","sudo","su"]).optional(),user:z.string().regex(/^[a-z_][a-z0-9_.-]{0,63}$/).optional(),host:z.string().max(253).optional(),port:z.number().int().min(1).max(65535).optional(),replace:z.boolean().optional(),credential_id:z.string().uuid().optional()}).strict()}).strict().parse(raw).consoleLogin;
       if(consoleInput.action!=="request_password"&&(!consoleInput.method||!consoleInput.user))throw Error("Account and method required");
-      const prepared=await prepareProtectedConsole(userId!,chatId,consoleInput);
+      const {credential_id:credentialId,...consoleArgs}=consoleInput;
+      if(credentialId&&(consoleArgs.action!=="connect"||consoleArgs.replace))throw Error("Use a named entry only for protected console reuse");
+      const prepared=await prepareProtectedConsole(userId!,chatId,{...consoleArgs,...(credentialId?{credentialId}:{})});
       if(prepared.status!=="input_required"||!prepared.secureInput)return Response.json(prepared);
       if(automation)return Response.json({status:"input_required",vaultStatus:prepared.vaultStatus,error:"This console requires interactive protected input."},{status:403});
       secureBrowserInput=prepared.secureInput;
       input=normalizeAskUserInput({title:"Enter console password securely",description:`${secureBrowserInput.origin}\n${consoleVaultDescription(prepared.vaultStatus)}`,questions:[{key:"secure_login",type:"text",question:"Protected login",required:false}],responseTemplate:"Password entered securely in the console."});
     }else if(raw.browserLogin) {
-      const login=z.object({browserLogin:z.object({tabId:z.string().max(200).optional(),selector:z.string().max(500).optional(),usernameSelector:z.string().max(500).optional(),emailSelector:z.string().max(500).optional(),fields:z.array(z.enum(["password","username","email"])).min(1).max(3).optional(),replace:z.boolean().optional()}).strict()}).strict().parse(raw).browserLogin;
+      const login=z.object({browserLogin:z.object({tabId:z.string().max(200).optional(),selector:z.string().max(500).optional(),usernameSelector:z.string().max(500).optional(),emailSelector:z.string().max(500).optional(),fields:z.array(z.enum(["password","username","email"])).min(1).max(3).optional(),replace:z.boolean().optional(),credentialId:z.string().uuid().optional()}).strict()}).strict().parse(raw).browserLogin;
+      if(login.credentialId&&login.replace)throw Error("Use a named entry only for protected login reuse");
       let prepared: ProtectedLoginReply;
       try {
-        prepared=parseProtectedLoginReply(await performSharedBrowserAction(userId!,chatId,{action:"secure_input_prepare",...login,source:"agent",includeScreenshot:false}));
+        prepared=parseProtectedLoginReply(await performSharedBrowserAction(userId!,chatId,{action:login.credentialId?"secure_input_prepare_named":"secure_input_prepare",...login,source:"agent",includeScreenshot:false}));
       } catch (error) {
         return Response.json(protectedLoginFailure(error), { status: 502 });
       }

@@ -7,6 +7,7 @@ import { ProtectedLoginError } from "@/lib/protected-login-errors";
 export type SharedBrowserAction = {
   action: string;
   requestId?: string;
+  credentialId?: string;
   password?: string;
   replace?: boolean;
   tabId?: string;
@@ -75,6 +76,7 @@ export async function performSharedBrowserAction(
   headers["X-Metis-Browser-App-Capability"] = signBrowserUserAction(userId, chatId, action);
   if (action.source === "user") headers["X-Metis-Browser-User-Capability"] = signBrowserUserAction(userId, chatId, action);
 
+  const protectedPrepare=action.action==="secure_input_prepare"||action.action==="secure_input_prepare_named";
   let response: Response;
   try {
     response = await fetch(
@@ -88,7 +90,7 @@ export async function performSharedBrowserAction(
       },
     );
   } catch (error) {
-    if (action.action === "secure_input_prepare") throw new ProtectedLoginError();
+    if (protectedPrepare) throw new ProtectedLoginError();
     throw new Error(
       error instanceof Error && error.name === "TimeoutError"
         ? "Browser action timed out"
@@ -100,7 +102,7 @@ export async function performSharedBrowserAction(
     | SharedBrowserResult
     | { error?: string; code?: unknown };
   if (!response.ok) {
-    if (action.action === "secure_input_prepare" || "code" in data) {
+    if (protectedPrepare || "code" in data) {
       throw new ProtectedLoginError("code" in data ? data.code : undefined);
     }
     throw new Error(

@@ -10,8 +10,8 @@ import {EventEmitter} from "node:events";
 test("manual SSH/local entries persist, reuse exact console bindings and expose only owner metadata",async t=>{
  const dir=mkdtempSync(path.join(os.tmpdir(),"metis-vault-console-"));
  Object.assign(process.env,{AI_CHAT_ROOT:dir,CHAT_DATA_DIR:dir,CHAT_DB_PATH:path.join(dir,"chat.sqlite"),AGENT_CWD:dir,METIS_PROTECTED_LOGIN_MODE:"trusted-root",METIS_NATIVE_ISOLATION:"0",MCP_BEARER_TOKEN:"TEST-VAULT-LEASE",AI_CHAT_INTERNAL_ORIGIN:"http://127.0.0.1:1",AI_CHAT_MCP_STATE_DIR:path.join(dir,"mcp-state")});
- const [{SavedBrowserLogins},auth,route,jobs,store,agent]=await Promise.all([
-  import("../services/browser-login/core"),import("../lib/auth"),import("../app/api/browser/saved-logins/route"),import("../lib/db-jobs"),import("../lib/db-store"),import("../app/api/internal/mcp-credentials/route"),
+ const [{SavedBrowserLogins},auth,route,jobs,store,agent,named]=await Promise.all([
+  import("../services/browser-login/core"),import("../lib/auth"),import("../app/api/browser/saved-logins/route"),import("../lib/db-jobs"),import("../lib/db-store"),import("../app/api/internal/mcp-credentials/route"),import("../app/api/browser/credential-entries/route"),
  ]);
  const key=randomBytes(32),file=path.join(dir,"vault.sqlite");
  let core=new SavedBrowserLogins(key,file),fingerprint="SHA256:synthetic-original";
@@ -58,6 +58,37 @@ test("manual SSH/local entries persist, reuse exact console bindings and expose 
    assert.equal((await call("console_prepare",connection)).status,"console_password_entered");
    assert.equal(filled.at(-1),"SYNTHETIC-"+method);
   }
+  const namedRequest=(body?:unknown,origin="https://metis.test",session=cookie)=>new Request("https://metis.test/api/browser/credential-entries",{
+    method:body?"POST":"GET",headers:{cookie:session,origin,host:"metis.test","content-type":"application/json"},
+    ...(body?{body:JSON.stringify(body)}:{}),
+  });
+  const migrated=await named.GET(namedRequest());assert.equal(migrated.status,200);
+  const migratedEntries=(await migrated.json()).entries;assert.equal(migratedEntries.length,3);
+  let sshEntry;
+  for(const entry of migratedEntries)if(entry.kind==="console"&&entry.title.startsWith("ssh:"))sshEntry=entry;
+  assert.ok(sshEntry);
+  const byId={...connection,credentialId:sshEntry.id};
+  assert.equal((await call("console_prepare_named",byId)).status,"console_password_entered");
+  assert.equal(filled.at(-1),password);
+  const previouslyFilled=filled.length;
+  await assert.rejects(call("console_prepare_named",byId,b.id),/no longer available/);
+  await assert.rejects(call("console_prepare_named",{...byId,host:"other.test"}),/different target or SSH host key/);
+  fingerprint="SHA256:rotated-after-list";
+  await assert.rejects(call("console_prepare_named",byId),/different target or SSH host key/);
+  fingerprint="SHA256:synthetic-original";
+  assert.equal(filled.length,previouslyFilled,"unbound references never fill or fall back to another login");
+  const title="Synthetic custom entry", secret="TEST-CUSTOM-SECRET-IS-PRIVATE";
+  const custom={action:"create",title,fields:[{name:"key",type:"secret",value:secret}]};
+  assert.equal((await named.POST(namedRequest(custom,"https://other.test"))).status,403);
+  assert.equal((await named.GET(namedRequest(undefined,"https://metis.test","invalid-cookie"))).status,401);
+  await assert.rejects(call("named_vault_list"));
+  await assert.rejects(call("named_vault_mutate",custom));
+  const creation=await named.POST(namedRequest(custom));assert.equal(creation.status,200);
+  const body=await creation.json();assert.equal(body.entry.title,title);assert(!JSON.stringify(body).includes(secret));
+  const namedOther="ai_chat_auth="+auth.authenticateUser(b.username,"TEST-ACCOUNT")!.token;
+  const deletion={action:"delete",id:body.entry.id,revision:body.entry.revision};
+  assert.equal((await named.POST(namedRequest(deletion,"https://metis.test",namedOther))).status,404);
+  assert.equal((await named.POST(namedRequest(deletion))).status,200);
   const listed=await call("vault_list");
   assert.equal(listed.credentials?.length,3);assert.deepEqual((await call("vault_list",{},b.id)).credentials,[]);
   assert(!JSON.stringify(listed).includes("SYNTHETIC-"),"metadata listing never returns passwords");
@@ -70,7 +101,12 @@ test("manual SSH/local entries persist, reuse exact console bindings and expose 
   await assert.rejects(call("create",create));
   const chat=store.createChat("Vault use",undefined,a.id),job=jobs.enqueueJob({chatId:chat.id,userId:a.id,message:"TEST"}),lease=jobs.claimNextJob({workerId:"vault-worker"})!;
   const agentReq=(owner:string=a.id,chatId:string=chat.id,body:unknown={})=>new Request("http://localhost/internal",{method:"POST",headers:{authorization:"Bearer TEST-VAULT-LEASE","content-type":"application/json","x-ai-chat-job-id":job.id,"x-ai-chat-worker-id":lease.leaseOwner!,"x-ai-chat-lease-token":lease.leaseToken!,"x-ai-chat-user-id":owner,"x-ai-chat-id":chatId},body:JSON.stringify(body)});
-  const valid=await agent.POST(agentReq());assert.equal(valid.status,200);assert.equal((await valid.json()).credentials.length,3);assert.equal(valid.headers.get("cache-control"),"no-store");
+  const valid=await agent.POST(agentReq());assert.equal(valid.status,200);
+  const agentView=await valid.json();
+  assert.equal(agentView.credentials.length,3);
+  assert.ok(agentView.namedEntries.some((entry:{id:string;usage?:string})=>entry.id===sshEntry.id&&entry.usage==="console_connect"));
+  assert.doesNotMatch(JSON.stringify(agentView),/SYNTHETIC-UPDATED|TEST-CUSTOM-SECRET-IS-PRIVATE/);
+  assert.equal(valid.headers.get("cache-control"),"no-store");
   for(const [owner,chatId] of [[b.id,chat.id],[a.id,"another-chat"]])assert.equal((await agent.POST(agentReq(owner,chatId))).status,401);
   assert.equal((await agent.POST(agentReq(a.id,chat.id,{owner:b.id}))).status,503);
   jobs.updateJob(job.id,{status:"cancelled"});assert.equal((await agent.POST(agentReq())).status,401);

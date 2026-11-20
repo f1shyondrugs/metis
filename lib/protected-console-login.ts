@@ -9,6 +9,7 @@ type ConsoleLogin = {
   host?: string;
   port?: number;
   replace?: boolean;
+  credentialId?: string;
 };
 
 type VaultStatus = "matching_entry" | "no_matching_entry" | "vault_unavailable" | "target_not_verified";
@@ -56,7 +57,7 @@ export async function prepareProtectedConsole(owner: string, chat: string, input
   let vaultStatus: VaultStatus = saved ? "target_not_verified" : "vault_unavailable";
   let reply: ProtectedLoginReply;
   try {
-    reply = await request(owner, chat, input.action === "authenticate" ? "console_elevate" : "console_prepare",
+    reply = await request(owner, chat, input.credentialId ? "console_prepare_named" : input.action === "authenticate" ? "console_elevate" : "console_prepare",
       { ...input, replaceSession: input.action === "connect" });
   } catch {
     return { status: "console_unavailable", vaultStatus, message: unavailable };
