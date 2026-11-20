@@ -136,6 +136,7 @@ export const RichComposerInput = forwardRef<HTMLTextAreaElement, RichComposerInp
         placeholder={placeholder}
         disabled={disabled}
         rows={1}
+        enterKeyHint="send"
         aria-label={ariaLabel}
         role={ariaControls ? "combobox" : undefined}
         aria-autocomplete={ariaControls ? "list" : undefined}
