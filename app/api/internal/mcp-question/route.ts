@@ -15,6 +15,7 @@ import { runtimeModeForChat, type RuntimeMode } from "@/lib/runtime-mode";
 import {prepareMcpInput} from "@/lib/mcp-protected-input";
 import {parseProtectedLoginReply,type ProtectedLoginReply} from "@/lib/protected-login-contract";
 import {browserLoginRequest} from "@/lib/browser-login-client";
+import {consoleVaultDescription,prepareProtectedConsole} from "@/lib/protected-console-login";
 import { protectedLoginFailure } from "@/lib/protected-login-errors";
 import { assertOrdinaryQuestionSafe, CredentialQuestionError } from "@/lib/mcp-core/credential-question-policy.mjs";
 
@@ -69,11 +70,11 @@ export async function POST(req: Request) {
     }else if(raw.consoleLogin){
       const consoleInput=z.object({consoleLogin:z.object({action:z.enum(["connect","authenticate","request_password"]),method:z.enum(["ssh","sudo","su"]).optional(),user:z.string().regex(/^[a-z_][a-z0-9_.-]{0,63}$/).optional(),host:z.string().max(253).optional(),port:z.number().int().min(1).max(65535).optional(),replace:z.boolean().optional()}).strict()}).strict().parse(raw).consoleLogin;
       if(consoleInput.action!=="request_password"&&(!consoleInput.method||!consoleInput.user))throw Error("Account and method required");
-      const prepared=await browserLoginRequest(userId!,chatId,consoleInput.action==="authenticate"?"console_elevate":"console_prepare",{...consoleInput,replaceSession:consoleInput.action==="connect"});
-      if(prepared.status!=="input_required")return Response.json(prepared);
-      if(automation)return Response.json({error:"This console requires an interactive password confirmation."},{status:403});
+      const prepared=await prepareProtectedConsole(userId!,chatId,consoleInput);
+      if(prepared.status!=="input_required"||!prepared.secureInput)return Response.json(prepared);
+      if(automation)return Response.json({status:"input_required",vaultStatus:prepared.vaultStatus,error:"This console requires interactive protected input."},{status:403});
       secureBrowserInput=prepared.secureInput;
-      input=normalizeAskUserInput({title:"Enter console password securely",description:secureBrowserInput?.origin,questions:[{key:"secure_login",type:"text",question:"Protected login",required:false}],responseTemplate:"Password entered securely in the console."});
+      input=normalizeAskUserInput({title:"Enter console password securely",description:`${secureBrowserInput.origin}\n${consoleVaultDescription(prepared.vaultStatus)}`,questions:[{key:"secure_login",type:"text",question:"Protected login",required:false}],responseTemplate:"Password entered securely in the console."});
     }else if(raw.browserLogin) {
       const login=z.object({browserLogin:z.object({tabId:z.string().max(200).optional(),selector:z.string().max(500).optional(),usernameSelector:z.string().max(500).optional(),emailSelector:z.string().max(500).optional(),fields:z.array(z.enum(["password","username","email"])).min(1).max(3).optional(),replace:z.boolean().optional()}).strict()}).strict().parse(raw).browserLogin;
       let prepared: ProtectedLoginReply;

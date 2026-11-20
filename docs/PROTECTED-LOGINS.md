@@ -31,6 +31,8 @@ remain website-controlled steps.
 
 Agents can discover usable saved entries with `credential_vault_list`, which returns account-scoped routing metadata and the matching login tool, without passwords, tokens or credential envelopes. The tool is bound to the current owner, chat and running-job lease. Website entries are consumed through `browser_request_login`; SSH and local entries through `console_connect` / `console_authenticate`, followed by `console_read` and `console_command`. This enables saved credentials within their supported sign-in workflow; it does not export secrets to arbitrary commands or grant access to additional targets.
 
+For an authorized console task, check `credential_vault_list` before suggesting a manual fallback. A failed listing or a partial result that lists `console` as unavailable does not mean the vault is empty. Console preparation checks the account index separately from the broker result: a known missing match, an unavailable index, and an unverified target are distinct. Only the broker can approve credential reuse or report a verified password prompt. Local sudo policy denials return `console_policy_blocked` without the raw terminal output or an input form.
+
 Console credentials use the same protected form and encrypted storage. They bind
 to the SSH host, account, authentication method and host key, or to a local PAM
 account/method. `console_connect`, `console_authenticate` and

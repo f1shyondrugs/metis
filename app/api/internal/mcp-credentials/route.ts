@@ -1,8 +1,7 @@
 import {bearerTokenMatches} from "@/lib/security";
 import {internalRunLeaseAuthorized} from "@/lib/internal-run-lease";
 import {getJob} from "@/lib/db-jobs";
-import {browserLoginRequest} from "@/lib/browser-login-client";
-import {savedLoginSummaries,type SavedLogin} from "@/lib/credential-vault";
+import {listSavedLoginSummaries} from "@/lib/protected-console-login";
 import {z} from "zod";
 
 export const runtime="nodejs";
@@ -18,9 +17,7 @@ export async function POST(req:Request){
   try{
    // Reuse the existing read-only management index, including older live engines.
    // It returns routing metadata only; no credential envelope is retrieved.
-   const reply=await browserLoginRequest(owner,chat,"list",{},true);
-   // Re-project service replies; transport fields and encrypted values never reach agents.
-   return Response.json({credentials:[...savedLoginSummaries((reply.credentials||[]) as SavedLogin[]),...mcp]},{headers});
+   return Response.json({credentials:[...await listSavedLoginSummaries(owner,chat),...mcp]},{headers});
   }catch{
    return Response.json({credentials:mcp,partial:true,unavailable:["browser","console"]},{headers});
   }
