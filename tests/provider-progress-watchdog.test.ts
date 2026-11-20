@@ -133,6 +133,27 @@ for (const id of ["effort", "reasoning"]) test(`reasoning-only ${id} switch inte
   assert.match(switched.resumePrompt || "", /Do not repeat completed/);
 });
 
+test("context-only switch persists canonical selections and streams the before/after event", async t => {
+  const f = await fixture(t, [{ id: "context", value: "500000" }]);
+  const { requestJobModelSwitch, listRunEvents } = await import("../lib/db-jobs");
+  const params = [{ id: "context", value: "1050000" }];
+  requestJobModelSwitch(f.chat.id, f.job.userId, f.job.modelId!, params);
+  t.mock.timers.tick(250);
+  await f.run;
+  assert.equal(f.context.signal!.aborted, true);
+  assert.equal(f.getJob(f.job.id)?.status, "switching");
+  assert.deepEqual(f.getJob(f.job.id)?.modelParams, params);
+  assert.deepEqual(f.getChat(f.chat.id)?.modelParams, params);
+  const event = f.getChat(f.chat.id)!.messages.flatMap(message => message.parts || []).find(part => part.type === "model-switch");
+  assert.ok(event && event.type === "model-switch");
+  assert.equal(event.fromModelId, event.toModelId);
+  assert.equal(event.fromContext, "500000");
+  assert.equal(event.toContext, "1050000");
+  const live = listRunEvents(f.chat.id, f.job.userId, 0, f.job.id).filter(row => "event" in row && row.event === "run-event");
+  assert.equal(live.length, 1);
+  assert.deepEqual(live[0].data, event);
+});
+
 test("returning reasoning to the active value cancels a pending handoff", async t => {
   const params = [{ id: "effort", value: "high" }];
   const f = await fixture(t, params);

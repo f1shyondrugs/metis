@@ -31,7 +31,9 @@
 .notes-toc-row { display:flex; align-items:center; gap:8px; }
 .notes-toc-row>button:first-child { flex:1; min-width:0; text-align:start; }
 .notes-toc-row>button:last-child { flex:none; display:flex; align-items:center; justify-content:center; width:36px; min-height:36px; border-radius:4px; }
+@media (hover: hover) {
 .notes-toc-row>button:last-child:hover { background:var(--muted); }
+}
 .notes-block-colors { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:8px; border-bottom:1px solid var(--border); }
 .notes-block-colors legend { padding:0 4px; font-size:11px; color:var(--muted-foreground); }
 .notes-block-colors button { display:flex; align-items:center; gap:6px; min-height:36px; padding:4px 6px; text-transform:capitalize; font-size:12px; border-radius:4px; }
@@ -46,7 +48,11 @@
 .notes-editor-mode button { display:flex; align-items:center; gap:5px; border-radius:4px; padding:5px 8px; }
 .notes-editor-mode .is-active { color:var(--foreground); background:var(--secondary); }
 .notes-editor-tools button,.notes-selection-toolbar>button { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:4px; color:var(--muted-foreground); }
-.notes-editor-tools button:hover,.notes-selection-toolbar>button:hover,.notes-selection-toolbar .is-active { background:var(--accent); color:var(--foreground); }
+@media (hover: hover) {
+.notes-editor-tools button:hover,
+.notes-selection-toolbar>button:hover { background:var(--accent); color:var(--foreground); }
+}
+.notes-selection-toolbar .is-active { background:var(--accent); color:var(--foreground); }
 .notes-editor-canvas { position:relative; min-height:230px; }
 .notes-prosemirror { padding:4px 0 80px 30px; min-height:230px; outline:none; line-height:1.7; font-size:15px; overflow-wrap:anywhere; white-space:pre-wrap; }
 .notes-prosemirror>* { margin:5px 0; }
@@ -74,7 +80,9 @@
 .notes-prosemirror ::selection { background:color-mix(in srgb,var(--foreground) 20%,transparent); }
 .notes-block-handle { position:absolute; left:-12px; display:flex; align-items:center; gap:0; z-index:3; height:28px; }
 .notes-block-handle button { width:20px; height:26px; display:flex; align-items:center; justify-content:center; color:var(--muted-foreground); border-radius:4px; }
+@media (hover: hover) {
 .notes-block-handle button:hover { background:var(--accent); color:var(--foreground); }
+}
 .notes-block-handle button[draggable] { cursor:grab; }.notes-block-handle button[draggable]:active { cursor:grabbing; }
 .notes-prosemirror .tableWrapper { overflow:auto; margin:14px 0; }
 .notes-prosemirror table { border-collapse:collapse; width:100%; table-layout:fixed; overflow:hidden; font-size:14px; }
@@ -88,7 +96,10 @@
 .notes-context-toolbar { z-index:85; width:max-content; max-width:min(620px,calc(100vw - 16px)); max-height:var(--radix-popover-content-available-height); overflow-y:auto; flex-direction:row; flex-wrap:wrap; align-items:center; gap:4px; padding:6px; font-size:12px; animation:none; }
 .notes-context-toolbar .notes-context-label { display:inline-flex; align-items:center; gap:5px; padding:0 6px; color:var(--muted-foreground); font-size:11px; }
 .notes-context-toolbar button { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:32px; padding:5px 8px; border-radius:4px; white-space:nowrap; cursor:pointer; color:var(--popover-foreground); }
-.notes-context-toolbar button:hover,.notes-context-toolbar button[aria-pressed=true] { background:var(--accent); }
+@media (hover: hover) {
+.notes-context-toolbar button:hover { background:var(--accent); }
+}
+.notes-context-toolbar button[aria-pressed=true] { background:var(--accent); }
 .notes-context-toolbar button:focus-visible { outline:2px solid var(--ring); outline-offset:-2px; }
 .notes-context-toolbar button:disabled { opacity:.4; cursor:default; }
 @media(max-width:640px), (pointer:coarse) { .notes-context-toolbar button { min-height:44px; min-width:44px; } }
@@ -106,7 +117,9 @@
 .notes-source-block { --notes-source-actions-top:var(--contained-actions-top,0px); margin:16px 0; border:1px solid var(--border); border-radius:4px; overflow:clip; }
 .notes-source-header { min-height:36px; width:100%; z-index:21; background:var(--secondary); padding:7px 10px; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:var(--muted-foreground); text-transform:capitalize; }
 .notes-source-header button { text-transform:none; color:var(--foreground); padding:2px 5px; border-radius:4px; }
+@media (hover: hover) {
 .notes-source-header button:hover { background:var(--accent); }
+}
 .notes-source-block textarea { display:block; width:100%; resize:vertical; padding:12px; background:var(--background); font-family:var(--font-mono),monospace; font-size:12px; line-height:1.5; outline:none; }
 .notes-source-preview { --contained-actions-top:calc(var(--notes-source-actions-top) + 36px); padding:12px; white-space:normal; }.notes-source-preview .markdown-body { font-size:14px; }
 .notes-math-block { margin:14px 0; padding:12px; background:var(--secondary); border-radius:4px; }
@@ -121,12 +134,19 @@
 .notes-menu-dismiss { position:fixed; inset:0; z-index:88; }
 .notes-block-menu { position:fixed; z-index:90; max-height:350px; overflow-y:auto; width:300px; background:var(--popover); color:var(--popover-foreground); border:1px solid var(--border); border-radius:4px; padding:5px; box-shadow:0 8px 30px #0003; font-size:13px; }
 .notes-block-menu>button,.notes-reference-menu [role=listbox]>button { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:8px; border-radius:4px; }
-.notes-block-menu>button:hover,.notes-block-menu>button.is-selected,.notes-reference-menu [role=option]:hover,.notes-reference-menu [role=option].is-selected { background:var(--accent); }
+@media (hover: hover) {
+.notes-block-menu>button:hover,
+.notes-reference-menu [role=option]:hover { background:var(--accent); }
+}
+.notes-block-menu>button.is-selected,
+.notes-reference-menu [role=option].is-selected { background:var(--accent); }
 .notes-command-icon { display:flex; justify-content:center; align-items:center; flex:none; width:30px; height:30px; border:1px solid var(--border); border-radius:4px; font-size:12px; font-weight:600; }
 .notes-block-menu strong { display:block; font-size:12px; font-weight:550; line-height:1.4; }.notes-block-menu small { display:block; font-size:10px; color:var(--muted-foreground); margin-top:1px; }
 .notes-menu-label { padding:8px 8px 4px; font-size:10px; color:var(--muted-foreground); font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
 .notes-block-actions { display:grid; grid-template-columns:1fr 1fr; padding-bottom:5px; border-bottom:1px solid var(--border); margin-bottom:3px; }
-.notes-block-actions button { display:flex; align-items:center; gap:7px; padding:7px 8px; border-radius:4px; font-size:11px; }.notes-block-actions button:hover { background:var(--accent); }.notes-block-actions .notes-action-delete { color:var(--destructive); }
+.notes-block-actions button { display:flex; align-items:center; gap:7px; padding:7px 8px; border-radius:4px; font-size:11px; }@media (hover: hover) {
+.notes-block-actions button:hover { background:var(--accent); }
+}.notes-block-actions .notes-action-delete { color:var(--destructive); }
 .notes-menu-empty { padding:15px 8px; color:var(--muted-foreground); font-size:12px; }
 .notes-editor-error { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; color:var(--destructive); font-size:12px; padding:10px; border:1px solid var(--border); border-radius:4px; margin-bottom:12px; }
 .notes-editor-error button { flex:none; padding:2px; }
@@ -139,10 +159,24 @@
 .notes-editor-dialog>div { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }.notes-editor-dialog strong { font-size:15px; font-weight:600; text-transform:capitalize; }
 .notes-editor-dialog label { display:block; margin:12px 0; font-size:11px; color:var(--muted-foreground); }
 .notes-editor-dialog input { width:100%; padding:9px 10px; margin-top:5px; background:var(--background); border:1px solid var(--border); border-radius:4px; color:var(--foreground); font-size:13px; }
-.notes-editor-dialog footer { display:flex; justify-content:flex-end; gap:6px; margin-top:20px; }.notes-editor-dialog footer button { padding:7px 12px; border-radius:4px; }.notes-editor-dialog footer button:hover { background:var(--secondary); }.notes-editor-dialog button[type=submit] { background:var(--foreground); color:var(--background); }
+.notes-editor-dialog footer { display:flex; justify-content:flex-end; gap:6px; margin-top:20px; }.notes-editor-dialog footer button { padding:7px 12px; border-radius:4px; }@media (hover: hover) {
+.notes-editor-dialog footer button:hover { background:var(--secondary); }
+}.notes-editor-dialog button[type=submit] { background:var(--foreground); color:var(--background); }
 @media(max-width:640px) { .notes-prosemirror { padding-left:24px; font-size:14px; }.notes-prosemirror h1 { font-size:26px; }.notes-prosemirror h2 { font-size:22px; }.notes-columns { flex-direction:column; gap:12px; }.notes-selection-toolbar { max-width:calc(100vw - 16px); flex-wrap:wrap; }.notes-block-handle { left:-16px; } }
 .notes-table-of-contents { margin:14px 0; padding:12px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); font-size:13px; }
 .notes-table-of-contents strong { display:block; font-size:11px; color:var(--muted-foreground); font-weight:550; margin-bottom:7px; }
 .notes-table-of-contents button { display:block; text-align:left; width:100%; color:var(--muted-foreground); padding:4px 0; }
+@media (hover: hover) {
 .notes-table-of-contents button:hover { color:var(--foreground); text-decoration:underline; text-underline-offset:3px; }
+}
 .notes-table-of-contents p { color:var(--muted-foreground); font-size:12px; }
+@media (max-width:767px), (pointer:coarse) {
+  .notes-block-editor :is(input,textarea,select),
+  .notes-editor-dialog input,
+  .notes-selection-toolbar select,
+  .notes-context-toolbar :is(input,textarea,select),
+  .notes-prosemirror[contenteditable=true],
+  .notes-markdown-source .cm-content {
+    font-size:max(16px,1em);
+  }
+}

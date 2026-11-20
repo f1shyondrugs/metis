@@ -3,7 +3,7 @@ import { updateChat } from "@/lib/db-store";
 import { transaction } from "@/lib/sqlite";
 import { parseModelKey } from "@/lib/providers/types";
 import { providerContinuationPrompt } from "@/lib/provider-continuation";
-import { modelParamsEqual, selectedReasoning } from "@/lib/model-params";
+import { modelParamsEqual, selectedContext, selectedReasoning } from "@/lib/model-params";
 import type { AgentJob } from "@/lib/jobs";
 import type { ModelSwitchPart } from "@/lib/run-control-event";
 
@@ -33,13 +33,16 @@ export function commitPendingModelSwitch(
     const fromReasoning = selectedReasoning(current.modelParams);
     const toReasoning = selectedReasoning(nextParams);
     const reasoningChange = fromReasoning !== toReasoning ? { fromReasoning, toReasoning } : {};
+    const fromContext = selectedContext(current.modelParams);
+    const toContext = selectedContext(nextParams);
+    const contextChange = fromContext !== toContext ? { fromContext, toContext } : {};
     const timestamp = new Date().toISOString();
     const source = parseModelKey(fromModelId), target = parseModelKey(toModelId);
     const nextAgentId = source.providerKey === "cursor" && target.providerKey === "cursor"
       && source.connectionId === target.connectionId ? activeAgentId || current.agentId : undefined;
     const event: ModelSwitchPart = {
       type: "model-switch", id: `model-switch:${current.id}:${current.modelSwitchRequestedAt || timestamp}`,
-      fromModelId, toModelId, timestamp, ...reasoningChange, ...chainFallback,
+      fromModelId, toModelId, timestamp, ...reasoningChange, ...contextChange, ...chainFallback,
     };
     // Checkpoints/events are written under the old writer lease, before releasing it.
     checkpoint(event);

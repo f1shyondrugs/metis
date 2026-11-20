@@ -165,9 +165,11 @@
     background: color-mix(in oklch, var(--muted-foreground) 65%, transparent);
   }
 
-  *::-webkit-scrollbar-thumb:hover {
+  @media (hover: hover) {
+*::-webkit-scrollbar-thumb:hover {
     background: var(--muted-foreground);
   }
+}
 
   *::-webkit-scrollbar-corner {
     background: var(--muted);
@@ -201,6 +203,20 @@
 .metis-shell input,
 .metis-shell textarea {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Keep small text-entry controls readable without iOS focus zoom. Match the
+   compact typography classes, not display-sized note/project title inputs.
+   This also covers controls rendered in a portal outside .metis-shell. */
+@media (max-width: 767px), (pointer: coarse) {
+  :is(input, textarea, select):is(
+    .text-xs, .text-sm, .text-base,
+    [class~="text-[11px]"], [class~="text-[12px]"],
+    [class~="text-[13px]"], [class~="text-[14px]"],
+    [class~="text-[15px]"], .rich-composer-input
+  ) {
+    font-size: 16px;
+  }
 }
 
 .metis-shell [data-slot="dialog-content"],
@@ -500,9 +516,11 @@
   transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
+@media (hover: hover) {
 .markdown-body input[type="checkbox"]:hover {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 16%, transparent);
+}
 }
 
 .markdown-body input[type="checkbox"]:focus-visible {
@@ -673,8 +691,10 @@
   outline-offset: 2px;
 }
 
+@media (hover: hover) {
 .editable-markdown-toggle:hover {
   background: color-mix(in srgb, var(--note-color, var(--background)), currentColor 6%);
+}
 }
 
 .editable-markdown-preview {
@@ -734,9 +754,11 @@
   background-clip: padding-box;
 }
 
+@media (hover: hover) {
 .sticky-note .editable-markdown :is(.cm-scroller, [data-markdown-preview])::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, #000 42%, var(--note-color));
   background-clip: padding-box;
+}
 }
 
 .composer-placeholder {
@@ -763,9 +785,11 @@
   background-clip: padding-box;
 }
 
+@media (hover: hover) {
 .rich-composer-input::-webkit-scrollbar-thumb:hover {
   background: color-mix(in oklch, var(--muted-foreground) 58%, transparent);
   background-clip: padding-box;
+}
 }
 
 @keyframes caret-blink {
@@ -1193,10 +1217,12 @@
   transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
+@media (hover: hover) {
 .automation-create-button:hover {
   border-color: var(--ring);
   color: var(--automation-brand);
   background: var(--automation-surface-active);
+}
 }
 
 .automation-create-button:disabled {
@@ -1231,9 +1257,11 @@
   transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
+@media (hover: hover) {
 .automation-list-row:hover {
   border-color: var(--automation-border-control);
   background: var(--automation-surface-active);
+}
 }
 
 .automation-list-row.is-active {
@@ -1399,13 +1427,17 @@
   touch-action: manipulation;
 }
 
+@media (hover: hover) {
 .automation-list-row-actions button:hover {
   color: var(--automation-text);
   background: var(--automation-surface-active);
 }
+}
 
+@media (hover: hover) {
 .automation-list-row-actions button.is-danger:hover {
   color: var(--automation-error);
+}
 }
 
 .automation-list-row-actions svg {
@@ -1635,8 +1667,10 @@
   cursor: pointer;
 }
 
+@media (hover: hover) {
 .automation-fact-link:hover {
   color: var(--automation-brand);
+}
 }
 
 .automation-fact-link span {
@@ -1757,10 +1791,12 @@
   transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
 }
 
+@media (hover: hover) {
 .automation-pills > button:hover {
   border-color: var(--automation-brand);
   color: var(--automation-text);
   background: var(--automation-surface-active);
+}
 }
 
 .automation-pills svg {
@@ -1800,10 +1836,12 @@
   transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 90ms ease;
 }
 
+@media (hover: hover) {
 .automation-actions button:hover:not(:disabled) {
   border-color: var(--automation-border-control);
   color: var(--automation-text);
   background: var(--automation-surface-active);
+}
 }
 
 .automation-actions button:active:not(:disabled) {
@@ -1819,9 +1857,11 @@
   color: var(--automation-error);
 }
 
+@media (hover: hover) {
 .automation-actions button.is-danger:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--automation-error) 40%, var(--automation-border-control));
   color: var(--automation-error);
+}
 }
 
 .automation-actions svg {
@@ -1884,9 +1924,11 @@
   transition: border-color 140ms ease, background-color 140ms ease;
 }
 
+@media (hover: hover) {
 .automation-run-card:hover {
   border-color: var(--automation-border-control);
   background: var(--automation-surface-active);
+}
 }
 
 .automation-run-topline {
@@ -2130,7 +2172,9 @@
   cursor: col-resize; touch-action: none; user-select: none;
 }
 .automation-sidebar-resize-handle > span { width: 2px; height: 40px; border-radius: 1px; background: var(--automation-border-raised); }
-.automation-sidebar-resize-handle:hover > span,
+@media (hover: hover) {
+.automation-sidebar-resize-handle:hover > span { background: var(--automation-brand); }
+}
 .automation-sidebar-resize-handle[data-resizing] > span,
 .automation-sidebar-resize-handle:focus-visible > span { background: var(--automation-brand); }
 .automation-sidebar-resize-handle:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
@@ -2174,7 +2218,13 @@
 .automation-subagent-model > summary span { margin-left: 8px; color: var(--automation-copy); font-weight: 400; font-size: 11px; }
 .automation-subagent-model[open] > summary { margin-bottom: 12px; }
 /* Keep the primary action distinct when shared action hover styles apply. */
-.automation-editor-actions button[type="submit"]:hover:not(:disabled),
+@media (hover: hover) {
+.automation-editor-actions button[type="submit"]:hover:not(:disabled) {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+}
 .automation-editor-actions button[type="submit"]:active:not(:disabled) {
   background: var(--primary);
   color: var(--primary-foreground);

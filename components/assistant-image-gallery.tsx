@@ -45,7 +45,7 @@ export function AssistantImageGallery({ images }: { images: AssistantImage[] }) 
         {images.map((image) => (
           <button key={image.src} type="button" onClick={() => setActive(image)}
             aria-label={`Enlarge ${image.alt}`} title={image.alt}
-            className="shrink-0 overflow-hidden rounded-lg border border-border/60 hover:border-foreground/40 focus-visible:outline-2 focus-visible:outline-ring">
+            className="shrink-0 overflow-hidden rounded-lg border border-border/60 touch-manipulation hover:border-foreground/40 active:border-foreground/60 active:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring">
             <GalleryImage image={image} />
           </button>
         ))}

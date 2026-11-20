@@ -62,6 +62,10 @@ const REASONING_IDS = new Set(["effort", "reasoning"]);
 const CONTEXT_IDS = new Set(["context", "contextWindow", "context_window"]);
 const REMOVED_PARAM_IDS = new Set(["uncensored"]);
 
+export function selectedContext(params?: ReadonlyArray<ModelParamSelection>): string | null {
+  return params?.find(param => CONTEXT_IDS.has(param.id))?.value || null;
+}
+
 function canonicalParamId(id: string): string {
   if (CONTEXT_IDS.has(id)) return "context";
   if (id === "reasoning") return "effort";
@@ -204,12 +208,27 @@ export function defaultParamsForModel(model: ModelParameterModel): ModelParamSel
   return orderModelParams(result);
 }
 
+/** Expand suffixed decimals without floating-point rounding or accepting partial tokens. */
+function expandWholeNumber(value: string, allowMagnitudeSuffix?: boolean): string | undefined {
+  const input = value.trim();
+  if (/^\d+$/.test(input)) return input;
+  if (!allowMagnitudeSuffix) return undefined;
+  const match = /^(\d+)(?:\.(\d+))?\s*([km])$/i.exec(input);
+  if (!match) return undefined;
+  const places = match[3].toLowerCase() === "m" ? 6 : 3;
+  const fraction = match[2] ?? "";
+  if (/[^0]/.test(fraction.slice(places))) return undefined;
+  return match[1] + fraction.slice(0, places).padEnd(places, "0");
+}
+
 /** Validate custom values once for UI, persistence and the native adapter. */
 export function normalizeParameterValue(definition: ModelParameter, value: string): string | undefined {
   if (definition.values.some(option => option.value === value)) return value;
   const number = definition.customNumber;
-  if (!number || !/^\d+$/.test(value.trim())) return undefined;
-  const parsed = Number(value.trim());
+  if (!number) return undefined;
+  const whole = expandWholeNumber(value, number.allowMagnitudeSuffix);
+  if (whole === undefined) return undefined;
+  const parsed = Number(whole);
   return Number.isSafeInteger(parsed) && parsed >= number.min && parsed <= number.max
     && (parsed - number.min) % number.step === 0 ? String(parsed) : undefined;
 }

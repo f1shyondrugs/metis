@@ -153,7 +153,8 @@ function notifyProtectedBrowserStreams(userId,chatId){
   for(const notify of subscribers||[])void Promise.resolve().then(()=>notify({tabId:"protected"})).catch(()=>undefined);
 }
 async function performSharedBrowserAction(userId, chatId, action) {
-  if (action.action === "secure_input_prepare") {
+  if (action.action === "secure_input_prepare" || action.action === "secure_input_prepare_named") {
+    if(action.action==="secure_input_prepare_named"&&!action.credentialId)throw new ProtectedLoginError("credential_unavailable");
     try { return await protectedBrowserRouting.prepare(userId, chatId, action); }
     finally { if(protectedBrowserRouting.has(userId,chatId))notifyProtectedBrowserStreams(userId,chatId); }
   }

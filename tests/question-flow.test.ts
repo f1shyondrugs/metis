@@ -354,6 +354,74 @@ test("secure completion resumes the original run using only broker-confirmed sta
   }
 });
 
+test("the real console route checks the vault before blocking or creating protected input", async () => {
+  const chat = store.createChat("Protected console", undefined, owner.id);
+  const job = jobs.enqueueJob({ chatId: chat.id, userId: owner.id, message: "Synthetic console inspection" });
+  const lease = jobs.claimNextJob({ workerId: "console-question-worker" })!;
+  const previousSocket = process.env.METIS_BROWSER_LOGIN_SOCKET;
+  const previousIsolation = process.env.METIS_NATIVE_ISOLATION;
+  const socket = path.join(dir, "console-preflight.sock");
+  const operations: string[] = [];
+  let blocked = true;
+  const sessionId = randomUUID();
+  const target = JSON.stringify(["sudo","fixture-host",0,"metis-console","root","local"]);
+  const server = http.createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const payload = JSON.parse(body);
+    assert.equal(payload.owner, owner.id);
+    assert.equal(payload.chat, chat.id);
+    operations.push(payload.operation);
+    res.setHeader("Content-Type", "application/json");
+    if (payload.operation === "list") {
+      assert.equal(payload.management, true);
+      return res.end(JSON.stringify({ credentials: [] }));
+    }
+    assert.equal(payload.operation, "console_prepare");
+    res.end(JSON.stringify(blocked ?
+      { status: "console_unavailable", sessionId, output: 'sudo: The "no new privileges" flag is set. FIXTURE-RAW' } :
+      { status: "input_required", sessionId, target, secureInput: { kind: "console", sessionId,
+        requestId: randomUUID(), origin: "sudo: metis-console@fixture-host", expiresAt: new Date(Date.now()+60000).toISOString() } }));
+  });
+  await new Promise<void>(resolve => server.listen(socket,resolve));
+  process.env.METIS_NATIVE_ISOLATION = "1";
+  process.env.METIS_BROWSER_LOGIN_SOCKET = socket;
+  let pendingId: string | undefined;
+  let running: Promise<Response> | undefined;
+  const stop = new AbortController();
+  const request = () => new Request(internalRequest(chat.id, job.id, lease, { consoleLogin: { action:"connect",method:"sudo",user:"root" } }), {signal:stop.signal});
+  try {
+    const denied = await internal.POST(request());
+    const result = await denied.json();
+    assert.equal(result.status, "console_policy_blocked");
+    assert.doesNotMatch(JSON.stringify(result), /FIXTURE-RAW/);
+    assert.equal(store.getChat(chat.id,owner.id)?.pendingQuestion,undefined);
+    assert.equal(jobs.getJob(job.id)?.status,"running");
+    blocked = false;
+    running = internal.POST(request());
+    void running.catch(() => {});
+    for(let i=0;i<50&&!pendingId;i++){
+      pendingId = store.getChat(chat.id,owner.id)?.pendingQuestion?.questionId;
+      if(!pendingId)await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    assert.ok(pendingId);
+    const pending = store.getChat(chat.id,owner.id)?.pendingQuestion;
+    assert.match(pending?.description||"",/No saved entry matches the verified target/);
+    assert.equal(pending?.secureBrowserInput?.sessionId,sessionId);
+    assert.deepEqual(operations,["list","console_prepare","list","console_prepare"]);
+  } finally {
+    stop.abort();
+    if(pendingId)questions.cancelQuestion(pendingId,owner.id);
+    await running?.catch(()=>undefined);
+    if(previousIsolation===undefined)delete process.env.METIS_NATIVE_ISOLATION;
+    else process.env.METIS_NATIVE_ISOLATION=previousIsolation;
+    if(previousSocket===undefined)delete process.env.METIS_BROWSER_LOGIN_SOCKET;
+    else process.env.METIS_BROWSER_LOGIN_SOCKET=previousSocket;
+    await new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());});
+    jobs.updateJob(job.id,{status:"cancelled"});
+  }
+});
+
 test("ordinary credential forms are rejected before MCP transmission and API/database persistence", async () => {
   // @ts-expect-error The gateway entrypoint is JavaScript.
   const gateway = await import("../packages/mcp-gateway/index.mjs") as {
