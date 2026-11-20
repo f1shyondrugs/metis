@@ -40,7 +40,14 @@ test("actual shared-profile page serializes only its allowed daily fields",async
  const expression=fn.getText(tree).replace("export default async function","async function");
  const js=ts.transpileModule("const page="+expression,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
  const stub=()=>null,heatmap=()=>null;
- const page=new Function("require","getSharedProfile","getAccountUsage","publicTokenActivity","notFound","ProfileAvatar","TokenHeatmap","Link","ExternalLink","const exports={};"+js+";return page;")(createRequire(import.meta.url),()=>({profile:{shareActivity:true,displayName:"Fixture",links:[],bio:"",avatar:null,handle:null},ownerId:"private-owner"}),()=>({days:[day]}),publicTokenActivity,()=>{throw new Error("Not found");},stub,heatmap,stub,stub);
+ const scope={
+  require:createRequire(import.meta.url),
+  getSharedProfile:()=>({profile:{shareActivity:true,displayName:"Fixture",links:[],bio:"",avatar:null,handle:null},ownerId:"private-owner"}),
+  getAccountUsage:()=>({days:[day]}),publicTokenActivity,
+  notFound:()=>{throw new Error("Not found");},
+  ProfileAvatar:stub,BannerHeader:stub,TokenHeatmap:heatmap,Link:stub,ExternalLink:stub,
+ };
+ const page=new Function(...Object.keys(scope),"const exports={};"+js+";return page;")(...Object.values(scope));
  const result=await page({params:Promise.resolve({shareId:"fixture"})});
  let props:Record<string,unknown>|undefined;
  function walk(node:unknown){if(!node||typeof node!=="object")return;if(Array.isArray(node)){node.forEach(walk);return;}const item=node as {type:unknown;props?:Record<string,unknown>};if(item.type===heatmap)props=item.props;else walk(item.props?.children);}

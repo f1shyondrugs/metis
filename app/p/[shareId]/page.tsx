@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getSharedProfile } from "@/lib/account-profile";
 import { getAccountUsage } from "@/lib/account-usage";
-import { ProfileAvatar } from "@/components/account/account-menu";
+import { ProfileAvatar } from "@/components/account/profile-avatar";
 import { BannerHeader } from "@/components/banner-image";
 import { TokenHeatmap } from "@/components/account/token-heatmap";
 import { publicTokenActivity } from "@/lib/profile-token-activity";

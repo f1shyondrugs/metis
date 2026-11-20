@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import {Eye,Users,X} from "lucide-react";
-import {ProfileAvatar} from "@/components/account/account-menu";
+import {ProfileAvatar} from "@/components/account/profile-avatar";
 import {Button} from "@/components/ui/button";
 import {Popover,PopoverContent,PopoverTrigger} from "@/components/ui/popover";
 import {notebookDocumentPeers,type NotebookPeer,type NotebookPerson} from "@/lib/notebook-presence";

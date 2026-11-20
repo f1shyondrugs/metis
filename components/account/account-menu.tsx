@@ -2,12 +2,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ChartNoAxesCombined, ChevronsUpDown, Settings, UserRound, Puzzle, Bell, LogOut, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ProfileAvatar } from "@/components/account/profile-avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DesktopAppSettingsDialog } from "@/components/desktop-app-settings-dialog";
 import { useDesktopAvailable } from "@/lib/desktop-bridge";
 import { useDesktopState } from "@/lib/use-desktop-state";
-import type { AccountIdentity, AccountProfile } from "@/lib/account-types";
+import type { AccountProfile } from "@/lib/account-types";
 export function useAccountProfile(enabled: boolean) {
   const [profile,setProfile]=useState<AccountProfile|null>(null);
   const [error,setError]=useState(false),[revision,setRevision]=useState(0);
@@ -21,12 +21,6 @@ export function useAccountProfile(enabled: boolean) {
     return ()=>controller.abort();
   },[enabled,revision]);
   return {profile,setProfile,error,retry:()=>setRevision(value=>value+1)};
-}
-export function ProfileAvatar({profile,name,className}: {profile:AccountIdentity|null;name:string;className?:string}) {
-  return <Avatar className={className}>
-    {profile?.avatar ? <AvatarImage src={profile.avatar} alt="" /> : null}
-    <AvatarFallback className="bg-muted text-foreground">{(profile?.displayName || name).slice(0,2).toUpperCase()}</AvatarFallback>
-  </Avatar>;
 }
 export function AccountMenu({profile,username,updateAvailable,onSettings,onProfile,onUsage,onAgentHub,unreadCount=0,onNotifications,onLogout,onReplayOnboarding,mobile=false}: {
   profile:AccountProfile|null;username:string;updateAvailable:boolean;

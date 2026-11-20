@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ProfileAvatar } from "@/components/account/account-menu";
+import { ProfileAvatar } from "@/components/account/profile-avatar";
 import type { AccountIdentity } from "@/lib/account-types";
 
 type MembersData = {
