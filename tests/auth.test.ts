@@ -36,7 +36,9 @@ test("auth route keeps credential failures at 401 and maps storage exceptions to
     body: JSON.stringify({ username: "missing-user", password: "not-the-password" }),
   }));
   assert.equal(response.status, 401);
-  assert.deepEqual(await response.json(), { error: "Invalid username or password" });
+  const body = await response.json();
+  assert.equal(body.error, "Invalid username or password");
+  assert.equal(body.code, "invalid_credentials");
 
   const routeSource = readFileSync(path.join(process.cwd(), "app", "api", "auth", "route.ts"), "utf8");
   assert.match(routeSource, /catch \(error\)[\s\S]*Authentication storage is unavailable[\s\S]*status: 500/);
