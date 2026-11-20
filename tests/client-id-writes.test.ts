@@ -30,6 +30,8 @@ function harness(flush=async()=>true){
  const noop=()=>{};
  const scope={
   createClientId,navigationSerial:{current:0},projectId:null,notes:[{id:"book",kind:"issuebook"}],flush,
+  stopPresence:{current:noop},workspaceActive:{current:true},dialogFocus:{current:null as {noteId:string;serial:number}|null},
+  beginCreatedDocumentNavigation:()=> (noteId:string)=>{opened.push(noteId);},
   setWorking:noop,setCache:noop,scopeKey:(id:string|null)=>id||"none",setExpanded:noop,setSelectedId:noop,setMode:noop,setSidebar:noop,setCreation:noop,
   setError:(error:string)=>{if(error)errors.push(error);},embedded:true,saved:(value:unknown)=>saved.push(value),
   openNote:async(id:string)=>{opened.push(id);return true;},selectedId:"server-note",selected:note,load:async()=>{},
@@ -61,12 +63,16 @@ test("HTTP note updates, duplication and task conversion retain versions and sou
  httpCrypto(t);const h=harness();
  await h.call("patch",h.note,{title:"Renamed"});
  await h.call("duplicate",h.note);
- const issue=await h.call("createIssue","Task text","block-1","checkbox");
- assert.deepEqual(h.errors,[]);assert.deepEqual(issue,{id:"server-issue",key:"TEST-1"});
+ const issue=await h.call("createIssue","Task text","block-1","checkbox") as {id:string;key:string;openCreated?:()=>void};
+ assert.deepEqual(h.errors,[]);
+ assert.equal(issue.id,"server-issue");assert.equal(issue.key,"TEST-1");
+ assert.equal(typeof issue.openCreated,"function");
  const writes=h.requests.filter(r=>r.init?.method);
  for(const write of writes)assert.match(new Headers(write.init?.headers).get("Idempotency-Key")!,uuid);
  assert.equal(JSON.parse(String(writes[0].init?.body)).version,7);
- assert.deepEqual(h.opened,["copy-note"]);
+ assert.deepEqual(h.opened,["copy-note"],"issue creation has not navigated before its caller is ready");
+ issue.openCreated?.();
+ assert.deepEqual(h.opened,["copy-note","server-note"]);
  assert.equal(h.saved.length,1);
  const body=JSON.parse(String(writes.at(-1)!.init?.body));
  assert.deepEqual(body.source,{noteId:"server-note",sourceId:"block-1",kind:"checkbox",excerpt:"Task text"});

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ProfileAvatar } from "@/components/account/account-menu";
+import { ProfileAvatar } from "@/components/account/profile-avatar";
 import { subscribeVisiblePolling } from "@/lib/visible-polling";
 import { projectMessageAuthor, projectMessageMembers, type ProjectMessageMember } from "@/lib/project-message-authors";
 

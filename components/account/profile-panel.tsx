@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { ProfileAvatar } from "@/components/account/account-menu";
+import { ProfileAvatar } from "@/components/account/profile-avatar";
 import { TokenHeatmap } from "@/components/account/token-heatmap";
 import type { AccountProfile, AccountUsage } from "@/lib/account-types";
 import { MAX_PROFILE_GIF_BYTES } from "@/lib/profile-avatar-limits";

@@ -1,7 +1,7 @@
 "use client";
 import { createClientId } from "@/lib/client-id";
 import {useNotebookPresenceContext} from "./notebook-presence-context";
-import {ProfileAvatar} from "@/components/account/account-menu";
+import {ProfileAvatar} from "@/components/account/profile-avatar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
