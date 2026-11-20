@@ -12,13 +12,13 @@ export async function POST(req: Request) {
   try {
     body = (await req.json()) as { username?: string; password?: string };
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON", code: "invalid_request" }, { status: 400 });
   }
 
   if (!body || typeof body !== "object" ||
       (body.username !== undefined && (typeof body.username !== "string" || body.username.length > 128)) ||
       typeof body.password !== "string" || body.password.length > 4096) {
-    return NextResponse.json({ error: "Invalid credentials" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid credentials", code: "invalid_request" }, { status: 400 });
   }
   const username = body.username?.trim() || config.chatUsername;
   const address = requestClientAddress(req);
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   if (!ipLimit.allowed || !userLimit.allowed || !globalLimit.allowed) {
     const retryAfterSeconds = Math.max(ipLimit.retryAfterSeconds, userLimit.retryAfterSeconds, globalLimit.retryAfterSeconds);
     return NextResponse.json(
-      { error: "Too many login attempts. Please try again later." },
+      { error: "Too many login attempts. Please try again later.", code: "rate_limited" },
       { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
     );
   }
@@ -39,12 +39,12 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("[auth] Authentication storage is unavailable.", error);
     return NextResponse.json(
-      { error: "Authentication storage is unavailable. Check the server and try again." },
+      { error: "Authentication storage is unavailable. Check the server and try again.", code: "auth_unavailable" },
       { status: 500 },
     );
   }
   if (!result) {
-    return NextResponse.json({ error: "Invalid username or password" }, { status: 401 });
+    return NextResponse.json({ error: "Invalid username or password", code: "invalid_credentials" }, { status: 401 });
   }
   resetRateLimit(`auth:ip:${address}`);
   resetRateLimit(`auth:user:${rateLimitUsername}`);

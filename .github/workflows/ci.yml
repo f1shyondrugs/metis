@@ -39,6 +39,9 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit --pretty false
 
+      - name: Verify native client login contract and proxy boundaries
+        run: pnpm exec tsx --test tests/client-login-contract.test.ts tests/request-network.test.ts
+
       - name: Verify provider acceptance contracts and isolated transport
         run: pnpm test:provider-acceptance
 
