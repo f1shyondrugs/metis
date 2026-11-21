@@ -13,6 +13,7 @@ Canonical docs live here. Root keeps only GitHub/agent entry points: `README.md`
 | [SECURITY.md](../SECURITY.md) | Public-deployment checklist and vulnerability reporting |
 | [REMOTE-CLIENT-SECURITY.md](./REMOTE-CLIENT-SECURITY.md) | Remote-client permission model |
 | [DEPLOY.md](./DEPLOY.md) | Deploy notes (secrets stay out of git) |
+| [CLIENT-LOGIN-CONTRACT.md](./CLIENT-LOGIN-CONTRACT.md) | Version discovery, native login, legacy servers, and proxy diagnostics |
 | [WORKER.md](./WORKER.md) | Durable worker, concurrency, recovery |
 | [CPU-PARALLELISM.md](./CPU-PARALLELISM.md) | Per-core monitoring, current execution model and measured scaling recommendations |
 | [ICLOUD-CALENDAR-MANAGEMENT.md](./ICLOUD-CALENDAR-MANAGEMENT.md) | iCloud calendar colors, creation and atomic event moves preserving complete iCalendar resources |
