@@ -42,8 +42,8 @@ test("legacy mappings are guarded without changing root admin access or DB rows"
     assert.ok(fixture.state.probes.at(-1)?.paths.includes("/root"));
     assert.ok(fixture.state.probes.at(-1)?.paths.includes(`${config.root}/.env`));
     fixture.state.mode = 0o40755;
-    assert.throws(() => requireUserExecutionIdentity("alice"), /private/);
-    fixture.state.mode = 0o40700; fixture.state.owner = 12002;
+    assert.throws(() => requireUserExecutionIdentity("alice"), /access by others/);
+    fixture.state.mode = 0o40750; fixture.state.owner = 12002;
     assert.throws(() => requireUserExecutionIdentity("alice"), /owned/);
     fixture.state.owner = 12001; fixture.state.groups = "alice docker";
     assert.throws(() => requireUserExecutionIdentity("alice"), /unprivileged/);

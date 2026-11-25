@@ -29,7 +29,7 @@ export class ProtectedBrowserRouting {
       if (error instanceof ProtectedLoginError && error.code === "session_unavailable") this.chats.delete(key);
       // These failures occur after opening the private page. Inspection and
       // selector corrections must keep using that same private page.
-      if (error instanceof ProtectedLoginError && ["invalid_fields","field_ambiguous","unsafe_target","field_not_visible","credential_target_changed","credential_binding_mismatch","credential_unavailable"].includes(error.code)) this.chats.add(key);
+      if (error instanceof ProtectedLoginError && ["invalid_fields","field_ambiguous","unsafe_target","field_not_visible","protected_form_changed","credential_target_changed","credential_binding_mismatch","credential_unavailable"].includes(error.code)) this.chats.add(key);
       throw error;
     }
   }

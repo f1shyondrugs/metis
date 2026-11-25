@@ -4,7 +4,7 @@ import {createRequire} from "node:module";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
 const require=createRequire(import.meta.url),{build}=createRequire(require.resolve("tsx"))("esbuild");
-const directory="data/artifacts/onboarding-20261112/browser";fs.mkdirSync(directory,{recursive:true});
+const directory=process.env.METIS_ONBOARDING_FIXTURE_DIR||"data/artifacts/onboarding-20261112/browser";fs.mkdirSync(directory,{recursive:true});
 await build({entryPoints:["tests/onboarding.browser.tsx"],outdir:directory,entryNames:"app",bundle:true,platform:"browser",format:"esm",splitting:true,jsx:"automatic",define:{"process.env.NODE_ENV":'"production"',"process.env":"{}"},loader:{".woff2":"dataurl",".woff":"dataurl",".ttf":"dataurl"}});
 const css=await postcss([tailwind()]).process(fs.readFileSync("app/globals.css","utf8"),{from:"app/globals.css"});fs.writeFileSync(directory+"/theme.css",css.css);
 fs.writeFileSync(directory+"/index.html",'<html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Metis onboarding fixture</title><link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/app.css"><body><script type="module" src="/app.js"></script></body></html>');

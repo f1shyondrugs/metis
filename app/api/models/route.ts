@@ -21,7 +21,7 @@ import {
 import { modelKey, parseModelKey } from "@/lib/providers/types";
 import { contextWindowOf as providerContextWindow } from "@/lib/context-window";
 import { resolveModelContextMetadata } from "@/lib/model-context-metadata";
-import { getVerifiedProviderCapabilities } from "@/lib/providers/registry";
+import { getProviderDefinition, getVerifiedProviderCapabilities } from "@/lib/providers/registry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,6 +79,14 @@ export async function GET(req: Request) {
     ? listChatProviderConnections(userId, false)
         .filter((connection) => {
           if (connection.authType === "local" || connection.authType === "vertex_adc") return true;
+          // Discovery and the compatible runner accept an optional key. Only
+          // treat a missing key as anonymous; a broken stored key still fails closed.
+          if (
+            connection.authType === "api_key" &&
+            !connection.hasSecret &&
+            connection.baseUrl &&
+            getProviderDefinition(connection.providerKey)?.kind === "compatible"
+          ) return true;
           try {
             return Boolean(getProviderConnectionSecret(connection.id, userId)?.secret);
           } catch {

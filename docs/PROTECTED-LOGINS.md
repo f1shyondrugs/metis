@@ -13,7 +13,7 @@ Ask the agent to open an HTTPS login page. `browser_request_login` requests
 `password`, `username` or `email` fields, with optional selectors identifying
 visible controls. For school/tenant selection or other public preliminary steps,
 the private browser returns `protected_browser_ready`. Complete those steps in
-that context and request the visible credential fields again.
+that context and request the visible credential fields again. Protected clicks and waits accept a selector or visible text; ambiguous or stale controls return a control-specific diagnostic instead of asking for credentials again. A missing HTTPS tab, a lost private session, and an unavailable credential service are distinct failures.
 
 The form's **Save permanently** choice starts unchecked. Without it, encrypted
 values exist only in memory for the same owner, chat and target, for at most

@@ -243,7 +243,8 @@ test("mobile navigation preserves root, category, detail and focus-return levels
 test("Security keeps the credential manager reachable from its overview and search", () => {
   const overview = tabElement("security");
   assert.equal(elements(overview, "SettingsTile").length, 2);
-  assert.equal(elements(paneNode("credential-vault"), "SavedWebsiteLogins").length, 1);
+  assert.equal(elements(paneNode("credential-vault"), "NamedVaultEntriesPanel").length, 1);
+  assert.equal(elements(paneNode("credential-vault"), "SavedWebsiteLogins").length, 0);
   for (const mobile of [true, false]) {
     const nav = navigationHarness(mobile);
     nav.openSettingsCategory("security");
@@ -263,7 +264,7 @@ test("Security keeps the credential manager reachable from its overview and sear
 test("Passkeys use a peer Security detail with search and focus-return navigation", () => {
   const overview = tabElement("security");
   assert.equal(elements(overview, "PasskeySettings").length, 0, "manager does not mount in overview");
-  assert.equal(elements(overview, "SavedWebsiteLogins").length, 0);
+  assert.equal(elements(overview, "NamedVaultEntriesPanel").length, 0);
   assert.deepEqual(tabIds("security"), ["settings-passkeys", "settings-credential-vault"]);
   assert.equal(elements(paneNode("passkeys"), "PasskeySettings").length, 1);
   assert.equal(elements(source, "PasskeySettings").length, 1, "one manager instance");

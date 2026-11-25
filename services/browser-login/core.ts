@@ -23,13 +23,46 @@ type LoginInput = Record<string, unknown> & {
   kind?:string; origin?:string; password?:string; username?:string; email?:string;
   entryOrigin?:string; requestId?:string; persist?:boolean; replace?:boolean; url?:string; fields?:CredentialField[];
   selector?:string; usernameSelector?:string; emailSelector?:string; action?:string;
-  text?:string; key?:string; value?:string|string[]; includeSnapshot?:boolean; includeScreenshot?:boolean; quality?:number;
+  text?:string; exact?:boolean; key?:string; value?:string|string[]; includeSnapshot?:boolean; includeScreenshot?:boolean; quality?:number;
   deltaY?:number; width?:number; height?:number;
 };
 type Payload = { owner: string; chat?: string; operation: string; input?: LoginInput };
 function requiredText(value:unknown):string {
   if(typeof value!=="string")throw Error("Missing protected login field");
   return value;
+}
+
+function controlLocator(page: Page, input: Pick<LoginInput,"selector"|"text"|"exact">) {
+  if (typeof input.selector === "string" && input.selector.trim()) return page.locator(input.selector);
+  if (typeof input.text === "string" && input.text.trim() && input.text.length <= 500) {
+    // Ignore an inactive responsive duplicate; two visible matches still fail closed.
+    return page.getByText(input.text,{exact:input.exact===true}).filter({visible:true});
+  }
+  throw new ProtectedLoginError("protected_control_unavailable");
+}
+
+async function protectedControl<T>(page: Page, action: () => Promise<T>): Promise<T> {
+  try { return await action(); }
+  catch (error) {
+    if (page.isClosed()) throw new ProtectedLoginError("session_unavailable");
+    if (error instanceof ProtectedLoginError) throw error;
+    // Locator errors may include private page text or values.
+    throw new ProtectedLoginError("protected_control_unavailable");
+  }
+}
+
+export async function clickProtectedControl(
+  page: Page, input: Pick<LoginInput,"selector"|"text"|"exact">, validateLink: (url: string) => void,
+) {
+  return protectedControl(page, async () => {
+    const locator=controlLocator(page,input);
+    const destination=await locator.evaluate(el => {
+      const link=el.closest("a[href],area[href]") as HTMLAnchorElement|HTMLAreaElement|null;
+      return link?.href || null;
+    });
+    if (destination && !/^javascript:/i.test(destination)) validateLink(destination);
+    await locator.click();
+  });
 }
 
 export class SavedBrowserLogins {
@@ -81,7 +114,8 @@ export class SavedBrowserLogins {
       this.proxy ??= this.testProxy ? undefined : await publicBrowserProxy();
       const browser = await chromium.launch({ headless:true, chromiumSandbox:true,
         proxy:{server:this.testProxy || this.proxy!.url, bypass:"<-loopback>"},
-        args:["--disable-quic", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"] });
+        args:["--disable-quic", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"] })
+        .catch(() => { throw new ProtectedLoginError("protected_service_unavailable"); });
       const context = await browser.newContext({serviceWorkers:"block",acceptDownloads:false,ignoreHTTPSErrors:Boolean(this.testProxy)});
       await installSinglePageNavigation(context);
       const page = await context.newPage();
@@ -333,24 +367,18 @@ export class SavedBrowserLogins {
     const ownerView = operation === "owner_action" && management;
     if (operation !== "action" && !ownerView) throw Error("Denied");
     const session=await this.session(owner,chat),{page}=session;
+    if (page.isClosed()) throw new ProtectedLoginError("session_unavailable");
     const action=input.action;
     if (action === "navigate") {
       const target=this.site(input.url);
-      if (!session.navigationOrigins.has(target.origin)) throw Error("Protected login is bound to its website and declared return site; close browser before changing sites");
+      if (!session.navigationOrigins.has(target.origin)) throw new ProtectedLoginError("navigation_blocked");
       await page.goto(target.href,{waitUntil:"domcontentloaded"});
     } else if (action === "click") {
-      if (!input.selector) throw Error("Use a DOM selector");
-      const locator=page.locator(input.selector);
-      const destination=await locator.evaluate(el=>{
-        const link=el.closest("a[href],area[href]") as HTMLAnchorElement|HTMLAreaElement|null;
-        return link?.href || null;
-      });
-      // A blocked link must not look like a successful click on the old page.
-      if(destination&&!/^javascript:/i.test(destination)){
+      // Text and selector clicks pass the same link and private-request checks.
+      await clickProtectedControl(page,input,destination=>{
         const target=this.site(destination);
         if(!session.navigationOrigins.has(target.origin)||browserHasSecureInput(page)&&!protectedRequestAllowed(page,{url:()=>target.href,postData:()=>null},session.origin,session.navigationOrigins))throw new ProtectedLoginError("navigation_blocked");
-      }
-      await locator.click();
+      });
     } else if (action === "type") {
       if (!input.selector) throw Error("Use a DOM selector");
       const target=page.locator(input.selector);
@@ -361,7 +389,7 @@ export class SavedBrowserLogins {
     else if (action === "forward") await page.goForward();
     else if (action === "reload") await page.reload();
     else if (action === "select_option") await page.locator(requiredText(input.selector)).selectOption(input.value ?? "");
-    else if (action === "wait_for") await page.locator(requiredText(input.selector)).waitFor();
+    else if (action === "wait_for") await protectedControl(page,()=>controlLocator(page,input).waitFor());
     else if (action === "scroll") await page.evaluate(y=>scrollBy(0,y),Number(input.deltaY)||600);
     else if (action === "resize") await page.setViewportSize({width:Math.max(320,Math.min(2560,Number(input.width)||1280)),height:Math.max(240,Math.min(1600,Number(input.height)||800))});
     else if (action === "download" || action === "batch" || action === "upload_file" || action === "upload_files" || action === "drop_files") throw new ProtectedLoginError("protected_action_unavailable");

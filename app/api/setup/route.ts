@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     action?: string;
     username?: string;
     password?: string;
-    osUsername?: string | null;
+    osUsername?: unknown;
     publicUrl?: unknown;
   };
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -97,16 +97,24 @@ export async function POST(req: Request) {
       { headers: { "Cache-Control": "no-store" } });
   }
 
-  if (action === "os-users") {
-    const limit = consumeRateLimit("setup:os-users", 20, 60_000);
+  if (action === "check-token" || action === "os-users") {
+    if (action === "check-token" && !requestOriginAllowed(req)) {
+      return Response.json({ error: "Invalid origin." }, { status: 403 });
+    }
+    const limit = consumeRateLimit(`setup:${action}`, 20, 60_000);
     if (!limit.allowed) return Response.json({ error: "Too many setup attempts." }, {
       status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) },
     });
     if (getSetupStatus().hasUsers || setupTokenConsumed()) {
-      return Response.json({ error: "Sign in as an admin to list OS users." }, { status: 409 });
+      return Response.json({ error: action === "check-token"
+        ? "Setup already has an account or its token has been consumed."
+        : "Sign in as an admin to list OS users." }, { status: 409 });
     }
     if (!validSetupToken(body.setupToken)) {
       return Response.json({ error: "A valid operator setup token is required." }, { status: 403 });
+    }
+    if (action === "check-token") {
+      return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
     }
     return Response.json({ platform: hostPlatform(), ...osUserSuggestions() });
   }
@@ -124,7 +132,7 @@ export async function POST(req: Request) {
         setupToken: body.setupToken,
         username: typeof body.username === "string" ? body.username : "",
         password: typeof body.password === "string" ? body.password : "",
-        osUsername: typeof body.osUsername === "string" ? body.osUsername.trim() || undefined : undefined,
+        osUsername: body.osUsername,
       });
       const session = authenticateUser(user.username, body.password || "");
       if (!session) return Response.json({ error: "Could not sign in after setup." }, { status: 500 });
@@ -145,6 +153,9 @@ export async function POST(req: Request) {
   }
 
   if (action === "os-user") {
+    if (body.osUsername != null && typeof body.osUsername !== "string") {
+      return Response.json({ error: "Enter a server OS username." }, { status: 400 });
+    }
     try {
       patchManagedUser(userId, {
         osUsername: body.osUsername ?? null,

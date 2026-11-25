@@ -145,6 +145,19 @@ for (const destination of ["return302", "return303"]) {
   });
 }
 
+test("protected text actions use the same guarded page and reject unrelated links", async t=>{
+  const {submit,call,page,arrivals}=await fixture(t);
+  await submit("return302");
+  const initialPage=page();
+  await assert.rejects(call("action",{action:"click",text:"Foreign",exact:true}),
+    (error:unknown)=>error instanceof Error && "code" in error && error.code==="navigation_blocked");
+  await call("action",{action:"click",text:"Moodle",exact:true});
+  const result=await call("action",{action:"wait_for",text:"Course ready",exact:true});
+  assert.equal(result.url,"https://return.test/course");
+  assert.equal(page(),initialPage);
+  assert.equal(arrivals.some(request=>request.host==="foreign.test"),false);
+});
+
 for(const selector of ["#course-link","#script-link","#empty-window","#course-submit","#native-submit","#base-link"]){
  test("protected SSO "+selector+" stays in the guarded page with authenticated cookies",async t=>{
   const {submit,call,page,arrivals}=await fixture(t);

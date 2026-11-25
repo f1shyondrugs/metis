@@ -90,7 +90,7 @@ export async function performSharedBrowserAction(
       },
     );
   } catch (error) {
-    if (protectedPrepare) throw new ProtectedLoginError();
+    if (protectedPrepare || action.tabId === "protected") throw new ProtectedLoginError("protected_service_unavailable");
     throw new Error(
       error instanceof Error && error.name === "TimeoutError"
         ? "Browser action timed out"

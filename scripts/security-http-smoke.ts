@@ -41,7 +41,7 @@ async function main() {
     AI_CHAT_MCP_STATE_DIR: path.join(fixture, "mcp"), AGENT_CWD: path.join(fixture, "workspace"),
     AI_CHAT_PUBLIC_URL: base, AI_CHAT_INTERNAL_ORIGIN: base,
     AI_CHAT_SECRETS_KEY: "c".repeat(64), MCP_BEARER_TOKEN: "synthetic-http-test-bearer",
-    AI_CHAT_ALLOW_ROOT_AGENTS: "false", AI_CHAT_TRUSTED_PROXIES: "",
+    AI_CHAT_ALLOW_ROOT_AGENTS: "true", AI_CHAT_TRUSTED_PROXIES: "",
   }, stdio: ["ignore", "pipe", "pipe"] });
   child.stdout.on("data", (chunk) => { output += chunk.toString(); });
   child.stderr.on("data", (chunk) => { output += chunk.toString(); });
@@ -65,8 +65,16 @@ async function main() {
     if (process.platform !== "win32") assert.equal(statSync(file).mode & 0o777, 0o600);
     assert.ok(!output.includes(token), "secret never logged");
     console.log("HTTP_PRIVATE_TOKEN_BEFORE_LISTEN_PASS");
+    assert.equal((await request("/api/setup", { action: "check-token", setupToken: "invalid" }, { origin: base })).status, 403);
+    const checked = await request("/api/setup", { action: "check-token", setupToken: token }, { origin: base });
+    assert.equal(checked.status, 200);
+    assert.equal(checked.headers.get("set-cookie"), null);
+    assert.deepEqual(await checked.json(), { ok: true });
+    assert.equal((await (await fetch(base + "/api/setup")).json()).hasUsers, false);
+    assert.ok(existsSync(file));
+    console.log("HTTP_TOKEN_CHECK_NO_ACCOUNT_PASS");
     assert.equal((await request("/api/setup", { action: "bootstrap", username: "synthetic-admin", password: "synthetic-password" })).status, 403);
-    const bootstrap = await request("/api/setup", { action: "bootstrap", setupToken: token, username: "synthetic-admin", password: "synthetic-password" });
+    const bootstrap = await request("/api/setup", { action: "bootstrap", setupToken: token, username: "synthetic-admin", password: "synthetic-password", osUsername: os.userInfo().username });
     assert.equal(bootstrap.status, 201);
     const cookie = bootstrap.headers.get("set-cookie")!.split(";")[0];
     assert.equal((await request("/api/setup", { action: "bootstrap", setupToken: token, username: "other", password: "synthetic-password" })).status, 409);

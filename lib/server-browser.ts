@@ -526,6 +526,7 @@ async function waitForLocatorAcrossFrames(
 }
 
 import {BROWSER_CREDENTIAL_SELECTOR,screenshotPage} from "./browser-screenshot-policy";
+import {ProtectedLoginError} from "./protected-login-errors";
 import {browserInputSecrets,browserUrlSecrets,retainBrowserSecrets} from "./browser-secure-input";
 import {BROWSER_PUBLIC_URL_VALUE_SELECTOR,createBrowserTextRedactor} from "./browser-redaction";
 export {BROWSER_CREDENTIAL_SELECTOR,screenshotPage} from "./browser-screenshot-policy";
@@ -735,10 +736,10 @@ export function getBrowserLoginContext(ownerId:string,chatId:string,requestedTab
   return {url,...(entryOrigin?{entryOrigin}:{})};
 }
 export function getBrowserLoginTarget(ownerId: string, chatId: string, requestedTabId?: string) {
-  if (!ownerId || !chatId) throw new Error("Browser session required");
+  if (!ownerId || !chatId) throw new ProtectedLoginError("login_target_unavailable");
   const state = sessions.get(sessionKey(ownerId, chatId));
   const page = state?.tabs.get(requestedTabId || state.activeTabId);
-  if (!page || page.isClosed()) throw new Error("Browser login target unavailable");
+  if (!page || page.isClosed() || page.url() === "about:blank") throw new ProtectedLoginError("login_target_unavailable");
   return page.url();
 }
 

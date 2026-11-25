@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 const dataDir = mkdtempSync(path.join(os.tmpdir(), "metis-setup-security-"));
 Object.assign(process.env, {
   CHAT_DATA_DIR: dataDir, CHAT_DB_PATH: path.join(dataDir, "chat.sqlite"),
-  AGENT_CWD: dataDir, AI_CHAT_ROOT: dataDir, CHAT_LEGACY_HEADER_AUTH: "false", AI_CHAT_ALLOW_ROOT_AGENTS: "false",
+  AGENT_CWD: dataDir, AI_CHAT_ROOT: dataDir, CHAT_LEGACY_HEADER_AUTH: "false", AI_CHAT_ALLOW_ROOT_AGENTS: "true",
 });
 delete process.env.AI_CHAT_SETUP_TOKEN;
 delete process.env.METIS_AI_BOOTSTRAP_PASSWORD;
@@ -25,7 +25,7 @@ test("real setup route: operator-only bootstrap, one-time consumption, authoriza
   const post = (body: object, headers: Record<string, string> = {}) => POST(new Request("http://localhost/api/setup", {
     method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body),
   }));
-  const bootstrap = (setupToken?: unknown, username = "operator") => ({ action: "bootstrap", username, password: "secure-password-123", setupToken });
+  const bootstrap = (setupToken?: unknown, username = "operator") => ({ action: "bootstrap", username, password: "secure-password-123", setupToken, osUsername: os.userInfo().username });
   let secret = "";
 
   await t.test("missing startup token and spoofed loopback headers fail closed", async () => {
@@ -49,6 +49,25 @@ test("real setup route: operator-only bootstrap, one-time consumption, authoriza
     assert.equal(readFileSync(tokens.setupTokenFile, "utf8").trim(), secret);
   });
 
+  await t.test("token-only check is rate-limited and neither reveals OS data nor claims setup", async () => {
+    const check = (setupToken?: unknown, headers?: Record<string, string>) => post({ action: "check-token", setupToken }, headers);
+    assert.equal((await check()).status, 403);
+    assert.equal((await check(secret, { origin: "https://unrelated.example" })).status, 403);
+    const response = await check(secret, { origin: "http://localhost" });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("set-cookie"), null);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.equal(tokens.validSetupToken(secret), true);
+    assert.equal(count(), 0);
+    resetRateLimit("setup:check-token");
+    for (let i = 0; i < 20; i++) {
+      assert.equal((await check("wrong", { "x-forwarded-for": String(i) })).status, 403);
+    }
+    assert.equal((await check(secret)).status, 429);
+    resetRateLimit("setup:check-token");
+  });
+
   await t.test("first-run OS suggestions require an operator token and do not consume it", async () => {
     assert.equal((await post({ action: "os-users" })).status, 403);
     assert.equal((await post({ action: "os-users", setupToken: "wrong" })).status, 403);
@@ -64,13 +83,21 @@ test("real setup route: operator-only bootstrap, one-time consumption, authoriza
   });
 
   await t.test("invalid OS mappings return actionable errors and preserve first-run state", async () => {
+    assert.equal((await post({ ...bootstrap(secret), osUsername: { username: "root" } })).status, 400);
     const missing = await post({ ...bootstrap(secret), osUsername: "metis_missing_diagnostic_user" });
     assert.equal(missing.status, 400);
     assert.match((await missing.json()).error, /does not exist on this host/);
     if (process.platform === "linux") {
-      const root = await post({ ...bootstrap(secret), osUsername: "root" });
-      assert.equal(root.status, 400);
-      assert.match((await root.json()).error, /Root agent execution is disabled.*Leave the OS user blank/);
+      const { config } = await import("../lib/config");
+      const original = config.allowRootAgents;
+      Object.assign(config, { allowRootAgents: false });
+      try {
+        const root = await post({ ...bootstrap(secret), osUsername: "root" });
+        assert.equal(root.status, 400);
+        assert.match((await root.json()).error, /explicitly disabled root agents/);
+      } finally {
+        Object.assign(config, { allowRootAgents: original });
+      }
     }
     assert.equal(count(), 0);
     assert.equal(tokens.validSetupToken(secret), true);
@@ -127,7 +154,7 @@ test("real setup route: operator-only bootstrap, one-time consumption, authoriza
         const response = await POST(new Request("http://localhost/api/setup", {
           method: "POST", headers: {"Content-Type":"application/json"},
           body: JSON.stringify({ action:"bootstrap", username:process.env.TEST_USERNAME,
-            password:"secure-password-123", setupToken:process.env.TEST_SETUP_TOKEN })
+            password:"secure-password-123", setupToken:process.env.TEST_SETUP_TOKEN, osUsername:process.env.TEST_OS_USERNAME })
         }));
         console.log("RESULT:" + JSON.stringify({status:response.status, cookie:response.headers.get("set-cookie")}));
         process.exit(0);
@@ -136,7 +163,7 @@ test("real setup route: operator-only bootstrap, one-time consumption, authoriza
     const children = ["raceone", "racetwo", "racethree"].map((username) => {
       const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
         cwd: path.join(import.meta.dirname, ".."),
-        env: { ...process.env, TEST_USERNAME: username, TEST_SETUP_TOKEN: secret },
+        env: { ...process.env, TEST_USERNAME: username, TEST_SETUP_TOKEN: secret, TEST_OS_USERNAME: os.userInfo().username },
         stdio: ["pipe", "pipe", "pipe"],
       });
       let output = "", errors = "";
@@ -184,6 +211,7 @@ test("real setup route: operator-only bootstrap, one-time consumption, authoriza
     assert.equal((await post({ action: "complete" }, { cookie: memberCookie })).status, 403);
     assert.equal((await post({ action: "os-user", osUsername: null }, { cookie: memberCookie })).status, 403);
     assert.equal((await post({ action: "os-users", setupToken: secret })).status, 409);
+    assert.equal((await post({ action: "check-token", setupToken: secret })).status, 409);
     assert.equal((await post(bootstrap(secret))).status, 409);
   });
 

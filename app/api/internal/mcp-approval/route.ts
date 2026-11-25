@@ -11,6 +11,9 @@ import { getChat, updateChat } from "@/lib/db-store";
 import { getJob, updateJob } from "@/lib/db-jobs";
 import { internalRunLeaseAuthorized } from "@/lib/internal-run-lease";
 import { normalizeRuntimeMode } from "@/lib/runtime-mode";
+import { getHostToolPolicy } from "@/lib/host-tool-policy-store";
+import { hostRuleForTool } from "@/lib/mcp-core/host-tool-policy.mjs";
+import { hostApprovalScope, isHostApprovalScope } from "@/lib/mcp-core/host-tool-approval.mjs";
 import { bearerTokenMatches } from "@/lib/security";
 
 export const runtime = "nodejs";
@@ -160,10 +163,18 @@ export async function POST(req: Request) {
   if (!chat || !currentJob) {
     return Response.json({ error: "Chat or job not found" }, { status: 404 });
   }
+  if (currentJob.chatId !== chatId || currentJob.userId !== userId) {
+    return Response.json({error: "Approval does not belong to this run."}, {status: 403});
+  }
+  const toolName = typeof body.toolName === "string" ? body.toolName.trim() : "";
+  const policy = getHostToolPolicy();
+  const rule = hostRuleForTool(policy, toolName);
+  const forced = rule === "confirm";
+  if (rule === "block") return Response.json({error: "Tool blocked by host policy."}, {status: 403});
   if (
     chat.automationId ||
     currentJob.automationId ||
-    !["approval-required", "auto-accept-edits"].includes(normalizeRuntimeMode(chat.runtimeMode))
+    (!forced && !["approval-required", "auto-accept-edits"].includes(normalizeRuntimeMode(chat.runtimeMode)))
   ) {
     return Response.json(
       { error: "Runtime approval is not enabled for this run" },
@@ -173,8 +184,6 @@ export async function POST(req: Request) {
   const title = typeof body.title === "string" ? body.title.trim() : "";
   if (!title)
     return Response.json({ error: "title is required" }, { status: 400 });
-  const toolName =
-    typeof body.toolName === "string" ? body.toolName.trim() : "";
   const hasArgs = body.args !== undefined;
   if (!toolName || !hasArgs)
     return Response.json(
@@ -187,10 +196,15 @@ export async function POST(req: Request) {
       : typeof toolName === "string"
         ? JSON.stringify(body.args ?? {})
         : String(body.args ?? "");
-  const sessionScope =
+  const expectedScope = forced ? hostApprovalScope(policy.revision, toolName, body.args) : undefined;
+  if ((forced && body.sessionScope !== expectedScope) || (!forced && isHostApprovalScope(body.sessionScope))) {
+    return Response.json({error: "The host tool policy changed. Retry the tool."}, {status: 409});
+  }
+  const sessionScope = expectedScope ?? (
     typeof body.sessionScope === "string" && body.sessionScope.trim()
       ? body.sessionScope.trim().slice(0, 2_000)
-      : `${toolName}:${JSON.stringify(body.args ?? {})}`.slice(0, 2_000);
+      : `${toolName}:${JSON.stringify(body.args ?? {})}`.slice(0, 2_000)
+  );
   if (command.length > approvalLimits().maxCommandLength) {
     return Response.json(
       { error: "Approval command is too long" },
@@ -243,6 +257,7 @@ export async function POST(req: Request) {
       pendingApproval: {
         id: approvalId,
         title,
+        ...(forced ? {onceOnly: true} : {}),
         ...(command ? { command } : {}),
         ...(files?.length ? { files } : {}),
         createdAt,

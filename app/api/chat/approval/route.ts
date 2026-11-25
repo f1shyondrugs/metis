@@ -3,6 +3,7 @@ import { resolveActionApproval } from "@/lib/remote-approval-flow";
 import { getPendingApprovalForChat } from "@/lib/db-approvals";
 import { queueUserInputResume, releaseUserInputWait } from "@/lib/db-jobs";
 import { getChat, updateChat } from "@/lib/db-store";
+import { isHostApprovalScope } from "@/lib/mcp-core/host-tool-approval.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
         pendingApproval: next ? {
           id: next.approvalId, title: next.title, command: next.command,
           files: next.files, createdAt: next.createdAt,
+          ...(isHostApprovalScope(next.sessionScope) ? {onceOnly: true} : {}),
         } : null,
         ...(resolved.decision === "allow-session" && resolved.sessionScope
           ? {

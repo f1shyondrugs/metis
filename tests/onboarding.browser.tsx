@@ -20,7 +20,7 @@ Object.defineProperties(motionMedia,{matches:{get:()=>reducedMotion},media:{valu
 window.matchMedia=query=>query==="(prefers-reduced-motion: reduce)"?motionMedia as MediaQueryList:originalMatchMedia(query);
 async function reduceMotion(value:boolean){reducedMotion=value;motionMedia.dispatchEvent(new Event("change"));await pause(40);}
 let failures=0,permissionCalls=0,deviceCalls=0,serverCalls=0,providerCalls=0,pairingNavigationCalls=0,setupFinished=0,setupCompleteRequests=0;
-let nativeId="",downloadFail=false,bootstrapCalls=0,providerRequests=0,adminRequests=0,osRequests=0,bootstrapFailureStatus=0,setupCompleteFailures=0;
+let nativeId="",downloadFail=false,bootstrapCalls=0,providerRequests=0,adminRequests=0,osRequests=0,bootstrapFailureStatus=0,setupCompleteFailures=0,tokenCheckCalls=0;
 let urlCheck: PublicBaseCheck = { state: "other_instance" };
 let urlCheckRequests = 0, testAdminSession = false;
 const nav:TourTarget[]=[]; // No navigation callback is passed by onboarding.
@@ -44,7 +44,10 @@ window.fetch=async(input,init)=>{
  if(url==="/api/setup"){const body=init?.body?JSON.parse(String(init.body)):{};if(body.action==="check-public-url"){
    if (!testAdminSession || "setupToken" in body || typeof body.publicUrl!=="string") return Response.json({error:"Invalid fixture request"},{status:403});
    urlCheckRequests++;await pause(300);return Response.json({check:urlCheck,...(urlCheck.state==="verified"?{base:resolvePublicBaseUrl(body.publicUrl)}:{})});
-  }if(body.action==="bootstrap"){bootstrapCalls++;await pause(60);if(bootstrapFailureStatus){const status=bootstrapFailureStatus;bootstrapFailureStatus=0;return Response.json({error:"Synthetic bootstrap error"},{status});}testAdminSession=true;return Response.json({user:{id:"fixture-admin",username:"Demo",isAdmin:true}});}if(body.action==="complete"){setupCompleteRequests++;if(setupCompleteFailures>0){setupCompleteFailures--;return Response.json({error:"Synthetic completion error"},{status:503});}return Response.json({ok:true});}if(body.action==="os-users")osRequests++;return Response.json({platform:"linux",osUsers:[],osUsersAvailable:false});}
+  }if(body.action==="check-token"){tokenCheckCalls++;await pause(60);
+    if(Object.keys(body).length!==2||!["synthetic-token","fixture-only-token"].includes(body.setupToken))return Response.json({error:"A valid operator setup token is required."},{status:403});
+    return Response.json({ok:true});
+  }if(body.action==="bootstrap"){bootstrapCalls++;if(body.osUsername!=="root")return Response.json({error:"Missing fixture OS account"},{status:400});await pause(60);if(bootstrapFailureStatus){const status=bootstrapFailureStatus;bootstrapFailureStatus=0;return Response.json({error:"Synthetic bootstrap error"},{status});}testAdminSession=true;return Response.json({user:{id:"fixture-admin",username:"Demo",isAdmin:true}});}if(body.action==="complete"){setupCompleteRequests++;if(setupCompleteFailures>0){setupCompleteFailures--;return Response.json({error:"Synthetic completion error"},{status:503});}return Response.json({ok:true});}if(body.action==="os-users")osRequests++;return Response.json({platform:"linux",osUsers:[],osUsersAvailable:false});}
  if(url==="/api/providers"){providerRequests++;return Response.json({providers:[{key:"synthetic-provider",name:"Fixture provider",description:"Isolated UI test only",authTypes:["api_key"],capabilities:[]}]});}
  if(url==="/api/admin/users"){adminRequests++;return Response.json({users:[{id:"fixture-admin",username:"Demo",isAdmin:true}]});}
  return originalFetch(input,init);
@@ -69,13 +72,22 @@ function button(text:string){const scope=document.querySelector(".onboarding-tou
 function linearNavigation(){const scope=document.querySelector(".onboarding-tour")||document.querySelector(".onboarding-stage");const buttons=Array.from(scope?.querySelectorAll("button")||[]);return buttons.length>=1&&buttons.length<=2&&buttons.every(el=>["Back","Continue","Finish"].includes(el.textContent?.trim()||""));}
 async function selectPlatform(value:string){const select=document.querySelector<HTMLSelectElement>('select[aria-label="App platform"]')!;select.value=value;select.dispatchEvent(new Event("change",{bubbles:true}));await pause(150);}
 async function click(text:string){const target=button(text);if(!target)throw Error("Missing button "+text);
- if((text==="Continue"||text==="Finish"||text==="Enter Metis")&&document.querySelector(".onboarding-stage,.onboarding-tour")){const footer=target.closest(".onboarding-footer"),dots=footer?.querySelector(".onboarding-progress"),actions=target.closest(".onboarding-actions");const b=target.getBoundingClientRect(),p=dots?.getBoundingClientRect(),f=footer?.getBoundingClientRect();check(!!footer&&!!actions&&!!p&&!!f&&Math.abs(p.top+p.height/2-b.top-b.height/2)<2&&Math.abs(f.right-b.right)<2&&p.right<b.left,"Continue stays bottom-right on the dots row: "+(document.querySelector(".onboarding-tour h2")?.textContent||document.querySelector(".onboarding-stage h1")?.textContent));}
+ if((text==="Continue"||text==="Create admin"||text==="Finish"||text==="Enter Metis")&&document.querySelector(".onboarding-stage,.onboarding-tour")){const footer=target.closest(".onboarding-footer"),dots=footer?.querySelector(".onboarding-progress"),actions=target.closest(".onboarding-actions");const b=target.getBoundingClientRect(),p=dots?.getBoundingClientRect(),f=footer?.getBoundingClientRect();check(!!footer&&!!actions&&!!p&&!!f&&Math.abs(p.top+p.height/2-b.top-b.height/2)<2&&Math.abs(f.right-b.right)<2&&p.right<b.left,"Continue stays bottom-right on the dots row: "+(document.querySelector(".onboarding-tour h2")?.textContent||document.querySelector(".onboarding-stage h1")?.textContent));}
  target.click();await pause(150);for(let i=0;i<60&&document.querySelector('.onboarding-transition[data-phase="out"]');i++)await pause(20);}
 function read(owner:string,client="browser"){return JSON.parse(localStorage.getItem(onboardingStorageKey(owner,client))||"null");}
 async function fill(label:string,value:string){
  const el=Array.from(document.querySelectorAll<HTMLInputElement>("input")).find(el=>el.getAttribute("aria-label")===label||Array.from(el.labels || []).some(item=>item.textContent?.includes(label)));
  if(!el)throw Error("Missing input "+label);
  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(el,value);el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));await pause(30);
+}
+async function waitForSetupStep(label:string){
+ await until(()=>document.querySelector(".onboarding-stage h1")?.textContent===label
+  && !document.querySelector('.onboarding-transition[data-phase="out"]'),"setup step: "+label);
+}
+async function fillAdminSteps(token="synthetic-token") {
+ await fill("Operator setup token",token);await click("Continue");await waitForSetupStep("Admin username");
+ await fill("Admin username","demo-admin");await click("Continue");await waitForSetupStep("Password");
+ await fill("Password","synthetic-password");await click("Continue");await waitForSetupStep("Run agents as");
 }
 async function reportResults() {
  document.body.dataset.complete="true";report.textContent=failures?results.filter(x=>x.startsWith("FAIL")).join("\n"):"PASS "+results.length+" onboarding assertions · "+innerWidth+"px";
@@ -98,14 +110,14 @@ async function runPublicUrlCheck() {
  const marker = () => document.querySelector<HTMLElement>('[data-url-verified]');
  mountUrl(undefined,true);await until(()=>heading()==="What's your public URL?","resumed URL step");
  check(address()?.value===""&&button("Check URL")?.disabled&&!button("Finish")?.disabled,"missing URL does not block Finish");
- mountUrl("https://metis.example/",false);await until(()=>heading()==="Create your admin account","fresh admin step");
- check(progress()==="Step 1 of 2"&&!button("Check URL"),"fresh setup starts on admin, not the URL check");
+ mountUrl("https://metis.example/",false);await until(()=>heading()==="Operator setup token","fresh token step");
+ check(progress()==="Step 1 of 5"&&!button("Check URL"),"fresh setup starts on admin, not the URL check");
  const tokenDisclosure=disclosureWorks("Where to find the setup token");
  await until(()=>!!tokenDisclosure&&tokenDisclosure.getAttribute("aria-expanded")==="true","operator token help expands");
  check(tokenDisclosure&&document.activeElement===tokenDisclosure&&!document.getElementById(tokenDisclosure.getAttribute("aria-controls")!)?.hidden,"token help uses the focusable chevron disclosure");
- await fill("Admin username","demo-admin");await fill("Password","synthetic-password");await fill("Operator setup token","fixture-only-token");
- await click("Continue");await until(()=>heading()==="What's your public URL?","URL step after creating admin");
- check(progress()==="Step 2 of 2"&&address()?.value==="https://metis.example"&&!document.querySelector('input[type="password"]')&&setupCompleteRequests===0,"public address has its own editable field and credentials are cleared");
+ await fillAdminSteps("fixture-only-token");await fill("Run agents as","root");
+ await click("Create admin");await until(()=>heading()==="What's your public URL?","URL step after creating admin");
+ check(progress()==="Step 5 of 5"&&address()?.value==="https://metis.example"&&!document.querySelector('input[type="password"]')&&setupCompleteRequests===0,"public address has its own editable field and credentials are cleared");
  const urlDisclosure=disclosureWorks("How do I change this?");
  await until(()=>!!urlDisclosure&&urlDisclosure.getAttribute("aria-expanded")==="true","URL configuration help expands");
  check(urlDisclosure&&!document.getElementById(urlDisclosure.getAttribute("aria-controls")!)?.hidden,"URL help uses the same disclosure");
@@ -130,6 +142,10 @@ async function runPublicUrlCheck() {
 }
 async function run(){
  if (view === "url-check") return runPublicUrlCheck();
+ if (view === "server-only") {
+  root.render(<AppearanceProvider><PublicBaseUrlProvider base={resolvePublicBaseUrl(undefined)}><SetupWizard open hasUsers={false} onFinished={()=>{}}/></PublicBaseUrlProvider></AppearanceProvider>);
+  return;
+ }
  for(const key of Object.keys(localStorage))if(key.startsWith("metis:onboarding:"))localStorage.removeItem(key);
  localStorage.removeItem(APPEARANCE_STORAGE_KEY);browser();await mount();
  check(document.documentElement.dataset.surface==="midnight"&&getComputedStyle(document.documentElement).getPropertyValue("--background").trim()===getThemePreset("midnight")!.variables["--background"],"fresh theme is Midnight");
@@ -266,24 +282,53 @@ async function run(){
  // Actual minimal setup UI, with fake HTTP only: no owner account changes.
  const providerBeforeSetup=providerRequests,adminBeforeSetup=adminRequests,osBeforeSetup=osRequests;
  const mountSetup=async(hasUsers=false)=>{root.render(<SetupWizard key={"setup-"+ ++nonce} open hasUsers={hasUsers} onFinished={()=>{setupFinished++;}}/>);await pause(220);};
- const fillAdmin=async()=>{await fill("Admin username","demo-admin");await fill("Password","synthetic-password");await fill("Operator setup token","synthetic-token");};
+ const activeInput=()=>document.querySelector<HTMLInputElement>(".onboarding-stage form input");
+ const stepIs=(label:string,index:number)=>document.querySelector(".onboarding-stage h1")?.textContent===label&&
+   document.querySelector(".onboarding-progress")?.getAttribute("aria-label")===`Step ${index} of 5`&&
+   document.querySelectorAll(".onboarding-stage input").length===1&&activeInput()?.labels?.[0]?.textContent===label;
+ const alert=()=>document.querySelector('[role="alert"]')?.textContent;
+ const fillAdmin=async()=>{await fillAdminSteps();await fill("Run agents as"," root ");};
  sessionStorage.setItem("metis-setup-step","provider");await mountSetup();
- check(document.querySelector(".onboarding-stage h1")?.textContent==="Create your admin account","fresh and legacy saved setup open directly at the admin form");
- check(document.querySelectorAll("input").length===3&&document.querySelectorAll('input[type="password"]').length===2,"only username, password and protected operator token remain");
- check(!document.querySelector("select")&&!document.querySelector('input[type="checkbox"]')&&!document.body.textContent?.includes("OS user"),"OS mapping and extra account options are deferred to Settings");
- check(document.activeElement?.getAttribute("autocomplete")==="username","admin username receives initial focus");
+ check(stepIs("Operator setup token",1)&&activeInput()?.type==="password","fresh and legacy setup start with only the masked token");
+ check(document.activeElement===activeInput()&&!button("Back"),"token receives initial focus and there is no Back on the first step");
  check(button("Where to find the setup token")?.getAttribute("aria-expanded")==="false","operator-token help is collapsed by default");
- await click("Continue");check(bootstrapCalls===0,"associated footer submit keeps native required-field validation");
- await fillAdmin();bootstrapFailureStatus=403;await click("Continue");
- check(bootstrapCalls===1&&setupCompleteRequests===0&&!!document.querySelector('[role="alert"]'),"rejected operator validation cannot finish setup");
- check(document.querySelectorAll("input").length===3,"rejected bootstrap preserves the account form for correction");
- button("Continue")!.click();button("Continue")!.click();await pause(260);
+ await click("Continue");check(tokenCheckCalls===0&&activeInput()?.validity.valueMissing,"required token blocks the first step");
+ await fill("Operator setup token","invalid-token");await click("Continue");
+ await until(()=>alert()?.includes("valid operator setup token")===true,"wrong-token feedback");
+ check(stepIs("Operator setup token",1)&&alert()?.includes("valid operator setup token")&&bootstrapCalls===0,"wrong token is rejected before asking for credentials");
+ await fill("Operator setup token","synthetic-token");await click("Continue");await waitForSetupStep("Admin username");
+ check(stepIs("Admin username",2)&&document.activeElement===activeInput()&&activeInput()?.autocomplete==="username","username appears and receives focus after token validation");
+ await fill("Admin username","bad name");await click("Continue");
+ check(stepIs("Admin username",2)&&alert()?.includes("3–64"),"invalid admin username stays on its own step");
+ await fill("Admin username","demo-admin");await click("Continue");
+ check(stepIs("Password",3)&&activeInput()?.type==="password"&&activeInput()?.autocomplete==="new-password","password is masked and follows username");
+ await fill("Password","short");await click("Continue");
+ check(stepIs("Password",3)&&bootstrapCalls===0,"short password does not advance");
+ await fill("Password","synthetic-password");await click("Back");
+ check(stepIs("Admin username",2)&&activeInput()?.value==="demo-admin","Back preserves the previously entered username");
+ await click("Continue");
+ check(stepIs("Password",3)&&activeInput()?.value==="synthetic-password","returning to password keeps the unsaved draft");
+ await click("Continue");
+ check(stepIs("Run agents as",4)&&document.activeElement===activeInput()&&bootstrapCalls===0,"OS username is last and nothing is created before submission");
+ await click("Create admin");
+ check(bootstrapCalls===0&&activeInput()?.validity.valueMissing,"missing OS user blocks account creation");
+ await fill("Run agents as","   ");await click("Create admin");
+ check(bootstrapCalls===0&&alert()?.includes("Enter the OS username"),"whitespace OS user blocks account creation");
+ await fill("Run agents as"," root ");bootstrapFailureStatus=400;await click("Create admin");
+ await until(()=>alert()?.includes("Synthetic bootstrap error")===true,"OS account feedback");
+ check(bootstrapCalls===1&&stepIs("Run agents as",4)&&!!alert(),"an OS validation error stays on the last input");
+ bootstrapFailureStatus=403;await click("Create admin");await waitForSetupStep("Operator setup token");
+ check(bootstrapCalls===2&&setupCompleteRequests===0&&stepIs("Operator setup token",1)&&activeInput()?.value===""&&!!alert(),"an expired token returns to the first step without creating an admin");
+ await fill("Operator setup token","synthetic-token");await click("Continue");await waitForSetupStep("Admin username");
+ await click("Continue");await waitForSetupStep("Password");
+ await click("Continue");await waitForSetupStep("Run agents as");
+ button("Create admin")!.click();button("Create admin")!.click();await pause(260);
  await until(()=>!!button("Finish"),"URL step after account submission");
- check(bootstrapCalls===2&&setupCompleteRequests===0&&document.body.textContent?.includes("What's your public URL?"),"one valid submit creates one admin and reaches the URL step before finishing");
+ check(bootstrapCalls===3&&setupCompleteRequests===0&&document.body.textContent?.includes("What's your public URL?"),"one valid submit creates one admin and reaches the URL step before finishing");
  await click("Finish");await until(()=>setupFinished===1,"URL step finish callback");
  check(!document.querySelector('input[type="password"]'),"acknowledged creation clears credential fields");
  check(providerRequests===providerBeforeSetup&&adminRequests===adminBeforeSetup&&osRequests===osBeforeSetup,"setup never fetches providers, lists extra users or discovers OS users");
- await mountSetup();await fillAdmin();setupCompleteFailures=1;await click("Continue");await until(()=>!!button("Finish"),"first URL step");
+ await mountSetup();await fillAdmin();setupCompleteFailures=1;await click("Create admin");await until(()=>!!button("Finish"),"first URL step");
  await click("Finish");await until(()=>!!document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic completion error")&&!document.querySelector('input[type="password"]'),"completion error after committed account scene");
  const createsBeforeRetry=bootstrapCalls,completesBeforeRetry=setupCompleteRequests;
  check(!document.querySelector('input[type="password"]')&&document.querySelector('[role="alert"]')?.textContent?.includes("Synthetic completion error"),"completion failure keeps the acknowledged admin instead of asking for credentials again");
@@ -291,7 +336,7 @@ async function run(){
  sessionStorage.setItem("metis-setup-step","people");await mountSetup(true);
  check(!!document.querySelector('input[type="url"]')&&document.body.textContent?.includes("What's your public URL?"),"existing incomplete installs resume directly at the URL step");
  const beforeResume=bootstrapCalls;await click("Finish");await until(()=>setupFinished===3,"resume completion callback");check(bootstrapCalls===beforeResume&&setupFinished===3,"resuming existing setup cannot create another account");
- await mountSetup();await fillAdmin();bootstrapFailureStatus=409;await click("Continue");
+ await mountSetup();await fillAdmin();bootstrapFailureStatus=409;await click("Create admin");await waitForSetupStep("Sign in to continue");
  check(document.querySelectorAll("input").length===0&&document.body.textContent?.includes("Sign in to continue"),"an already-created account switches to sign-in recovery without another bootstrap");
  check(![...Object.keys(localStorage)].some(k=>(localStorage.getItem(k)||"").includes("synthetic-password")||(localStorage.getItem(k)||"").includes("synthetic-token")),"setup secrets never enter client onboarding storage");
  root.render(<ProviderSetupDialog open onOpenChange={()=>{}} onConnected={()=>{}}/>);await pause(180);

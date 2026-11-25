@@ -2,7 +2,7 @@
 
 ## Two separate state owners
 
-Server bootstrap remains in `SetupWizard`, `/api/setup` and the existing setup database record. An empty instance opens directly at one admin form in both browser and desktop WebContentsView: username, password, and the required protected operator token. There is no welcome detour, extra-user creation, OS-user chooser or provider connection in server setup. After bootstrap, the signed-in admin reaches the Public URL step and selects Finish to enter the ordinary UI. Operator verification, first-admin-only transaction, token consumption, session cookie, authorization and execution guards stay unchanged. Client progress cannot grant access.
+Server bootstrap remains in `SetupWizard`, `/api/setup` and the existing setup database record. An empty instance opens directly at four short admin steps in both browser and desktop WebContentsView: Operator setup token → Admin username → Password → Run agents as. Each step shows one field. The first step verifies the token without consuming it or creating an account. Back keeps the unsaved inputs in memory; only Create admin submits the complete form. There is no welcome detour, extra-user creation or provider connection in server setup. After bootstrap, the signed-in admin reaches the Public URL step and selects Finish to enter the ordinary UI. Operator verification, first-admin-only transaction, token consumption, session cookie, authorization and execution guards stay unchanged. Client progress cannot grant access.
 
 After authentication, `/api/status` exposes only the current authenticated user's stable ID. AppShell mounts `ClientOnboarding` keyed by that ID after server setup. Completion is **not** a server-wide or account-wide setting: localStorage is scoped to this origin/browser profile and the account ID. Native clients additionally use a random installation ID from their local userData profile, exposed through a main-frame-only current-server IPC. Each other account, browser profile, server origin and desktop profile therefore gets a separate guide. Updates retain the ID and v1 record; completing one client does not complete another. A new tab in the same browser profile is not a new client.
 
@@ -12,7 +12,7 @@ Only version/phase/tourIndex are persisted. The small workspace tour has been re
 
 Only one admin is created during setup. More users, provider connections and OS execution identity management remain available in normal Settings. Legacy welcome/people/provider/ready browser records cannot revive removed steps: server account existence determines admin creation versus the authenticated Public URL step. Reloading an incomplete setup resumes that step without creating another account. Completion failures preserve the acknowledged account and clear secrets; Finish only repeats completion, never bootstrap. Conflicting account creation offers sign-in recovery. Duplicate submits are guarded synchronously.
 
-Safe inferred OS mappings remain as before. If the inferred identity is root and root execution is explicitly disabled, account setup may finish with no execution mapping; agent execution remains blocked until explicitly configured. An explicit disallowed root mapping still fails. Authorized root defaults are preserved, and the root policy is never toggled.
+A fresh admin must explicitly select an existing OS user. Blank, missing or invalid input creates no account and leaves the operator token usable. Existing account mappings and the configured root policy remain unchanged.
 
 ## Public app URL
 
@@ -55,6 +55,10 @@ The native local domain launcher uses the same timing constants and readiness ev
 Native fresh-profile setup uses a frameless, menu-free host with a draggable header. The logo, title and short description replace the old desktop eyebrow and right-hand feature checklist. On the first successful server load, the same authorized WebContentsView transfers to the regular framed app window without a page reload. Configured installations still open directly in their normal window; closing a retired splash cannot dispose the workspace. No pairing, authentication, permissions or autostart state changes as part of this presentation.
 
 Except for the native first-launch welcome hero, account setup, client guide use one bottom navigation row: progress dots on the left and Continue (Finish on the last app/device page) at the far right, with Back immediately before it. Forms use their original submit handlers through associated footer buttons. Provider connection now lives solely in the ordinary UI, not in first-instance setup; its standalone dialog and existing settings controls remain available. The footer stays on one row on small viewports. Full-screen dots/glow retain their existing motion behavior.
+
+## Agent account in first server setup
+
+In the last account step, **Run agents as**, enter the existing server OS username before selecting **Create admin**. On POSIX native installs, Metis uses the selected account’s existing home directory as the starting directory; there is no workspace-directory field in the wizard. On a fresh Linux install, `root` can be selected without an installer flag if the service already runs as UID 0. Metis does not elevate a non-root service, and an explicit operator opt-out (`AI_CHAT_ALLOW_ROOT_AGENTS=false`) is honored. The wizard does not create OS users, change host permissions, or rewrite existing account mappings. Per-task paths remain subject to the execution mode and the existing filesystem and account boundaries.
 
 ## First-launch hero and click response
 

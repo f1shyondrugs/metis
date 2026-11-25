@@ -906,6 +906,7 @@ export function updateChat(
       next.pendingApproval = {
         id: String(patch.pendingApproval.id || "").slice(0, 200),
         title: String(patch.pendingApproval.title || "").slice(0, 500),
+        ...(patch.pendingApproval.onceOnly === true ? {onceOnly: true} : {}),
         ...(typeof patch.pendingApproval.command === "string" && patch.pendingApproval.command.trim()
           ? { command: patch.pendingApproval.command.slice(0, 20_000) }
           : {}),

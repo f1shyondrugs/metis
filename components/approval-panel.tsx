@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 export type PendingApprovalView = {
   id: string;
   title: string;
+  onceOnly?: boolean;
   command?: string;
   files?: Array<{ path: string; status: string }>;
   createdAt: string;
@@ -43,7 +44,7 @@ export function ApprovalPanel({
             {approval.title || "Command approval required"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Allow or deny this action before the agent continues.
+            {approval.onceOnly ? "Your host administrator requires separate approval for each action." : "Allow or deny this action before the agent continues."}
           </p>
         </div>
       </div>
@@ -67,7 +68,7 @@ export function ApprovalPanel({
           <Check className="size-3.5" />
           Allow
         </Button>
-        <Button
+        {!approval.onceOnly && <Button
           type="button"
           size="sm"
           variant="secondary"
@@ -77,7 +78,7 @@ export function ApprovalPanel({
           onClick={() => onDecision("allow-session")}
         >
           Allow session
-        </Button>
+        </Button>}
         <Button type="button" size="sm" variant="outline" className="min-h-11 justify-start" disabled={disabled} onClick={() => onDecision("deny")}>
           Deny
         </Button>

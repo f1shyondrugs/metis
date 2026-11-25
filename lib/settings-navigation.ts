@@ -36,6 +36,7 @@ export const SETTINGS_SECTIONS: Record<string, SettingsSection[]> = {
     { id: "settings-shared", label: "Shared chats", keywords: "sharing public links teilen freigaben" },
   ],
   admin: [
+    { id: "settings-admin-tool-policy", label: "Security & permissions", keywords: "host tool policy terminal files allow block approval security sicherheit berechtigungen bestätigung" },
     { id: "settings-users", label: "Users", keywords: "accounts passwords access benutzer konten passwort" },
     { id: "settings-maintenance", label: "Maintenance", keywords: "reset metis delete cleanup wartung zurücksetzen löschen" },
   ],
@@ -57,9 +58,8 @@ export function visibleSettingsTabs(isHostAdmin: boolean) {
 }
 
 export function visibleSettingsSections(tab: string, isHostAdmin: boolean) {
-  return (SETTINGS_SECTIONS[tab] || []).filter(item =>
-    isHostAdmin || (item.id !== "settings-users" && item.id !== "settings-maintenance"),
-  );
+  if (tab === "admin" && !isHostAdmin) return [];
+  return SETTINGS_SECTIONS[tab] || [];
 }
 
 export function settingsOverviewSections(tab: string, isHostAdmin: boolean) {

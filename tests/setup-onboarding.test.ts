@@ -11,8 +11,11 @@ const file=(name:string)=>readFileSync(path.join(root,name),"utf8");
 test("admin-only setup keeps the existing protected bootstrap and completion contracts",()=>{
  const api=file("app/api/setup/route.ts"),wizard=file("components/setup-wizard.tsx"),helper=file("lib/setup.ts"),urlStep=file("components/setup-public-url-check.tsx");
  assert.match(api,/bootstrapSetupAccount/);assert.match(api,/markSetupComplete/);
- for(const text of ["Create your admin account","Operator setup token","data/setup-token","AI_CHAT_SETUP_TOKEN",'action: "bootstrap", setupToken','action: "complete"','setSetupToken("")'])assert(wizard.includes(text),text);
+ for(const text of ["Operator setup token","data/setup-token","AI_CHAT_SETUP_TOKEN",'action: "bootstrap", setupToken','action: "complete"','setSetupToken("")'])assert(wizard.includes(text),text);
  assert(helper.includes("setup_complete"));
+ assert.match(wizard, /Run agents as/);
+ assert.match(wizard, /osUsername: agentAccount/);
+ assert.doesNotMatch(wizard, /Default workspace|Workspace directory|Workspace path/i);
  assert.match(wizard, /What's your public URL\?/);
  assert.match(urlStep, /action: "check-public-url"/);
  assert.doesNotMatch(urlStep, /setupToken/);

@@ -5,7 +5,7 @@ import { PublicShareUrlHint, usePublicBaseUrl } from "@/components/public-base-u
 import { chatShareUrl } from "@/lib/public-base-url";
 import { DesktopDeviceSettings, RemoteClientInstallActions } from "@/components/desktop-device-settings";
 import { RecentlyDeletedChats } from "@/components/recently-deleted-chats";
-import { SavedWebsiteLogins } from "@/components/saved-website-logins";
+import { AdminToolPolicyPanel } from "@/components/admin-tool-policy-panel";
 import { NamedVaultEntriesPanel } from "@/components/named-vault-entries";
 import { PasskeySettings } from "@/components/passkey-settings";
 
@@ -343,6 +343,7 @@ type SettingsPaneId =
   | "deleted"
   | "shared"
   | "maintenance"
+  | "admin-tool-policy"
   | "updates";
 
 const SETTINGS_SECTION_TO_PANE: Partial<Record<string, Exclude<SettingsPaneId, "tab">>> = {
@@ -365,6 +366,7 @@ const SETTINGS_SECTION_TO_PANE: Partial<Record<string, Exclude<SettingsPaneId, "
   "settings-usage": "usage",
   "settings-remote-clients": "remote-clients",
   "settings-users": "users",
+  "settings-admin-tool-policy": "admin-tool-policy",
   "settings-archived": "archived",
   "settings-deleted": "deleted",
   "settings-shared": "shared",
@@ -2628,6 +2630,10 @@ export function SettingsPanel({
                 </div>
               </section>
  </SettingsFeaturePane>
+ ) : isHostAdmin && settingsPane === "admin-tool-policy" ? (
+ <SettingsFeaturePane backLabel="Admin" title="Security & permissions" slot="admin-tool-policy" onBack={() => backToSettings("settings-admin-tool-policy")}>
+   <AdminToolPolicyPanel />
+ </SettingsFeaturePane>
  ) : isHostAdmin && settingsPane === "maintenance" ? (
  <SettingsFeaturePane backLabel="Admin" slot="maintenance-settings" onBack={() => backToSettings("settings-maintenance")}>
  <div className="mt-3 border-t border-destructive/30 pt-4">
@@ -2653,7 +2659,6 @@ export function SettingsPanel({
  </SettingsFeaturePane>
  ) : settingsPane === "credential-vault" ? (
  <SettingsFeaturePane backLabel="Security" title="Credential vault" slot="credential-vault-settings" onBack={() => backToSettings("settings-credential-vault")}>
-  <SavedWebsiteLogins />
   <NamedVaultEntriesPanel />
  </SettingsFeaturePane>
  ) : settingsPane === "updates" ? (
@@ -2669,7 +2674,7 @@ export function SettingsPanel({
 <TabsContent value="security" className="mt-0">
  <SettingsOverview title="Security">
   <SettingsTile id="settings-passkeys" title="Passkeys" meta="Manage PIN, fingerprint and security key sign-in" icon={KeyRound} onOpen={() => openSettingsPane("passkeys")} />
-  <SettingsTile id="settings-credential-vault" title="Credential vault" meta="Manage encrypted website and console logins" icon={ShieldCheck} onOpen={() => openSettingsPane("credential-vault")} />
+  <SettingsTile id="settings-credential-vault" title="Credential vault" meta="Manage named vault entries" icon={ShieldCheck} onOpen={() => openSettingsPane("credential-vault")} />
  </SettingsOverview>
 </TabsContent>
 <TabsContent value="general" className="mt-0">
@@ -2714,6 +2719,7 @@ export function SettingsPanel({
 </TabsContent>
 <TabsContent value="admin" className="mt-0">
  <SettingsOverview title="Admin">
+  {isHostAdmin ? <SettingsTile id="settings-admin-tool-policy" title="Security & permissions" meta="Tool access and approvals" icon={ShieldCheck} onOpen={() => openSettingsPane("admin-tool-policy")} /> : null}
   {isHostAdmin ? <SettingsTile id="settings-users" title="Users" meta="Accounts and access" icon={Users} onOpen={() => openSettingsPane("users")} /> : null}
 
   {isHostAdmin ? <SettingsTile id="settings-maintenance" title="Maintenance" meta="Server updates and data reset" icon={Settings2} onOpen={() => openSettingsPane("maintenance")} /> : null}

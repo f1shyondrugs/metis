@@ -154,8 +154,9 @@ export class SecureBrowserInputs {
     if (input.filled) throw new Error("Login request already used");
     if((input.fields??["password"]).some(kind=>typeof values[kind]!=="string"||!values[kind]||values[kind]!.length>4096))throw Error("Missing credential field");
     if(Object.values(values).some(value=>typeof value!=="string"||value.length>4096))throw Error("Invalid credential");
-    if (input.page.isClosed() || input.page.url() !== input.url || !(await Promise.all(input.targets.map(target=>this.safeTarget(target.field,input.origin,target.kind)))).every(Boolean)) {
-      throw new Error("Website changed; request a new login dialog");
+    if (input.page.isClosed()) throw new ProtectedLoginError("session_unavailable");
+    if (input.page.url() !== input.url || !(await Promise.all(input.targets.map(target=>this.safeTarget(target.field,input.origin,target.kind)))).every(Boolean)) {
+      throw new ProtectedLoginError(input.page.isClosed() ? "session_unavailable" : "protected_form_changed");
     }
     const context = input.page.context();
     if(values.password){const passwords=enteredPasswords.get(context)??new Set<string>();passwords.add(values.password);enteredPasswords.set(context,passwords);}
@@ -168,7 +169,10 @@ export class SecureBrowserInputs {
     // Consume before awaiting browser I/O: concurrent/replayed submissions cannot fill twice.
     input.filled = true;
     try {for(const target of input.targets){const value=values[target.kind]??(target.kind==="username"?values.email:undefined);if(value!==undefined){if(!await this.safeTarget(target.field,input.origin,target.kind))throw Error();await target.field.fill(value,{timeout:5000});}}}
-    catch { input.filled = false; throw new Error("Password could not be entered; request a new login dialog"); }
+    catch {
+      input.filled = false;
+      throw new ProtectedLoginError(input.page.isClosed() ? "session_unavailable" : "protected_form_changed");
+    }
     return { status: "filled" as const };
   }
 }

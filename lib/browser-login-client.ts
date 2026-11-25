@@ -24,7 +24,7 @@ export function browserLoginRequest(owner: string, chat: string | undefined, ope
       headers:{"Content-Type":"application/json","Content-Length":Buffer.byteLength(body),Connection:"close"},timeout:60000},response=>{
       let size=0;const chunks:Buffer[]=[];
       response.on("data",chunk=>{size+=chunk.length;if(size>MAX_PROTECTED_LOGIN_REPLY_BYTES)response.destroy(new Error("Protected reply exceeds its transport limit"));else chunks.push(chunk);});
-      response.on("error",()=>reject(new ProtectedLoginError()));
+      response.on("error",()=>reject(new ProtectedLoginError("protected_service_unavailable")));
       response.on("end",()=>{
         let result: ProtectedLoginReply;
         try { result = parseProtectedLoginReply(JSON.parse(Buffer.concat(chunks).toString())); }
@@ -33,7 +33,7 @@ export function browserLoginRequest(owner: string, chat: string | undefined, ope
         resolve(result);
       });
     });
-    request.on("timeout",()=>request.destroy());request.on("error",()=>reject(new ProtectedLoginError()));
+    request.on("timeout",()=>request.destroy());request.on("error",()=>reject(new ProtectedLoginError("protected_service_unavailable")));
     request.end(body);
   });
 }

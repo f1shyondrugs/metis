@@ -79,9 +79,12 @@ export function lookupHostOsUser(username: string): HostOsUser | undefined {
     return posix ? { username: posix.username, uid: posix.uid, gid: posix.gid, home: posix.home } : undefined;
   }
   if (platform === "darwin") {
-    const uid = Number(runHostCommand("id", ["-u", clean]).trim());
-    if (!Number.isInteger(uid)) return undefined;
-    const gid = Number(runHostCommand("id", ["-g", clean]).trim());
+    if (clean.startsWith("-")) return undefined;
+    const uidText = runHostCommand("id", ["-u", clean]).trim();
+    const gidText = runHostCommand("id", ["-g", clean]).trim();
+    if (!/^\d+$/.test(uidText) || !/^\d+$/.test(gidText)) return undefined;
+    const uid = Number(uidText);
+    const gid = Number(gidText);
     const home = runHostCommand("dscl", [".", "-read", `/Users/${clean}`, "NFSHomeDirectory"]).match(/NFSHomeDirectory:\s+(.+)/)?.[1]?.trim()
       || `/Users/${clean}`;
     return { username: clean, uid, gid: Number.isInteger(gid) ? gid : undefined, home };
@@ -226,8 +229,16 @@ export function assertSafeUserAccess(userId: string, workspaceRoot: string, iden
     throw new Error("Nonadmin execution requires a dedicated regular OS account, not a system identity.");
   }
   const info = statSync(workspace);
-  if (!info.isDirectory() || info.uid !== identity.uid || (info.mode & 0o077) !== 0) {
-    throw new Error("Nonadmin workspace must be owned by its OS identity and private (0700, no shared ACL access).");
+  if (!info.isDirectory() || info.uid !== identity.uid) {
+    throw new Error("Nonadmin workspace must be a directory owned by its OS identity.");
+  }
+  // Linux mode group bits include the POSIX ACL mask when present. Allow
+  // group read/search, but not effective group/ACL writes or access by others.
+  const forbiddenWorkspaceMode = hostPlatform() === "linux" ? 0o027 : 0o077;
+  if ((info.mode & forbiddenWorkspaceMode) !== 0) {
+    throw new Error(hostPlatform() === "linux"
+      ? "Nonadmin workspace must not allow group writes or access by others (for example, use 0750 or 0700)."
+      : "Nonadmin workspace must be private (0700, no shared ACL access).");
   }
   const groups = runHostCommand("id", ["-Gn", identity.username]).trim().split(/\s+/);
   if (!groups[0] || groups.some((group) => ["root", "sudo", "wheel", "admin", "docker", "lxd", "disk", "shadow"].includes(group))) {

@@ -17,7 +17,8 @@ test("POSIX probe checks effective access to separate shared directories and con
   const code = path.join(dir, "code");
   const envFile = path.join(code, ".env");
   fs.chmodSync(dir, 0o711);
-  fs.mkdirSync(workspace, { mode: 0o700 });
+  fs.mkdirSync(workspace, { mode: 0o750 });
+  fs.chmodSync(workspace, 0o750);
   fs.chownSync(workspace, Number(nobody![2]), Number(nobody![3]));
   fs.mkdirSync(data, { mode: 0o700 });
   fs.mkdirSync(code, { mode: 0o755 });
@@ -34,7 +35,7 @@ test("POSIX probe checks effective access to separate shared directories and con
       { encoding: "utf8", env: { NODE_ENV: "test" }, cwd: workspace, stdio: ["ignore", "pipe", "ignore"] });
     assert.equal(run(), "ISOLATED");
     fs.chmodSync(data, 0o755);
-    assert.throws(run, "readable shared data must block execution even with private workspace");
+    assert.throws(run, "readable shared data must block execution even with an allowed 0750 workspace");
     fs.chmodSync(data, 0o700); fs.chmodSync(envFile, 0o644);
     assert.throws(run, "readable env must block execution");
     fs.chmodSync(envFile, 0o600); fs.chmodSync(code, 0o777);

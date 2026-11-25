@@ -19,6 +19,8 @@ import {consoleVaultDescription,prepareProtectedConsole} from "@/lib/protected-c
 import { protectedLoginFailure } from "@/lib/protected-login-errors";
 import { assertOrdinaryQuestionSafe, CredentialQuestionError } from "@/lib/mcp-core/credential-question-policy.mjs";
 
+import { getHostToolPolicy } from "@/lib/host-tool-policy-store";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -205,7 +207,15 @@ export async function GET(req: Request) {
     await waitForJobUserInput(jobId, userId, req.signal);
     const chat = getChat(chatId, userId);
     if (!chat || !internalRunContextAuthorized(req, jobId)) return Response.json({ error: "Unauthorized" }, { status: 401 });
-    return Response.json({ waitingForUser: false, runtimeMode: runtimeModeForChat(chat) });
+    const hostToolPolicy = getHostToolPolicy();
+    const upgraded = req.headers.get("X-Metis-Tool-Policy") === "1";
+    // A mixed-version gateway must not silently ignore non-default enforcement.
+    if (!upgraded && Object.values(hostToolPolicy.rules).some(rule => rule !== "inherit")) {
+      return Response.json({error: "This gateway does not support the configured host tool policy."}, {status: 409});
+    }
+    return Response.json({ waitingForUser: false, runtimeMode: runtimeModeForChat(chat),
+      ...(upgraded ? {hostToolPolicy} : {}),
+    }, {headers: {"Cache-Control":"private, no-store"}});
   } catch {
     return Response.json({ error: "The run is waiting for an answer or has been stopped." }, { status: req.signal.aborted ? 499 : 409 });
   }

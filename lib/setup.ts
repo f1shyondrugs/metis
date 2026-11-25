@@ -1,7 +1,9 @@
 import { pbkdf2Sync, randomBytes, randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
+import path from "node:path";
 import { config } from "@/lib/config";
 import { ensureAllModelAccess } from "@/lib/model-access";
-import { ensureUserAccess, getUserAccess, inferOsUsernameForWorkspace, lookupHostOsUser, resolveManagedWorkspaceRoot } from "@/lib/user-access";
+import { ensureUserAccess, getUserAccess, lookupHostOsUser, resolveManagedWorkspaceRoot } from "@/lib/user-access";
 import { consumeSetupToken, removeSetupTokenFile, setupTokenConsumed, validSetupToken } from "@/lib/setup-token";
 import { getDatabase, transaction } from "@/lib/sqlite";
 import { listChatProviderConnections } from "@/lib/provider-connections";
@@ -62,7 +64,7 @@ export class SetupBootstrapError extends Error {
 }
 
 export function bootstrapSetupAccount(input: {
-  setupToken?: unknown; username: string; password: string; osUsername?: string;
+  setupToken?: unknown; username: string; password: string; osUsername?: unknown;
 }) {
   const user = transaction(() => {
     if (userCount() > 0 || setupTokenConsumed()) {
@@ -75,26 +77,44 @@ export function bootstrapSetupAccount(input: {
     if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(username) || input.password.length < 8) {
       throw new SetupBootstrapError("Invalid username or password too short.", 400);
     }
+    const osUsername = typeof input.osUsername === "string" ? input.osUsername.trim() : "";
+    if (!osUsername) {
+      throw new SetupBootstrapError("Enter the OS username that will run agents.", 400);
+    }
+    const identity = lookupHostOsUser(osUsername);
+    if (!identity) {
+      throw new SetupBootstrapError("That OS user does not exist on this host.", 400);
+    }
+    if (identity.uid === 0 && !config.allowRootAgents) {
+      throw new SetupBootstrapError("This installation has explicitly disabled root agents. Choose an existing non-root OS user.", 400);
+    }
+    const serviceUid = process.getuid?.();
+    if (identity.uid !== undefined && serviceUid !== undefined && serviceUid !== 0 && serviceUid !== identity.uid) {
+      throw new SetupBootstrapError("The server process cannot switch to that OS user. Choose the user running the service.", 400);
+    }
+    // Derive the start directory from the selected native account. Never chown
+    // or create a system directory just because passwd names it as a home.
+    let workspace = resolveManagedWorkspaceRoot(config.agentCwd);
+    if (!config.docker && identity.uid !== undefined) {
+      const home = identity.home;
+      let info;
+      try { if (path.isAbsolute(home)) info = statSync(home); } catch { /* Report the actionable error below. */ }
+      if (!info?.isDirectory() || info.uid !== identity.uid || path.resolve(home) === path.parse(home).root) {
+        throw new SetupBootstrapError("Choose an OS user with an existing home directory owned by that user.", 400);
+      }
+      workspace = resolveManagedWorkspaceRoot(home);
+    }
     const salt = randomBytes(16).toString("hex");
     const passwordHash = salt + ":" + pbkdf2Sync(input.password, salt, 120_000, 32, "sha256").toString("hex");
     const id = randomUUID();
     const createdAt = new Date().toISOString();
-    const workspace = resolveManagedWorkspaceRoot(config.agentCwd);
-    const explicitOsUsername = input.osUsername?.trim();
-    let osUsername: string | undefined = explicitOsUsername || inferOsUsernameForWorkspace(workspace);
-    if (osUsername && lookupHostOsUser(osUsername)?.uid === 0 && !config.allowRootAgents) {
-      if (explicitOsUsername) throw new SetupBootstrapError("Root agent execution is disabled on this installation. Leave the OS user blank to create the admin, or choose an existing unprivileged OS user.", 400);
-      // Account setup may finish without an execution identity. Preserve the
-      // operator's root policy; agent execution stays blocked until configured.
-      osUsername = undefined;
-    }
     getDatabase().prepare("INSERT INTO users (id, username, password_hash, created_at, is_admin) VALUES (?, ?, ?, ?, 1)")
       .run(id, username, passwordHash, createdAt);
     ensureAllModelAccess(id);
     try {
-      ensureUserAccess(id, workspace, osUsername || undefined);
+      ensureUserAccess(id, workspace, identity.username);
     } catch (cause) {
-      throw new SetupBootstrapError(cause instanceof Error ? cause.message : "Could not assign the OS user. Leave it blank to create the admin and configure it later.", 400);
+      throw new SetupBootstrapError(cause instanceof Error ? cause.message : "Could not assign the OS user.", 400);
     }
     consumeSetupToken();
     markSetupIncomplete();

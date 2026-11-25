@@ -24,6 +24,30 @@ tool call, so fresh HTTP/stdio sessions cannot retain stale permissions from a
 signed token. Native provider sandbox settings refresh on the next provider run;
 canonical gateway approvals change during the current run.
 
+## Host tool rules
+
+Host administrators can open **Settings → Admin → Security & permissions** to
+inherit existing rules, require one-time approval, or block two groups of
+first-party tools: terminal/services (`execute_command`, `service_control`,
+`verify_work`) and file changes (`write_file`, `edit_file`, `delete_file`).
+This includes remote targets of those exact tools, but does not administer
+native processes, interactive remote terminals, third-party MCPs, or operator
+sessions outside a Metis run. It is not an OS sandbox.
+
+Both groups initially inherit. The server checks the admin's account role and
+request origin on writes, rejects stale revisions, and stores the policy in the
+existing server database. A lease-authorized gateway reads it before dispatch.
+Blocking never broadens mode or capability rules. Host-required approval ignores
+standing chat grants, applies to one exact action, and is rejected in unattended
+automations. A revision change while an action awaits approval requires a retry.
+Existing OS and Remote Device permissions still apply.
+
+Ship the updated app and participating gateways together before enabling a rule.
+Older gateways that use the user-answer gate are rejected while a non-default
+policy is configured. No server restart is needed to change a rule once the
+matching app and gateways are installed. Settings do not modify `.env`,
+systemd, or any existing user's saved runtime mode.
+
 ## Codex boundary
 
 Codex's `approvalPolicy: "never"` avoids a second interactive provider approval

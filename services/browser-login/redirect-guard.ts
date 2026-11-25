@@ -7,12 +7,20 @@ type Events = {
   "Target.receivedMessageFromTarget": {sessionId:string;message:string};
   "Target.detachedFromTarget": {sessionId:string};
   "Target.attachedToTarget": {sessionId:string;targetInfo:{type:string;targetId:string}};
+  "Network.loadingFailed": { requestId: string; canceled?: boolean; errorText: string };
   "Fetch.requestPaused": {
-    requestId:string;responseStatusCode?:number;responseHeaders?:Array<{name:string;value:string}>;
+    requestId:string;networkId?:string;resourceType?:string;responseErrorReason?:string;responseStatusCode?:number;responseHeaders?:Array<{name:string;value:string}>;
     request:{url:string;method:string;postData?:string;hasPostData?:boolean;
       headers?:Record<string,string>;postDataEntries?:Array<{bytes?:string}>};
   };
 };
+// Use only fixed protocol facts, never a site's text or a raw CDP error in output.
+class InterceptionGone extends Error {}
+function interceptionGone(message: unknown) {
+  return typeof message === "string" &&
+    /^(?:(?:cdpSession\.send: )?Protocol error \(Fetch\.continueRequest\): )?Invalid InterceptionId\.?$/.test(message);
+}
+
 type Listener = (params: unknown) => void;
 type Protocol = {
   send(method:Parameters<CDPSession["send"]>[0],params?:Parameters<CDPSession["send"]>[1]):Promise<void>;
@@ -24,13 +32,13 @@ type Protocol = {
 // installs the same guard; page-only interception would leave those targets out.
 function childProtocol(parent: Protocol, sessionId: string): Protocol & { receive(message: string): void; close(): void } {
   let sequence = 0;
-  const pending = new Map<number, { resolve(): void; reject(error: Error): void }>();
+  const pending = new Map<number, { method: string; resolve(): void; reject(error: Error): void }>();
   const listeners = new Map<string, Listener[]>();
   return {
     send(method, params = {}) {
       return new Promise((resolve, reject) => {
         const id = ++sequence;
-        pending.set(id, { resolve, reject });
+        pending.set(id, { method, resolve, reject });
         void parent.send("Target.sendMessageToTarget", { sessionId, message: JSON.stringify({ id, method, params }) })
           .catch(() => { pending.delete(id); reject(Error("Protected redirect interception unavailable")); });
       });
@@ -41,7 +49,8 @@ function childProtocol(parent: Protocol, sessionId: string): Protocol & { receiv
       if (event.id) {
         const request = pending.get(event.id);
         pending.delete(event.id);
-        if (event.error) request?.reject(Error("Protected redirect interception unavailable"));
+        if (event.error) request?.reject(request.method === "Fetch.continueRequest" && interceptionGone(event.error.message)
+          ? new InterceptionGone() : Error("Protected redirect interception unavailable"));
         else request?.resolve();
       } else for (const listener of listeners.get(event.method) || []) listener(event.params);
     },
@@ -57,15 +66,37 @@ export async function installProtectedRedirectGuard(context: BrowserContext, pag
   if (!browser) throw Error("Protected redirect interception unavailable");
   const session = await context.newCDPSession(page);
   const root: Protocol = {
-    send: async (method, params) => { await session.send(method, params); },
+    send: async (method, params) => {
+      try { await session.send(method, params); }
+      catch (error) {
+        if (method === "Fetch.continueRequest" && error instanceof Error && interceptionGone(error.message)) throw new InterceptionGone();
+        throw error;
+      }
+    },
     on: (event, listener) => { session.on(event, value => listener(value as Events[typeof event])); },
   };
   let closed = false;
   context.on("close", () => { closed = true; });
-  const failClosed = () => { if (!closed) void context.close().catch(() => {}); };
+  let closing = false;
+  const failClosed = () => {
+    if (closed || closing) return;
+    closing = true;
+    void context.close().catch(() => {});
+  };
 
   async function install(protocol: Protocol) {
     const children = new Map<string, ReturnType<typeof childProtocol>>();
+    // Network IDs are scoped to this target. Preserve only recent terminal
+    // cancellations; never resume a request to recover from an interception error.
+    const canceled = new Map<string, number>();
+    protocol.on("Network.loadingFailed", event => {
+      if (event.canceled !== true || event.errorText !== "net::ERR_ABORTED") return;
+      if (canceled.size >= 128) canceled.delete(canceled.keys().next().value!);
+      canceled.set(event.requestId, performance.now());
+    });
+    // Some targets do not expose Network. They keep the original fail-closed
+    // behavior; successful Fetch registration is still mandatory.
+    const observesCancellation = await protocol.send("Network.enable").then(() => true, () => false);
     protocol.on("Target.receivedMessageFromTarget", event => {
       try { children.get(event.sessionId)?.receive(event.message); } catch { failClosed(); }
     });
@@ -81,7 +112,7 @@ export async function installProtectedRedirectGuard(context: BrowserContext, pag
           // an unguarded target, even before fill: it could outlive that fill.
           // closeTarget may resume a paused worker during teardown. Close the
           // entire credential context while it is still paused instead.
-          await context.close();
+          failClosed();
           return;
         }
         await install(child);
@@ -121,8 +152,24 @@ export async function installProtectedRedirectGuard(context: BrowserContext, pag
             }
           }
         }
-        await protocol.send(allowed ? "Fetch.continueRequest" : "Fetch.failRequest", allowed ?
-          { requestId: event.requestId } : { requestId: event.requestId, errorReason: "BlockedByClient" });
+        try {
+          await protocol.send(allowed ? "Fetch.continueRequest" : "Fetch.failRequest", allowed ?
+            { requestId: event.requestId } : { requestId: event.requestId, errorReason: "BlockedByClient" });
+        } catch (error) {
+          if (!allowed || !observesCancellation || !(error instanceof InterceptionGone) ||
+              !event.networkId || event.responseErrorReason || status === undefined || status < 200 || status >= 300 ||
+              (event.resourceType !== "Fetch" && event.resourceType !== "XHR") ||
+              !["GET", "HEAD"].includes(event.request.method) || event.request.hasPostData ||
+              event.request.postData !== undefined || event.request.postDataEntries?.length ||
+              !event.responseHeaders || event.responseHeaders.some(header => /^(location|refresh)$/i.test(header.name)) ||
+              new URL(event.request.url).origin !== policy().credentialOrigin) throw error;
+          // DevTools may deliver the terminal cancellation just after rejecting
+          // the continuation. Bound the wait and still require the exact ID.
+          await new Promise(resolve => setTimeout(resolve, 30));
+          const timestamp = canceled.get(event.networkId);
+          if (timestamp === undefined || performance.now() - timestamp > 1000) throw error;
+          canceled.delete(event.networkId);
+        }
       })().catch(failClosed);
     });
     await protocol.send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Response" }] });

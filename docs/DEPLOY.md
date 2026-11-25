@@ -128,10 +128,14 @@ The first admin can bind the root OS user to a workspace inside its home without
 an additional installer prompt or flag. `--deny-root-agents` disables root
 execution; `--allow-root-agents` enables it again. Both flags override the previous
 setting during an upgrade; without either flag, the existing setting survives.
-Use separate OS users with private workspaces for untrusted app users.
-Review old mappings before upgrading: unsafe nonadmin mappings now reject
-creation/updates/execution; Windows nonadmin runs fail closed. An app role alone
-does not provide an OS sandbox.
+Use separate unprivileged OS users with nonoverlapping, user-owned workspaces.
+On Linux, the workspace root may grant its group read/search access (for
+example, `0750` or `0700`); group writes (including through the POSIX ACL mask)
+and access by others are not allowed at the workspace root. Effective access
+to another mapped workspace or Metis service data is still checked separately.
+Unsafe nonadmin mappings reject creation, updates and execution. Other Unix
+platforms still require a private workspace; Windows nonadmin runs fail closed.
+An app role alone does not provide an OS sandbox.
 
 Use `pnpm start`/`tsx server.mjs` for socket identity and WebSockets. Direct
 `next dev`/`next start` cannot provide authenticated socket metadata and use a

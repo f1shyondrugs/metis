@@ -1,3 +1,4 @@
+import { isHostApprovalScope } from "@/lib/mcp-core/host-tool-approval.mjs";
 import { createApproval, expireApproval, getApproval, getPendingApprovalForChat, heartbeatApproval, resolveApproval } from "@/lib/db-approvals";
 import { getJob, updateJob } from "@/lib/db-jobs";
 import { transaction } from "@/lib/sqlite";
@@ -136,6 +137,7 @@ function releaseRemoteApproval(input: RemoteApprovalInput, approvalId: string) {
       pendingApproval: next ? {
         id: next.approvalId, title: next.title, command: next.command,
         files: next.files, createdAt: next.createdAt,
+        ...(isHostApprovalScope(next.sessionScope) ? {onceOnly: true} : {}),
       } : null,
       runStatus: next ? "waiting_for_user" : "running",
       badge: next ? "red" : null,

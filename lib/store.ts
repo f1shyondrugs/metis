@@ -512,6 +512,7 @@ export type Chat = {
   pendingApproval?: {
     id: string;
     title: string;
+    onceOnly?: boolean;
     command?: string;
     files?: Array<{ path: string; status: string }>;
     createdAt: string;
@@ -548,6 +549,7 @@ export type ChatIndexEntry = {
   pendingApproval?: {
     id: string;
     title: string;
+    onceOnly?: boolean;
     command?: string;
     files?: Array<{ path: string; status: string }>;
     createdAt: string;
@@ -944,6 +946,7 @@ export function updateChat(
       chat.pendingApproval = {
         id: pendingApproval.id.slice(0, 200),
         title: pendingApproval.title.slice(0, 500),
+        ...(pendingApproval.onceOnly === true ? {onceOnly: true} : {}),
         ...(typeof pendingApproval.command === "string" && pendingApproval.command.trim()
           ? { command: pendingApproval.command.slice(0, 20_000) }
           : {}),

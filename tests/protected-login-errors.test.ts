@@ -16,6 +16,11 @@ test("protected-login diagnostics discard untrusted codes and raw exception mess
   }
   assert.deepEqual(protectedLoginFailure(new Error(secret)), protectedLoginFailure(undefined));
   assert.equal(protectedLoginFailure(new ProtectedLoginError("unsafe_target")).code, "unsafe_target");
+  for (const code of ["login_target_unavailable", "protected_control_unavailable", "protected_service_unavailable"]) {
+    const diagnostic=protectedLoginFailure(new ProtectedLoginError(code));
+    assert.equal(diagnostic.code,code);
+    assert(!diagnostic.error.includes("Protected login could not be prepared"));
+  }
 });
 
 test("private-browser transport reconstructs only fixed diagnostics and preserves successful readiness", async t => {
@@ -55,5 +60,5 @@ test("private-browser transport reconstructs only fixed diagnostics and preserve
   assert.deepEqual(await request(), reply);
   process.env.METIS_BROWSER_LOGIN_SOCKET = path.join(dir, "unreachable.sock");
   await assert.rejects(request, error => error instanceof ProtectedLoginError
-    && error.code === "protected_login_unavailable");
+    && error.code === "protected_service_unavailable");
 });

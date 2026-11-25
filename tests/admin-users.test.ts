@@ -48,6 +48,25 @@ test("managed mappings reject unsafe creation/update atomically", async () => {
     patchManagedUser(bob.id, { osUsername: "bob", workspaceRoot: "/isolated/bob" });
     assert.equal(requireUserExecutionIdentity(bob.id).uid, 12002);
     assert.throws(() => deleteManagedUser(bob.id, bob.id), /own account/);
+    // Demotion keeps the existing owner-controlled home even with group read/search.
+    fixture.state.mode = 0o40750;
+    const groupReadable = createManagedUser({ username: "groupreadable", password: "password1", isAdmin: true,
+      workspaceRoot: "/isolated/bob", osUsername: "bob" });
+    assert.equal(patchManagedUser(groupReadable.id, { isAdmin: false })?.isAdmin, false);
+    assert.equal(getUserAccess(groupReadable.id).workspaceRoot, "/isolated/bob");
+    assert.equal(requireUserExecutionIdentity(groupReadable.id).uid, 12002);
+    patchManagedUser(groupReadable.id, { isAdmin: true });
+    for (const mode of [0o40770, 0o40755]) {
+      fixture.state.mode = mode;
+      assert.throws(() => patchManagedUser(groupReadable.id, { isAdmin: false }), /Nonadmin workspace/);
+      assert.equal(listAdminUsers().find((user) => user.id === groupReadable.id)?.isAdmin, true);
+    }
+    fixture.state.mode = 0o40750;
+    fixture.state.owner = 12001;
+    assert.throws(() => patchManagedUser(groupReadable.id, { isAdmin: false }), /owned by its OS identity/);
+    assert.equal(listAdminUsers().find((user) => user.id === groupReadable.id)?.isAdmin, true);
+    fixture.state.mode = 0o40700;
+    fixture.state.owner = 12002;
     const secondAdmin = createManagedUser({ username: "secondadmin", password: "password1", isAdmin: true, workspaceRoot: "/" });
     assert.equal(getUserAccess(secondAdmin.id).workspaceRoot, "/");
     assert.equal(requireUserExecutionIdentity(bob.id).uid, 12002, "admin / does not block scoped accounts");

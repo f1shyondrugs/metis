@@ -99,6 +99,7 @@ before(async () => {
   Object.assign(process.env, {
     AI_CHAT_PUBLIC_URL: origin, AI_CHAT_ROOT: temp, AGENT_CWD: temp,
     CHAT_DATA_DIR: temp, CHAT_DB_PATH: path.join(temp, "test.sqlite"), AI_CHAT_SETUP_TOKEN: operatorToken,
+    AI_CHAT_ALLOW_ROOT_AGENTS: "true",
   });
   delete process.env.METIS_AI_BOOTSTRAP_PASSWORD;
   ({ GET: instanceProof } = await import("../app/api/instance-proof/route"));
@@ -149,7 +150,7 @@ test("configured address is not verified for another instance, HTML, redirects, 
 
 test("only the signed-in setup admin can save a verified public URL; private destinations never connect", async () => {
   assert.equal((await setupRequest({ publicUrl: "https://metis.example", setupToken: operatorToken })).status, 403);
-  const creation = await setupRequest({ action: "bootstrap", username: "url-fixture-admin", password: "fixture-password-12", setupToken: operatorToken });
+  const creation = await setupRequest({ action: "bootstrap", username: "url-fixture-admin", password: "fixture-password-12", setupToken: operatorToken, osUsername: os.userInfo().username });
   assert.equal(creation.status, 201);
   const cookie = creation.headers.get("set-cookie")?.split(";")[0] || "";
   assert(cookie);

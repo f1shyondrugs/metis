@@ -58,8 +58,10 @@ all sessions for that account.
 Root agents default to disabled, including root installations. Explicit
 `AI_CHAT_ALLOW_ROOT_AGENTS=true` permits only Host-Admin root execution within
 its root home. Install native services from a dedicated unprivileged account.
-Nonadmins require distinct unprivileged OS identities and private, nonoverlapping
-workspaces. Creation, mapping changes and every execution reject unsafe mappings,
+Nonadmins require unprivileged OS identities and user-owned workspaces that do
+not overlap across OS identities. Linux permits group read/search at the workspace
+root, but not group writes or access by others. Creation, mapping changes and
+every execution reject unsafe mappings,
 shared service identities, privileged groups and access to other workspaces or
 service secrets/data. Unix checks effective filesystem access under the target
 UID/GID, including ACLs. Existing unsafe mappings fail closed. Windows nonadmin

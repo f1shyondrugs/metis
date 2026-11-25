@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { getDatabase, transaction } from "@/lib/sqlite";
 import type { ApprovalDecision } from "@/lib/runtime-mode";
+import { isHostApprovalScope } from "@/lib/mcp-core/host-tool-approval.mjs";
 
 export type ApprovalStatus = "waiting_for_user" | "resolved";
 
@@ -204,6 +205,8 @@ export function resolveApproval(
     const approval = mapApproval(raw);
     if (!approval || (userId && approval.ownerId !== userId)) return null;
     if (approval.status === "resolved") return null;
+    // Old clients may still present “Allow session”. A host-required grant is one-time only.
+    if (decision === "allow-session" && isHostApprovalScope(approval.sessionScope)) decision = "allow";
     if (version !== undefined && version !== approval.version) return null;
     const timestamp = iso();
     const sessionScope =

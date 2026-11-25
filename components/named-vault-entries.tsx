@@ -67,7 +67,7 @@ export function NamedVaultEntriesPanel(){
     }finally{if(!controller.signal.aborted)setSaving(false);}
   }
 
-  return <section aria-label="Named vault entries" className="mt-6 space-y-3 border-t border-border pt-5">
+  return <section aria-label="Named vault entries" className="space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-lg font-semibold">Named entries</h2>
       <Button variant="outline" className="min-h-11" disabled={loading||Boolean(failure)} onClick={()=>begin()}><Plus className="size-4" aria-hidden="true"/>Add entry</Button>
@@ -85,7 +85,7 @@ export function NamedVaultEntriesPanel(){
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" onEscapeKeyDown={event=>{if(saving)event.preventDefault();}} onPointerDownOutside={event=>{if(saving)event.preventDefault();}}>
         <DialogHeader>
           <DialogTitle>{remove?"Delete vault entry?":draft?.entry?"Edit vault entry":"Add vault entry"}</DialogTitle>
-          <DialogDescription>{remove?`This permanently removes “${remove.title}” and its fields.`:draft?.entry&&draft.entry.kind!=="custom"?"The existing sign-in target stays bound. Manage its built-in login fields in Saved logins.":"Values are encrypted. Existing values are never prefilled."}</DialogDescription>
+          <DialogDescription>{remove?`This permanently removes “${remove.title}” and its fields.`:draft?.entry&&draft.entry.kind!=="custom"?"The sign-in target stays bound. You can edit this entry’s title and custom fields.":"Values are encrypted. Existing values are never prefilled."}</DialogDescription>
         </DialogHeader>
         <form className="min-w-0 space-y-4" onSubmit={event=>{event.preventDefault();void submit();}}>
           {draft?<fieldset className="min-w-0 space-y-3" disabled={saving}>
