@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { loadToolPayload, type FullToolPayload } from "@/lib/tool-result-client";
+import { loadToolPayload, resolveWorkspaceToolOpen, type FullToolPayload } from "@/lib/tool-result-client";
 import { cn } from "@/lib/utils";
 import { internalLinkNavigation } from "@/lib/internal-link";
 import { ToolCallPreview } from "@/components/tool-call-preview";
@@ -478,7 +478,7 @@ export const ToolCallGroup = memo(function ToolCallGroup({
   activity?: ActivityEntry[];
   onOpenDiff?: (tool: ToolCallData) => void;
   onOpenSubagent?: (tool: ToolCallData) => void;
-  onOpenWorkspace?: (tool: ToolCallData) => void;
+  onOpenWorkspace?: (tool: ToolCallData, workspaceId?: string) => void;
   onBuildPlan?: (tool: ToolCallData, plan: { title: string; content: string; workspaceLink?: string }, options?: { multiAgent?: boolean }) => void;
   buildDisabled?: boolean;
   onOpenRaw?: (tool: ToolCallData) => void;
@@ -508,9 +508,8 @@ export const ToolCallGroup = memo(function ToolCallGroup({
  const groupTitle = activityGroupLabel(entries, combinedThinking);
   const groupOpen = userOpen ?? Boolean(live || autoExpand);
   const openWorkspace = (tool: ToolCallData) => {
-    const url = tool.inputUrl || tool.resultUrl;
-    if (!url) { onOpenWorkspace?.(tool); return; }
-    void loadToolPayload(url).then(payload => onOpenWorkspace?.({ ...tool, ...payload }))
+    void resolveWorkspaceToolOpen(tool)
+      .then(open => onOpenWorkspace?.(open.tool, open.workspaceId))
       .catch(() => toast.error("Could not load workspace details"));
   };
   const buildToolPlan = (tool: ToolCallData, plan: { title: string; content: string; workspaceLink?: string }, options?: { multiAgent?: boolean }) => {
