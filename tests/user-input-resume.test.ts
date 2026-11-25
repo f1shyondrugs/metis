@@ -50,7 +50,7 @@ test("interactive MCP waits propagate cancellation and preserve durable pause st
     gateway,
     /signal: options\.signal/,
   );
-  assert.match(gateway, /await ensureRuntimeApproval\(name, args, context, options\.signal\)/);
+  assert.match(gateway, /await ensureRuntimeApproval\(name, args, context, options\.signal, policy\)/);
   assert.match(questionRoute, /req\.signal\.addEventListener\("abort"/);
   assert.match(questionRoute, /pending\.stop\(\)/);
   assert.match(providerRunner, /isJobWaitingForUser\(durableStatus\)/);
