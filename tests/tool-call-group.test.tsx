@@ -5,6 +5,7 @@ import {renderToStaticMarkup} from "react-dom/server";
 import {createRequire} from "node:module";
 import type {ToolCallData} from "../components/tool-call-chip";
 import { compactChatPageMessages } from "../lib/chat-page-payload";
+import { resolveWorkspaceToolOpen } from "../lib/tool-result-client";
 Object.assign(globalThis,{React});
 const require=createRequire(import.meta.url);
 require.extensions[".css"]=()=>{};
@@ -171,6 +172,33 @@ test("inline preview retains the saved workspace and build callbacks", () => {
   assert.equal(canvas.props.workspaceLink, "workspace://canvas/saved-canvas");
   canvas.props.onOpen();
   assert.equal(events.at(-1), "canvas");
+});
+
+test("saved plan and canvas Open buttons do not require deferred transcript details", async () => {
+  const url = "/api/chats/workspace-fixture/tool-result?messageId=m&toolId=t";
+  for (const kind of ["plan", "canvas"] as const) {
+    const tool = { kind, status: "completed", inputUrl: url, resultUrl: url,
+      result: JSON.stringify({ type: kind, workspaceLink: `workspace://${kind}/stored-${kind}` }) };
+    const open = await resolveWorkspaceToolOpen(tool, async () => {
+      assert.fail("a saved workspace must open even when the full tool result is unavailable");
+    });
+    assert.equal(open.workspaceId, `stored-${kind}`);
+    assert.equal(open.tool, tool);
+  }
+});
+
+test("unverified links and failed results do not bypass the deferred payload check", async () => {
+  const resultUrl = "/api/chats/workspace-fixture/tool-result?messageId=m&toolId=t";
+  for (const result of [undefined, '{"isError":true,"workspaceLink":"workspace://plan/failed"}', '{"type":"canvas","workspaceLink":"workspace://plan/wrong-kind"}']) {
+    const tool = { kind: "plan" as const, status: "completed", resultUrl, result,
+      input: '{"workspaceLink":"workspace://plan/input-is-not-a-saved-result"}' };
+    const open = await resolveWorkspaceToolOpen(tool, async url => {
+      assert.equal(url, resultUrl);
+      return { result: '{"workspaceLink":"workspace://plan/verified-by-server"}' };
+    });
+    assert.equal(open.workspaceId, undefined);
+    assert.match(open.tool.result ?? "", /verified-by-server/);
+  }
 });
 
 test("deferred previews retain lazy open and build controls without loading full history", () => {

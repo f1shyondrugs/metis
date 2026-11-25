@@ -5,9 +5,16 @@ import {CanvasWorkspaceCard} from "../components/canvas-workspace-card";
 import {AutomationCard} from "../components/automation-card";
 import {CalendarEventCard} from "../components/calendar/calendar-event-card";
 import {Markdown} from "../components/markdown";
+import {ToolCallGroup, type ToolCallData} from "../components/tool-call-chip";
 import {PublicMarkdownContext} from "../components/public-markdown-context";
 
 const id="12345678-1234-1234-1234-123456789abc";
+const savedTools: ToolCallData[] = (["plan", "canvas"] as const).map(kind => ({
+ id: kind, kind, name: "create_" + kind, status: "completed",
+ result: JSON.stringify({id: "saved-" + kind, name: "Deferred " + kind, content: "Saved workspace", workspaceLink: "workspace://" + kind + "/saved-" + kind}),
+ // The fixture intentionally returns 404 for optional transcript details.
+ resultUrl: "/api/chats/workspace-fixture/tool-result?messageId=old&toolId=" + kind,
+}));
 function Fixture(){
  const [opened,setOpened]=useState(""),[result,setResult]=useState("");
  useEffect(()=>{const listener=(event:Event)=>setOpened((event as CustomEvent).detail.id);window.addEventListener("ai-chat:open-calendar-event",listener);return()=>window.removeEventListener("ai-chat:open-calendar-event",listener);},[]);
@@ -15,7 +22,7 @@ function Fixture(){
   const checks:string[]=[];
   const check=(value:unknown,label:string)=>{if(!value)throw Error(label);checks.push(label);};
   try{
-   const cards=[...document.querySelectorAll<HTMLElement>("[data-chat-card]")];
+   const cards=[...document.querySelectorAll<HTMLElement>(".markdown-body > [data-chat-card]")];
    check(cards.length===4,"all four card kinds share the frame");
    const titles=cards.map(card=>card.querySelector<HTMLElement>("[data-chat-card-title]")!);
    check(titles.every(title=>getComputedStyle(title).fontSize==="14px"&&getComputedStyle(title).fontWeight==="600"),"titles remain 14px semibold inside real chat Markdown");
@@ -33,6 +40,13 @@ function Fixture(){
    check(!!document.querySelector("[data-workspace-card=plan] [role=progressbar]"),"plan progress survives");
    check([...document.querySelectorAll("[data-workspace-card=plan] button")].some(e=>e.textContent==="Build"),"plan Build action survives");
    for(const [index,label] of [[0,"plan"],[1,"canvas"],[3,"automation"]] as const){opens[index].click();await new Promise(r=>setTimeout(r,20));check(document.querySelector("[data-opened]")?.textContent===label,label+" opening callback survives");}
+   for (const kind of ["plan", "canvas"] as const) {
+    const open = [...document.querySelectorAll<HTMLButtonElement>(`[data-deferred-tools] [data-workspace-card=${kind}] footer button`)].find(button => button.textContent === "Open " + kind);
+    check(open, "deferred " + kind + " open control is present");
+    open!.click();
+    await new Promise(r => setTimeout(r, 100));
+    check(document.querySelector("[data-opened]")?.textContent === "saved-" + kind, "deferred " + kind + " opens from saved ID with missing transcript");
+   }
    const event=opens[2] as HTMLAnchorElement;
    check(event.getAttribute("href")==="/?c=calendar#event-"+id,"calendar retains canonical fallback URL");
    const modified=new MouseEvent("click",{bubbles:true,cancelable:true,ctrlKey:true});
@@ -58,6 +72,7 @@ function Fixture(){
    <AutomationCard actionLabel="Automation · Paused" title="Testautomation – Linktest" icon="lucide:workflow" prompt="Testautomation für den direkten Link. Bleibt pausiert." scheduleLabel="Daily · 09:00" automationLink="automation://test" onOpen={()=>setOpened("automation")}/>
    <div data-object-links><Markdown content={"1. [Automation](automation://test) – **pausiert**, läuft nicht.\n2. [Notiz](note://test)\n3. [Plan](workspace://plan/test)\n4. [Canvas](workspace://canvas/test)\n5. [Testevent](calendar-event://"+id+")"}/></div>
   </div>
+  <div data-deferred-tools><ToolCallGroup tools={savedTools} onOpenWorkspace={(_, workspaceId) => setOpened(workspaceId ?? "missing workspace ID")}/></div>
   <div style={{fontSize:12,marginTop:16}} data-opened>{opened}</div>
   <div data-private><PublicMarkdownContext.Provider value={{noteIds:[],assets:{}}}><CalendarEventCard id="private"/></PublicMarkdownContext.Provider></div>
  </main>;

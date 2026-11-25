@@ -11170,7 +11170,8 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                                 }}
                                 onOpenSubagent={(tool) => setActiveSubagent({ ...tool })}
                                 onOpenRaw={(tool) => setActiveRawTool({ ...tool })}
-                                onOpenWorkspace={(tool) => {
+                                onOpenWorkspace={(tool, savedWorkspaceId) => {
+                                  if (activeChatId !== activeChatIdRef.current) return;
                                   if (tool.kind === "browser") {
                                     if (!browserEnabled) return;
                                     setWorkspaceTab("browser");
@@ -11179,10 +11180,12 @@ export default function AppShell({ defaultCwd }: { defaultCwd: string }) {
                                     return;
                                   }
                                   if (tool.kind !== "plan" && tool.kind !== "canvas") return;
-                                  const preview = tool.kind === "canvas"
-                                    ? canvasFromToolPayload(tool.input, tool.result, tool.detail)
-                                    : planFromToolPayload(tool.input, tool.result, tool.detail);
-                                  const previewId = workspaceIdFromLink(preview?.workspaceLink, tool.kind);
+                                  const previewId = savedWorkspaceId ?? workspaceIdFromLink(
+                                    (tool.kind === "canvas"
+                                      ? canvasFromToolPayload(tool.input, tool.result, tool.detail)
+                                      : planFromToolPayload(tool.input, tool.result, tool.detail))?.workspaceLink,
+                                    tool.kind,
+                                  );
                                   if (!previewId) {
                                     toast.error("This workspace has no saved link.");
                                     return;
