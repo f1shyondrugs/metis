@@ -45,6 +45,9 @@ jobs:
       - name: Verify provider acceptance contracts and isolated transport
         run: pnpm test:provider-acceptance
 
+      - name: Verify model context metadata using an isolated registry
+        run: pnpm exec tsx --test tests/model-context-metadata.test.ts
+
       - name: Verify targeted SQL reads and question responses
         run: pnpm exec tsx --test tests/targeted-sql-reads.test.ts tests/question-flow.test.ts tests/question-reload.test.ts tests/user-input-continuation.test.ts tests/user-input-lease.test.ts tests/chat-checkpoints.test.ts tests/chat-memory-view.test.ts tests/context-layers.test.ts tests/shared-context.test.ts tests/reference-search-performance.test.ts
 
